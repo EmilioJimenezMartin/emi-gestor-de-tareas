@@ -38,6 +38,8 @@ import { registerBookDraftRoutes } from "./routes/book-drafts.js";
 import { registerRejectedImageRoutes } from "./routes/rejected-images.js";
 import { registerVoiceRoutes } from "./routes/voice.js";
 import { registerAutoCloneRoutes } from "./routes/auto-clone.js";
+import { registerPromptDNARoutes } from "./routes/prompt-dna.js";
+import { registerViralNicheRoutes } from "./routes/viral-niches.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerJwtMiddleware } from "./lib/jwt-middleware.js";
@@ -157,6 +159,8 @@ await registerRejectedImageRoutes(app, { io });
 await registerVoiceRoutes(app);
 await registerPipelineRoutes(app, deps);
 await registerAutoCloneRoutes(app, deps);
+await registerPromptDNARoutes(app);
+await registerViralNicheRoutes(app, deps);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

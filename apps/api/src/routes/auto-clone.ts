@@ -15,6 +15,12 @@ function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
     });
 }
 
+function isColoringBookTitle(title: string): boolean {
+    const t = title.toLowerCase();
+    return /\b(coloring|colouring|colorear|malbuch|kleurboek|da.colorare|livre.de.coloriage)\b/.test(t)
+        || /mandala.{0,20}book|book.{0,20}mandala/.test(t);
+}
+
 // Search Amazon via Jina.ai (markdown format) and extract first ASIN + title
 async function findBestsellerAsin(searchQuery: string): Promise<{ asin: string | null; title: string | null; bsr: string | null; amazonUrl: string | null }> {
     try {
@@ -137,6 +143,12 @@ Return ONLY a JSON array: [{"topic":"...","searchQuery":"..."}]
             if (!asin) {
                 skipped++;
                 console.log(`[AutoClone] No ASIN for "${t.topic}" (${t.searchQuery}) — skipped`);
+                continue;
+            }
+            // Skip if title is found but doesn't look like a coloring book
+            if (title && !isColoringBookTitle(title)) {
+                skipped++;
+                console.log(`[AutoClone] Non-coloring-book title detected: "${title}" — skipped`);
                 continue;
             }
 

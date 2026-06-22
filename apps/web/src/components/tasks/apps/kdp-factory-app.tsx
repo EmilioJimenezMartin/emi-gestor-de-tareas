@@ -98,6 +98,7 @@ import {
     ArrowUpNarrowWide,
     Undo2,
     Redo2,
+    Dna,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -380,6 +381,7 @@ interface FavoriteImage {
     label: string;
     source: "vault" | "catalog" | "cloudinary" | "generated";
     savedAt: string;
+    catalogId?: string;
 }
 
 const defaultTextStyle = (): PageTextStyle => ({
@@ -623,7 +625,7 @@ export function KdpFactoryApp() {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
         return (saved === "niches" || saved === "intelligence" || saved === "calendar") ? saved as "niches" | "intelligence" | "calendar" : "niches";
     });
-    const [intelliMode, setIntelliMode] = useState<"scraping" | "clone" | "auto">("scraping");
+    const [intelliMode, setIntelliMode] = useState<"scraping" | "clone" | "auto" | "viral" | "dna">("scraping");
 
     // ── Clone Engine state ───────────────────────────────────────────────────
     type CloneResult = { nicheName: string; title: string; titleTemplate?: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: "low" | "medium" | "high" };
@@ -651,6 +653,26 @@ export function KdpFactoryApp() {
     const [autoCloneDiscovering, setAutoCloneDiscovering] = useState(false);
     const [autoCloneCount, setAutoCloneCount] = useState(5);
 
+    // Model Comparator state
+    const COMPARE_MODEL_IDS = ["sf-flux-schnell", "pollinations-flux", "cf-flux-schnell", "cf-sdxl-lightning", "cf-dreamshaper", "leo-phoenix"] as const;
+    type CompareStatus = { status: "idle" | "loading" | "done" | "error"; blobUrl?: string };
+    const [modelCompareNiche, setModelCompareNiche] = useState<NicheFE | null>(null);
+    const [modelComparePrompt, setModelComparePrompt] = useState("");
+    const [modelCompareResults, setModelCompareResults] = useState<Map<string, CompareStatus>>(new Map());
+    const [modelCompareActive, setModelCompareActive] = useState<string[]>(["sf-flux-schnell", "pollinations-flux", "cf-flux-schnell", "cf-sdxl-lightning", "cf-dreamshaper"]);
+    const [modelCompareRunning, setModelCompareRunning] = useState(false);
+
+    // Viral Niche Radar state
+    type ViralNicheItem = { _id: string; term: string; termEs: string; sources: string[]; velocity: number; colorableScore: number; status: string; detectedAt: string; convertedNicheId?: string };
+    const [viralNiches, setViralNiches] = useState<ViralNicheItem[]>([]);
+    const [viralScanning, setViralScanning] = useState(false);
+    const [viralLoaded, setViralLoaded] = useState(false);
+
+    // Prompt DNA state
+    type DNAPart = { _id: string; partType: string; partValue: string; favoriteHits: number; bookHits: number; dnaScore: number };
+    const [dnaData, setDnaData] = useState<{ theme: DNAPart[]; specs: DNAPart[]; details: DNAPart[]; particulars: DNAPart[] } | null>(null);
+    const [dnaLoading, setDnaLoading] = useState(false);
+
     const fetchAutoCloneQueue = async () => {
         setAutoCloneLoading(true);
         try {
@@ -674,6 +696,98 @@ export function KdpFactoryApp() {
         } catch (e: any) {
             toast.error(e.message ?? "Error en AutoClone");
         } finally { setAutoCloneDiscovering(false); }
+    };
+
+    const openModelCompare = (niche: NicheFE) => {
+        setModelCompareNiche(niche);
+        setModelComparePrompt(niche.discoveryImagePrompt || niche.generatedPrompt || "");
+        setModelCompareResults(new Map());
+        setModelCompareRunning(false);
+    };
+
+    const runModelComparison = async () => {
+        const prompt = modelComparePrompt.trim();
+        if (!prompt || !modelCompareNiche || modelCompareActive.length === 0) return;
+        setModelCompareRunning(true);
+        const init = new Map<string, CompareStatus>(modelCompareActive.map(id => [id, { status: "loading" }]));
+        setModelCompareResults(new Map(init));
+        // Fire all in parallel — each updates its slot independently
+        for (const modelId of modelCompareActive) {
+            const m = AI_MODELS.find(m => m.id === modelId);
+            if (!m) continue;
+            generateImageBlobUrl(API_BASE_URL, { prompt, modelId: m.modelId, provider: m.provider, width: 768, height: 1024 })
+                .then(blobUrl => setModelCompareResults(prev => { const n = new Map(prev); n.set(modelId, { status: "done", blobUrl }); return n; }))
+                .catch(() => setModelCompareResults(prev => { const n = new Map(prev); n.set(modelId, { status: "error" }); return n; }))
+                .finally(() => {
+                    setModelCompareResults(prev => {
+                        const allDone = [...prev.values()].every(v => v.status !== "loading");
+                        if (allDone) setModelCompareRunning(false);
+                        return prev;
+                    });
+                });
+        }
+    };
+
+    const launchCatalogWithModel = async (modelId: string) => {
+        if (!modelCompareNiche) return;
+        const m = AI_MODELS.find(m => m.id === modelId);
+        if (!m) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/explode-catalogs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ count: 1, imagesPerCatalog: 5, model: { id: m.id, name: m.name, provider: m.provider, modelId: m.modelId } }),
+            });
+            if (!res.ok) throw new Error((await res.json()).error);
+            toast.success(`Catálogo lanzado con ${m.name}`);
+            void fetchCatalogs();
+        } catch (e: any) { toast.error(e.message ?? "Error"); }
+    };
+
+    const fetchViralNiches = async () => {
+        const res = await fetch(`${API_BASE_URL}/viral-niches`).catch(() => null);
+        if (!res?.ok) return;
+        const data = await res.json();
+        setViralNiches(data ?? []);
+        setViralLoaded(true);
+    };
+
+    const runViralScan = async () => {
+        setViralScanning(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/viral-niches/scan`, { method: "POST" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            toast.success(`${data.count} nichos virales detectados`);
+            await fetchViralNiches();
+        } catch (e: any) { toast.error(e.message ?? "Error en viral scan"); }
+        finally { setViralScanning(false); }
+    };
+
+    const sendViralToTelegram = async (id: string) => {
+        const res = await fetch(`${API_BASE_URL}/viral-niches/${id}/send-telegram`, { method: "POST" }).catch(() => null);
+        if (!res?.ok) { toast.error("Error al enviar a Telegram"); return; }
+        toast.success("Enviado a Telegram — apruébalo desde allí");
+        setViralNiches(prev => prev.map(v => v._id === id ? { ...v, status: "watched" } : v));
+    };
+
+    const dismissViralNiche = async (id: string) => {
+        await fetch(`${API_BASE_URL}/viral-niches/${id}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "dismissed" }),
+        }).catch(() => {});
+        setViralNiches(prev => prev.filter(v => v._id !== id));
+    };
+
+    const fetchDNA = async () => {
+        setDnaLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/prompt-dna/top?limit=8`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setDnaData(data);
+        } finally { setDnaLoading(false); }
     };
 
     const approveAutoClone = async (id: string) => {
@@ -817,7 +931,7 @@ export function KdpFactoryApp() {
     const [customCatalogName, setCustomCatalogName] = useState("");
     const [isCreatingCustomCatalog, setIsCreatingCustomCatalog] = useState(false);
     // Feature: niche sort + filter + AI score
-    const [nicheSortBy, setNicheSortBy] = useState<"score" | "market" | "date" | "name" | "images" | "catalogs">("score");
+    const [nicheSortBy, setNicheSortBy] = useState<"score" | "market" | "date" | "name" | "images" | "catalogs" | "phase">("score");
     const [nicheSortDir, setNicheSortDir] = useState<"asc" | "desc">("desc");
     const [nicheSearch, setNicheSearch] = useState("");
     const [nicheQuickFilter, setNicheQuickFilter] = useState<"all" | "gold" | "no-catalogs" | "book" | "published">("all");
@@ -2492,10 +2606,11 @@ export function KdpFactoryApp() {
         }
     };
 
-    const toggleFavorite = (url: string, meta?: Pick<FavoriteImage, "label" | "source">) => {
+    const toggleFavorite = (url: string, meta?: Pick<FavoriteImage, "label" | "source"> & { catalogId?: string }) => {
         setFavorites(prev => {
             const next = new Map(prev);
-            if (next.has(url)) {
+            const isFavoriting = !next.has(url);
+            if (!isFavoriting) {
                 next.delete(url);
             } else {
                 next.set(url, {
@@ -2503,7 +2618,16 @@ export function KdpFactoryApp() {
                     label: meta?.label ?? "",
                     source: meta?.source ?? "generated",
                     savedAt: new Date().toISOString(),
+                    catalogId: meta?.catalogId,
                 });
+            }
+            // DNA signal for catalog images
+            if (meta?.catalogId) {
+                fetch(`${API_BASE_URL}/prompt-dna/signal`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ catalogId: meta.catalogId, signal: isFavoriting ? "favorite" : "unfavorite" }),
+                }).catch(() => {});
             }
             // Persist stable (non-blob) objects to MongoDB via /settings
             const stable = [...next.values()].filter(f => !f.url.startsWith("blob:"));
@@ -4228,6 +4352,11 @@ export function KdpFactoryApp() {
         const interval = setInterval(() => setImageElapsedTick(t => t + 1), 1000);
         return () => clearInterval(interval);
     }, [iaCatalogs]);
+
+    useEffect(() => {
+        if (intelliMode === "viral" && !viralLoaded) void fetchViralNiches();
+        if (intelliMode === "dna" && !dnaData && !dnaLoading) void fetchDNA();
+    }, [intelliMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sincronizar estado de carga cuando cambia la URL
     useEffect(() => {
@@ -12310,7 +12439,7 @@ export function KdpFactoryApp() {
         const switchStudioTab = (t: "niches" | "intelligence" | "calendar") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
-            if (t === "intelligence") void fetchAutoCloneQueue();
+            if (t === "intelligence") { void fetchAutoCloneQueue(); void fetchViralNiches(); }
         };
 
 
@@ -12676,29 +12805,46 @@ export function KdpFactoryApp() {
                                     </button>
                                 ))}
                             </div>
-                            <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar ml-auto">
-                                {([
-                                    { id: "score" as const, label: "Score IA" },
-                                    { id: "market" as const, label: "Market" },
-                                    { id: "date" as const, label: "Fecha" },
-                                    { id: "catalogs" as const, label: "Catálogos" },
-                                    { id: "images" as const, label: "Imágenes" },
-                                    { id: "name" as const, label: "Nombre" },
-                                ]).map(opt => {
-                                    const active = nicheSortBy === opt.id;
-                                    const dir = active ? nicheSortDir : "desc";
-                                    return (
-                                        <button key={opt.id}
-                                            onClick={() => {
-                                                if (active) setNicheSortDir(d => d === "desc" ? "asc" : "desc");
-                                                else { setNicheSortBy(opt.id); setNicheSortDir("desc"); }
-                                            }}
-                                            className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap flex items-center gap-1 ${active ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                            {opt.label}
-                                            {active && <span className="text-[9px] opacity-60">{dir === "desc" ? "↓" : "↑"}</span>}
-                                        </button>
-                                    );
-                                })}
+                            {/* Sort control */}
+                            <div className="flex items-center gap-1.5 ml-auto">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-700 shrink-0 hidden sm:block">Ordenar</span>
+                                <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 overflow-x-auto no-scrollbar">
+                                    {([
+                                        { id: "score"    as const, label: "Score IA",   icon: <BarChart size={10} /> },
+                                        { id: "market"   as const, label: "Market",     icon: <TrendingUp size={10} /> },
+                                        { id: "date"     as const, label: "Reciente",   icon: <Clock size={10} /> },
+                                        { id: "phase"    as const, label: "Fase",       icon: <GitBranch size={10} /> },
+                                        { id: "catalogs" as const, label: "Catálogos",  icon: <Layers size={10} /> },
+                                        { id: "images"   as const, label: "Fotos",      icon: <ImageIcon size={10} /> },
+                                        { id: "name"     as const, label: "A–Z",        icon: <Type size={10} /> },
+                                    ]).map(opt => {
+                                        const active = nicheSortBy === opt.id;
+                                        return (
+                                            <button key={opt.id}
+                                                onClick={() => {
+                                                    if (active) setNicheSortDir(d => d === "desc" ? "asc" : "desc");
+                                                    else { setNicheSortBy(opt.id); setNicheSortDir("desc"); }
+                                                }}
+                                                title={opt.label}
+                                                className={`h-8 px-2.5 rounded-[10px] transition-all whitespace-nowrap flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${active ? "bg-white/12 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)]" : "text-neutral-600 hover:text-neutral-300"}`}>
+                                                <span className={active ? "text-violet-300" : ""}>{opt.icon}</span>
+                                                <span className="hidden sm:inline">{opt.label}</span>
+                                                {active && (
+                                                    <span className={`text-[9px] font-black ${nicheSortDir === "desc" ? "text-violet-400" : "text-sky-400"}`}>
+                                                        {nicheSortDir === "desc" ? "↓" : "↑"}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {/* Standalone direction toggle */}
+                                <button
+                                    onClick={() => setNicheSortDir(d => d === "desc" ? "asc" : "desc")}
+                                    title={nicheSortDir === "desc" ? "Mayor → menor · click para invertir" : "Menor → mayor · click para invertir"}
+                                    className="h-8 w-8 rounded-xl bg-white/[0.03] border border-white/8 text-neutral-500 hover:text-white hover:border-white/15 transition-all flex items-center justify-center shrink-0">
+                                    {nicheSortDir === "desc" ? <ArrowDownNarrowWide size={13} /> : <ArrowUpNarrowWide size={13} />}
+                                </button>
                             </div>
                         </div>
                         {/* Row 3: Audience + range filters */}
@@ -13047,10 +13193,12 @@ export function KdpFactoryApp() {
                             .slice()
                             .sort((a, b) => {
                                 const dir = nicheSortDir === "asc" ? 1 : -1;
+                                const phaseOrder: Record<string, number> = { niche: 0, catalog: 1, libro: 2, seo: 3, cover: 4, pdf: 4, published: 5 };
                                 if (nicheSortBy === "score") return dir * (nicheScore(a) - nicheScore(b));
                                 if (nicheSortBy === "market") return dir * ((a.marketScan?.score ?? -1) - (b.marketScan?.score ?? -1));
                                 if (nicheSortBy === "date") return dir * (new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
                                 if (nicheSortBy === "name") return dir * a.name.localeCompare(b.name, "es");
+                                if (nicheSortBy === "phase") return dir * ((phaseOrder[a.phase ?? "niche"] ?? 0) - (phaseOrder[b.phase ?? "niche"] ?? 0));
                                 if (nicheSortBy === "catalogs") {
                                     const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length;
                                     const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length;
@@ -14064,9 +14212,11 @@ export function KdpFactoryApp() {
                             {/* Mode switcher */}
                             <div className="flex gap-2 flex-wrap">
                                 {([
-                                    { id: "scraping" as const, label: "Radar / Scraping", icon: <Search size={11} />, activeCls: "bg-amber-500/15 border-amber-500/30 text-amber-300" },
-                                    { id: "clone"    as const, label: "Clone Engine",     icon: <Copy size={11} />,   activeCls: "bg-rose-500/15 border-rose-500/30 text-rose-300"  },
-                                    { id: "auto"     as const, label: "AutoClone IA",     icon: <Bot size={11} />,    activeCls: "bg-sky-500/15 border-sky-500/30 text-sky-300"     },
+                                    { id: "scraping" as const, label: "Radar / Scraping", icon: <Search size={11} />,     activeCls: "bg-amber-500/15 border-amber-500/30 text-amber-300"   },
+                                    { id: "clone"    as const, label: "Clone Engine",     icon: <Copy size={11} />,        activeCls: "bg-rose-500/15 border-rose-500/30 text-rose-300"      },
+                                    { id: "auto"     as const, label: "AutoClone IA",     icon: <Bot size={11} />,         activeCls: "bg-sky-500/15 border-sky-500/30 text-sky-300"         },
+                                    { id: "viral"    as const, label: "Viral Radar",      icon: <TrendingUp size={11} />,  activeCls: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" },
+                                    { id: "dna"      as const, label: "Prompt DNA",       icon: <Dna size={11} />,         activeCls: "bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300" },
                                 ]).map(m => (
                                     <button key={m.id} onClick={() => setIntelliMode(m.id)}
                                         className={`h-9 px-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all border ${intelliMode === m.id ? m.activeCls : "bg-white/[0.03] border-white/8 text-neutral-500 hover:border-white/15 hover:text-neutral-300"}`}>
@@ -14138,6 +14288,167 @@ export function KdpFactoryApp() {
                                             <Bot size={20} className="text-sky-400/30" />
                                         </div>
                                         <p className="text-sm text-neutral-700 text-center max-w-xs">Pulsa Descubrir para que la IA analice tu catálogo y encuentre oportunidades de mercado</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── VIRAL NICHE RADAR ── */}
+                    {intelliMode === "viral" && (
+                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-emerald-500/60 via-teal-400/20 to-transparent" />
+                            <div className="p-6 space-y-5">
+                                <div className="flex items-start justify-between gap-4">
+                                    <SectionHeader
+                                        icon={<TrendingUp size={20} />}
+                                        title={<><span className="text-white">Viral </span><span className="bg-gradient-to-r from-emerald-300 to-teal-400 bg-clip-text text-transparent">Niche Radar</span></>}
+                                        subtitle="Detecta libros de colorear que están ganando tracción ahora mismo — antes de que lleguen al catálogo de Amazon"
+                                        color="emerald"
+                                        size="lg"
+                                    />
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {viralLoaded && (
+                                            <button onClick={fetchViralNiches} className="h-9 px-3 rounded-2xl bg-white/[0.03] border border-white/8 text-neutral-500 hover:text-white transition-all flex items-center gap-1.5">
+                                                <RefreshCw size={11} />
+                                            </button>
+                                        )}
+                                        <button onClick={runViralScan} disabled={viralScanning}
+                                            className="h-9 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2">
+                                            {viralScanning ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                                            {viralScanning ? "Escaneando…" : "Escanear ahora"}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {!viralLoaded && !viralScanning && (
+                                    <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-dashed border-emerald-500/15 bg-emerald-500/[0.02] gap-3">
+                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-emerald-500/8 border border-emerald-500/15">
+                                            <TrendingUp size={20} className="text-emerald-400/30" />
+                                        </div>
+                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Escanea Amazon Movers, Pinterest y Google Trends en busca de libros de colorear que están rompiendo</p>
+                                    </div>
+                                )}
+
+                                {viralNiches.filter(v => v.status !== "dismissed").length > 0 && (
+                                    <div className="space-y-2">
+                                        {viralNiches.filter(v => v.status !== "dismissed").map(v => (
+                                            <div key={v._id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${v.status === "converted" ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-white/6 bg-white/[0.02] hover:border-white/10"}`}>
+                                                {/* Velocity bar */}
+                                                <div className="shrink-0 w-10 flex flex-col items-center gap-0.5">
+                                                    <span className="text-sm font-black text-emerald-400">{v.velocity}</span>
+                                                    <div className="w-full h-1 rounded-full bg-white/10">
+                                                        <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all" style={{ width: `${v.velocity}%` }} />
+                                                    </div>
+                                                </div>
+                                                {/* Content */}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-bold text-white truncate">{v.termEs || v.term}</p>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-sm text-neutral-600 font-mono">{v.term}</span>
+                                                        {v.sources.map(s => (
+                                                            <span key={s} className="text-sm px-1.5 py-0.5 rounded-md bg-white/[0.04] text-neutral-500 border border-white/6">{s}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                {/* Score */}
+                                                <div className="shrink-0 text-right">
+                                                    <p className="text-sm text-neutral-600">Coloreable</p>
+                                                    <p className="text-sm font-black text-teal-400">{v.colorableScore}%</p>
+                                                </div>
+                                                {/* Actions */}
+                                                <div className="shrink-0 flex items-center gap-1.5">
+                                                    {v.status === "converted" ? (
+                                                        <span className="text-sm text-emerald-500 font-black flex items-center gap-1"><Check size={10} /> Creado</span>
+                                                    ) : v.status === "watched" ? (
+                                                        <span className="text-sm text-amber-400 font-black flex items-center gap-1"><Send size={10} /> En Telegram</span>
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => sendViralToTelegram(v._id)}
+                                                                className="h-8 px-3 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600/40 transition-all flex items-center gap-1.5">
+                                                                <Send size={9} /> Telegram
+                                                            </button>
+                                                            <button onClick={() => dismissViralNiche(v._id)}
+                                                                className="h-8 w-8 rounded-xl bg-white/[0.03] border border-white/8 text-neutral-600 hover:text-rose-400 transition-all flex items-center justify-center">
+                                                                <X size={11} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── PROMPT DNA ── */}
+                    {intelliMode === "dna" && (
+                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-fuchsia-500/60 via-purple-400/20 to-transparent" />
+                            <div className="p-6 space-y-5">
+                                <div className="flex items-start justify-between gap-4">
+                                    <SectionHeader
+                                        icon={<Dna size={20} />}
+                                        title={<><span className="text-white">Prompt </span><span className="bg-gradient-to-r from-fuchsia-300 to-purple-400 bg-clip-text text-transparent">DNA</span></>}
+                                        subtitle="El sistema aprende qué partes del prompt generan imágenes que favoritas o que acaban en libros publicados"
+                                        color="violet"
+                                        size="lg"
+                                    />
+                                    <button onClick={fetchDNA} disabled={dnaLoading}
+                                        className="h-9 px-5 rounded-2xl bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 shrink-0">
+                                        {dnaLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                        {dnaLoading ? "Cargando…" : "Ver DNA"}
+                                    </button>
+                                </div>
+
+                                <div className="p-4 rounded-2xl bg-fuchsia-500/[0.04] border border-fuchsia-500/15 flex items-start gap-3">
+                                    <Heart size={14} className="text-fuchsia-400 shrink-0 mt-0.5" />
+                                    <p className="text-sm text-neutral-400">Cada vez que marcas una imagen como favorita desde el preview de catálogo, o la incluyes en un PDF, el sistema registra qué partes del prompt la generaron. Con el tiempo verás qué temas, specs y detalles rinden más.</p>
+                                </div>
+
+                                {!dnaData && !dnaLoading && (
+                                    <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-dashed border-fuchsia-500/15 bg-fuchsia-500/[0.02] gap-3">
+                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-fuchsia-500/8 border border-fuchsia-500/15">
+                                            <Dna size={20} className="text-fuchsia-400/30" />
+                                        </div>
+                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Favorita imágenes de catálogo para empezar a construir tu DNA. El sistema aprenderá qué prompts son los tuyos.</p>
+                                    </div>
+                                )}
+
+                                {dnaData && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {(["theme", "specs", "details", "particulars"] as const).map(partType => {
+                                            const parts = dnaData[partType] ?? [];
+                                            const cfg: Record<string, { label: string; border: string; bg: string; text: string }> = {
+                                                theme:       { label: "Tema",              border: "border-fuchsia-500/15", bg: "bg-fuchsia-500/[0.04]", text: "text-fuchsia-400" },
+                                                specs:       { label: "Especificaciones",  border: "border-violet-500/15",  bg: "bg-violet-500/[0.04]",  text: "text-violet-400"  },
+                                                details:     { label: "Detalles",          border: "border-purple-500/15",  bg: "bg-purple-500/[0.04]",  text: "text-purple-400"  },
+                                                particulars: { label: "Particularidades",  border: "border-indigo-500/15",  bg: "bg-indigo-500/[0.04]",  text: "text-indigo-400"  },
+                                            };
+                                            const { label, border, bg, text } = cfg[partType];
+                                            return (
+                                                <div key={partType} className={`rounded-2xl border ${border} ${bg} p-4 space-y-2`}>
+                                                    <p className={`text-[10px] font-black uppercase tracking-widest ${text}`}>{label}</p>
+                                                    {parts.length === 0 ? (
+                                                        <p className="text-sm text-neutral-700">Sin señales aún</p>
+                                                    ) : parts.map((p, i) => (
+                                                        <div key={p._id} className="flex items-start gap-2.5">
+                                                            <span className="text-sm font-black text-neutral-600 shrink-0 w-4 text-right">{i + 1}</span>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm text-neutral-300 truncate" title={p.partValue}>{p.partValue}</p>
+                                                                <div className="flex items-center gap-2 mt-0.5">
+                                                                    {p.favoriteHits > 0 && <span className="text-sm text-rose-400 flex items-center gap-0.5"><Heart size={8} className="fill-rose-400" /> {p.favoriteHits}</span>}
+                                                                    {p.bookHits > 0 && <span className="text-sm text-amber-400 flex items-center gap-0.5"><BookOpen size={8} /> {p.bookHits}</span>}
+                                                                    <span className={`text-sm font-black ${text}`}>DNA {p.dnaScore}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -14917,7 +15228,7 @@ export function KdpFactoryApp() {
                             <div className="flex items-center gap-2 flex-wrap justify-center px-4">
                                 {/* Favorite */}
                                 <button
-                                    onClick={() => toggleFavorite(previewImage, { label: favLabel, source: favSource })}
+                                    onClick={() => toggleFavorite(previewImage, { label: favLabel, source: favSource, catalogId: previewContext?.catalogCtx?.id })}
                                     className={`p-2.5 rounded-2xl backdrop-blur-md transition-all active:scale-90 border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-white border-white/15 bg-black/50"}`}
                                     title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
                                 >

@@ -677,10 +677,18 @@ async function processUpdate(update: any): Promise<void> {
                             autoPilotEnabled: true,
                             status: "active",
                             phase: "catalog",
+                            // Anchor: the exact prompt used for the Telegram preview image —
+                            // explode-catalogs reads this to keep all catalog situations visually consistent
+                            ...(tAction.imagePrompt ? { discoveryImagePrompt: tAction.imagePrompt } : {}),
                         });
                     } else {
                         await Niche.findByIdAndUpdate((niche as any)._id, {
-                            $set: { autoPilotEnabled: true, status: "active", phase: "catalog" },
+                            $set: {
+                                autoPilotEnabled: true,
+                                status: "active",
+                                phase: "catalog",
+                                ...(tAction.imagePrompt ? { discoveryImagePrompt: tAction.imagePrompt } : {}),
+                            },
                         });
                     }
 
