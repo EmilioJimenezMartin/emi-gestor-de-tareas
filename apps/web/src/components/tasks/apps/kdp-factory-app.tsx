@@ -439,6 +439,11 @@ function FullModal({ open, onClose, zIndex = 110, maxWidth = "max-w-4xl", childr
     );
 }
 
+function ModalPortal({ children }: { children: React.ReactNode }) {
+    if (typeof window === "undefined") return null;
+    return createPortal(children, document.body);
+}
+
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
@@ -1043,6 +1048,7 @@ export function KdpFactoryApp() {
     const [eventNicheId, setEventNicheId] = useState("");
     const [calAiSuggestions, setCalAiSuggestions] = useState<{ title: string; startDate: string; publishDate: string; event: string }[]>([]);
     const [calAiLoading, setCalAiLoading] = useState(false);
+    const [calAutoScheduleLoading, setCalAutoScheduleLoading] = useState(false);
     const savePubEvents = (updated: PublishEvent[]) => {
         setPubEvents(updated);
         localStorage.setItem("kdp-pub-calendar", JSON.stringify(updated));
@@ -1063,6 +1069,21 @@ export function KdpFactoryApp() {
         savePubEvents(next); setPubEventFormOpen(false);
     };
     const deleteEvent = (id: string) => { if (window.confirm("¿Eliminar este evento?")) savePubEvents(pubEvents.filter(e => e.id !== id)); };
+    const addAllAiSuggestions = () => {
+        const evColors = { planned: "#6366f1", inprogress: "#f59e0b", published: "#10b981", idea: "#8b5cf6" };
+        const newEvs: PublishEvent[] = [];
+        for (const s of calAiSuggestions) {
+            const key = s.title.slice(0, 25);
+            if (s.startDate && !pubEvents.some(e => e.date === s.startDate && e.title.includes(key))) {
+                newEvs.push({ id: `ai-s-${Date.now()}-${Math.random().toString(36).slice(2)}`, title: `[Inicio] ${s.title}`, date: s.startDate, status: "idea", color: evColors.idea });
+            }
+            if (s.publishDate && !pubEvents.some(e => e.date === s.publishDate && e.title.includes(key))) {
+                newEvs.push({ id: `ai-p-${Date.now()}-${Math.random().toString(36).slice(2)}`, title: s.title, date: s.publishDate, status: "planned", color: evColors.planned });
+            }
+        }
+        if (newEvs.length > 0) { savePubEvents([...pubEvents, ...newEvs]); toast.success(`${newEvs.length} eventos añadidos al calendario`); }
+        else toast.success("Ya están todos en el calendario");
+    };
     // ── Manual catalog upload state ──────────────────────────────────────────
     type UploadedImage = { dataUrl: string; file: File; uploading: boolean; uploaded: boolean; error?: string; cloudUrl?: string; publicId?: string; width?: number; height?: number };
     const [uploadImages, setUploadImages] = useState<UploadedImage[]>([]);
@@ -4993,6 +5014,7 @@ export function KdpFactoryApp() {
     };
 
     const deleteNicheListing = async (nicheId: string, listingId: string) => {
+        if (!window.confirm("¿Eliminar este contenido SEO? Esta acción no se puede deshacer.")) return;
         setDeletingListingId(listingId);
         try {
             const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/listings/${listingId}`, { method: "DELETE" });
@@ -7549,6 +7571,48 @@ export function KdpFactoryApp() {
         const urgent = alerts.filter(a => a.weeksLeft <= a.weeksNeeded + 2 && a.daysLeft > 0);
         const upcoming = alerts.filter(a => a.weeksLeft > a.weeksNeeded + 2).slice(0, 4);
 
+        // ── Seasonal coverage: does each season have at least one event planned? ──
+        const seasonalCoverage = SEASONAL_EVENTS.map(ev => {
+            const year = today.getMonth() + 1 > ev.month || (today.getMonth() + 1 === ev.month && today.getDate() > ev.day)
+                ? today.getFullYear() + 1 : today.getFullYear();
+            const target = new Date(year, ev.month - 1, ev.day);
+            const windowStart = new Date(target.getTime() - (ev.weeksNeeded + 2) * 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+            const targetStr = target.toISOString().slice(0, 10);
+            const covered = pubEvents.some(e => e.date >= windowStart && e.date <= targetStr);
+            return { ...ev, covered, target };
+        }).sort((a, b) => a.target.getTime() - b.target.getTime());
+
+        // Adds start + publish event for a season in one click
+        const scheduleSeasonNow = (a: typeof alerts[0]) => {
+            const evColors = { planned: "#6366f1", inprogress: "#f59e0b", published: "#10b981", idea: "#8b5cf6" };
+            const startDate = new Date(a.target.getTime() - a.weeksNeeded * 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+            const pubDate = new Date(a.target.getTime() - 14 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+            const newEvs: PublishEvent[] = [
+                { id: `ss-${a.name}-${Date.now()}`, title: `${a.emoji} Empezar: Libro ${a.name}`, date: startDate, status: "idea", color: evColors.idea },
+                { id: `sp-${a.name}-${Date.now()}`, title: `${a.emoji} Publicar: Libro ${a.name}`, date: pubDate, status: "planned", color: evColors.planned },
+            ];
+            savePubEvents([...pubEvents, ...newEvs]);
+            toast.success(`${a.emoji} ${a.name} planificado · Inicio ${startDate} · Publicar ${pubDate}`);
+        };
+
+        // Schedules all uncovered upcoming seasons at once
+        const autoScheduleYear = () => {
+            const evColors = { planned: "#6366f1", inprogress: "#f59e0b", published: "#10b981", idea: "#8b5cf6" };
+            const newEvs: PublishEvent[] = [];
+            setCalAutoScheduleLoading(true);
+            for (const s of seasonalCoverage) {
+                if (s.covered) continue;
+                const startDate = new Date(s.target.getTime() - s.weeksNeeded * 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+                const pubDate = new Date(s.target.getTime() - 14 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+                if (new Date(startDate) < today) continue;
+                newEvs.push({ id: `ys-${s.name}-${Date.now()}`, title: `${s.emoji} Empezar: Libro ${s.name}`, date: startDate, status: "idea", color: evColors.idea });
+                newEvs.push({ id: `yp-${s.name}-${Date.now()}`, title: `${s.emoji} Publicar: Libro ${s.name}`, date: pubDate, status: "planned", color: evColors.planned });
+            }
+            if (newEvs.length > 0) { savePubEvents([...pubEvents, ...newEvs]); toast.success(`🗓 ${newEvs.length} eventos añadidos — año planificado`); }
+            else toast.success("✅ Todas las temporadas ya tienen cobertura");
+            setCalAutoScheduleLoading(false);
+        };
+
         // Calendar grid
         const [calYear, calMonthNum] = calMonth.split("-").map(Number);
         const firstDay = new Date(calYear, calMonthNum - 1, 1);
@@ -7577,7 +7641,7 @@ export function KdpFactoryApp() {
                 const nicheNames = niches.slice(0, 5).map(n => n.name).join(", ");
                 const alertNames = urgent.slice(0, 3).map(a => `${a.name} — ${a.target.toISOString().slice(0, 10)} (en ${a.weeksLeft} semanas)`).join("; ");
                 const todayStr = new Date().toISOString().slice(0, 10);
-                const promptText = `Eres un consultor KDP experto. Hoy es ${todayStr}. Nichos del usuario: ${nicheNames || "libros para colorear para adultos"}. Próximas fechas estacionales: ${alertNames || "Halloween 2026-10-31"}. Genera 4 sugerencias de libros KDP para estas fechas. Para cada una calcula: (1) startDate = fecha en que debe EMPEZAR a crear el libro (diseño+contenido), mínimo 6-8 semanas antes de la festividad; (2) publishDate = fecha en que debe SUBIR el libro a Amazon KDP, 2-3 semanas antes de la festividad. Devuelve SOLO este JSON (sin texto extra, sin comillas dobles dentro de los valores): {"suggestions":[{"title":"título del libro","startDate":"YYYY-MM-DD","publishDate":"YYYY-MM-DD","event":"nombre de la festividad"}]}`;
+                const promptText = `Eres un consultor KDP experto. Hoy es ${todayStr}. Nichos del usuario: ${nicheNames || "libros para colorear para adultos"}. Próximas fechas estacionales: ${alertNames || "Halloween 2026-10-31"}. Genera 6 sugerencias de libros KDP para estas fechas. Para cada una calcula: (1) startDate = fecha en que debe EMPEZAR a crear el libro (diseño+contenido), mínimo 6-8 semanas antes de la festividad; (2) publishDate = fecha en que debe SUBIR el libro a Amazon KDP, 2-3 semanas antes de la festividad. Devuelve SOLO este JSON (sin texto extra, sin comillas dobles dentro de los valores): {"suggestions":[{"title":"título del libro","startDate":"YYYY-MM-DD","publishDate":"YYYY-MM-DD","event":"nombre de la festividad"}]}`;
                 const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ type: "free", niche: promptText }),
@@ -7648,9 +7712,9 @@ export function KdpFactoryApp() {
                                                 </div>
                                                 <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">{a.tip}</p>
                                             </div>
-                                            <button onClick={() => openEventForm(undefined, `${calYear}-${String(a.target.getMonth() + 1).padStart(2, "0")}-${String(a.target.getDate()).padStart(2, "0")}`)}
-                                                className="shrink-0 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] text-neutral-400 font-semibold transition-all border border-white/8">
-                                                + Agendar
+                                            <button onClick={() => scheduleSeasonNow(a)}
+                                                className="shrink-0 px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-[10px] text-indigo-300 font-semibold transition-all border border-indigo-500/30">
+                                                📅 Planificar
                                             </button>
                                         </div>
                                     );
@@ -7684,6 +7748,11 @@ export function KdpFactoryApp() {
                                     </button>
                                     <button onClick={nextMonth} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all border border-white/8">
                                         <ChevronRight size={14} className="text-neutral-400" />
+                                    </button>
+                                    <button onClick={autoScheduleYear} disabled={calAutoScheduleLoading}
+                                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 text-xs font-semibold transition-all border border-violet-500/30 disabled:opacity-50"
+                                        title="Planifica todas las temporadas sin cobertura de una vez">
+                                        {calAutoScheduleLoading ? <Loader2 size={12} className="animate-spin" /> : "🗓"} Año
                                     </button>
                                     <button onClick={() => openEventForm()} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-semibold transition-all border border-indigo-500/30">
                                         <Plus size={12} /> Evento
@@ -7798,16 +7867,42 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
 
+                        {/* Seasonal coverage */}
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.025] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-emerald-500/60 to-transparent" />
+                            <div className="p-4 space-y-2">
+                                <p className="text-xs font-bold text-neutral-300 uppercase tracking-widest mb-1">Cobertura estacional</p>
+                                {seasonalCoverage.slice(0, 6).map(s => (
+                                    <div key={s.name} className="flex items-center gap-2">
+                                        <span className="text-sm shrink-0">{s.emoji}</span>
+                                        <span className={`text-[11px] flex-1 truncate ${s.covered ? "text-neutral-400" : "text-neutral-300 font-semibold"}`}>{s.name}</span>
+                                        {s.covered
+                                            ? <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">✓</span>
+                                            : <span className="text-[9px] text-rose-400 font-bold bg-rose-500/10 px-1.5 py-0.5 rounded-full border border-rose-500/20">Sin plan</span>
+                                        }
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* AI Suggestions */}
                         <div className="rounded-2xl border border-white/8 bg-white/[0.025] overflow-hidden">
                             <div className="h-px w-full bg-gradient-to-r from-fuchsia-500/60 to-transparent" />
                             <div className="p-4 space-y-3">
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <p className="text-xs font-bold text-neutral-300 uppercase tracking-widest">Sugerencias IA</p>
-                                    <button onClick={() => void fetchCalAiSuggestions()} disabled={calAiLoading}
-                                        className="px-3 py-1 rounded-lg bg-fuchsia-600/20 hover:bg-fuchsia-600/30 text-fuchsia-300 text-[10px] font-bold transition-all border border-fuchsia-500/30 disabled:opacity-50">
-                                        {calAiLoading ? "..." : "✨ Generar"}
-                                    </button>
+                                    <div className="flex items-center gap-1.5">
+                                        {calAiSuggestions.length > 0 && (
+                                            <button onClick={addAllAiSuggestions}
+                                                className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-[10px] font-bold transition-all border border-emerald-500/30">
+                                                📥 Añadir todos
+                                            </button>
+                                        )}
+                                        <button onClick={() => void fetchCalAiSuggestions()} disabled={calAiLoading}
+                                            className="px-3 py-1 rounded-lg bg-fuchsia-600/20 hover:bg-fuchsia-600/30 text-fuchsia-300 text-[10px] font-bold transition-all border border-fuchsia-500/30 disabled:opacity-50">
+                                            {calAiLoading ? "..." : "✨ Generar"}
+                                        </button>
+                                    </div>
                                 </div>
                                 {calAiSuggestions.length === 0 && !calAiLoading && (
                                     <p className="text-[11px] text-neutral-600 italic">Pulsa "Generar" para obtener ideas de lanzamiento basadas en tus nichos y las fechas estacionales.</p>
@@ -7884,7 +7979,7 @@ export function KdpFactoryApp() {
                 </div>
 
                 {/* ── Event Form Modal ── */}
-                {pubEventFormOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                {pubEventFormOpen && <ModalPortal><div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-950 shadow-2xl overflow-hidden">
                         <div className="h-px w-full bg-gradient-to-r from-indigo-500 via-violet-400 to-transparent" />
                         <div className="p-6 space-y-5">
@@ -7939,7 +8034,7 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
                     </div>
-                </div>}
+                </div></ModalPortal>}
 
             {/* ══ TIME MACHINE — sección dentro del calendario ══ */}
             {(() => {
@@ -15982,14 +16077,14 @@ export function KdpFactoryApp() {
                             {/* ── Colorize mode ── */}
                             {coverMode === "colorize" && coverModalTab === "front" && (() => {
                                 const nicheImgUrls = selectedCoverNicheId
-                                    ? iaCatalogs.filter(c => c.nicheIds?.includes(selectedCoverNicheId) && c.status === "completed").flatMap((c: any) => c.images.map((img: any) => img.url))
+                                    ? iaCatalogs.filter(c => c.nicheIds?.includes(selectedCoverNicheId) && c.images?.length > 0).flatMap((c: any) => c.images.map((img: any) => img.url))
                                     : [];
                                 return (
                                     <div className="space-y-3">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/60">Imagen de origen (líneas a colorear)</p>
                                         {/* Pick from catalog */}
                                         {nicheImgUrls.length > 0 && (
-                                            <div className="grid grid-cols-5 gap-1.5 max-h-36 overflow-y-auto">
+                                            <div className="grid grid-cols-5 gap-1.5 max-h-72 overflow-y-auto pr-1">
                                                 {nicheImgUrls.map((url: string, i: number) => (
                                                     <button key={i} onClick={() => setColorizeSourceUrl(url)}
                                                         className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${colorizeSourceUrl === url ? "border-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.4)]" : "border-transparent hover:border-white/20"}`}>
@@ -18019,6 +18114,7 @@ export function KdpFactoryApp() {
                 ];
                 const STATUS_LABELS: Record<string, string> = { active: "Activo", dev: "En desarrollo", paused: "Pausado", study: "En estudio" };
                 return (
+                    <ModalPortal>
                     <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) { setShowIntegrationModal(false); setEditingIntegration(null); setIntegrationDraft({}); } }}>
                         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0a0a0b] shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
                             <div className="h-px w-full bg-gradient-to-r from-indigo-500/80 via-violet-400/40 to-transparent" />
@@ -18097,6 +18193,7 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
                     </div>
+                    </ModalPortal>
                 );
             })()}
 
@@ -18296,6 +18393,7 @@ export function KdpFactoryApp() {
 
             {/* Save Prompt Dialog */}
             {showSavePromptDialog && (
+                <ModalPortal>
                 <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" onClick={() => setShowSavePromptDialog(false)}>
                     <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="space-y-1">
@@ -18370,6 +18468,7 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
 
             {/* Voice Recorder Modal */}
@@ -18391,6 +18490,7 @@ export function KdpFactoryApp() {
 
             {/* Niche Form Modal */}
             {nicheFormOpen && (
+                <ModalPortal>
                 <div className="fixed inset-0 z-[160] bg-black/75 backdrop-blur-xl flex items-center justify-center p-4" role="dialog" aria-modal="true">
                     <div className="w-full max-w-lg rounded-3xl border border-white/12 bg-[#0a0c10]/95 backdrop-blur-2xl shadow-[0_40px_120px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)] flex flex-col max-h-[90vh]">
                         {/* Gradient accent top */}
@@ -18600,6 +18700,7 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
 
             {/* Lightbox */}
@@ -18716,6 +18817,7 @@ export function KdpFactoryApp() {
                 }, {});
                 const statusDot: Record<string, string> = { ok: "bg-emerald-400", limited: "bg-amber-400", paid: "bg-orange-400", blocked: "bg-red-400" };
                 return (
+                    <ModalPortal>
                     <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true">
                         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0d0d0d] shadow-2xl flex flex-col max-h-[90vh]">
                             {/* Header */}
@@ -18786,11 +18888,13 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
                     </div>
+                    </ModalPortal>
                 );
             })()}
 
             {/* Niche Delete Confirm */}
             {nicheDeleteId && (
+                <ModalPortal>
                 <div className="fixed inset-0 z-[160] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
                     <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
                         <div className="space-y-2 text-center">
@@ -18804,10 +18908,12 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
 
             {/* KDP Template Source Selector */}
             {kdpTemplateOpen && (
+                <ModalPortal>
                 <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true">
                     <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0d0d0d] shadow-2xl flex flex-col max-h-[90vh]">
                         {/* Header */}
@@ -19152,6 +19258,7 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
 
 
@@ -19541,6 +19648,7 @@ export function KdpFactoryApp() {
 
             {/* Custom Catalog from Cloudinary Modal */}
             {showCustomCatalogModal && (
+                <ModalPortal>
                 <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" onClick={() => setShowCustomCatalogModal(false)}>
                     <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="space-y-3 text-center">
@@ -19576,6 +19684,7 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
 
             {/* ── CONTENT GENERATOR MODAL ── */}
@@ -20699,6 +20808,7 @@ export function KdpFactoryApp() {
                 const cloudImgCount = cloudinaryImages.filter(img => img.nicheId === dlNiche._id).length;
                 const totalImgs = catImgCount + cloudImgCount;
                 return (
+                    <ModalPortal>
                     <div className="fixed inset-0 z-[9050] bg-black/75 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
                         <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
                             <div className="space-y-2 text-center">
@@ -20744,11 +20854,13 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
                     </div>
+                    </ModalPortal>
                 );
             })()}
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (
+                <ModalPortal>
                 <div className="fixed inset-0 z-[9100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
                     <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
                         <div className="space-y-2 text-center">
@@ -20762,6 +20874,7 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
         </div>
     );
