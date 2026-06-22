@@ -755,7 +755,10 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     const h = typeof height === "number" && height > 0 ? height : 1024;
                     const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&model=${encodeURIComponent(modelParam)}&enhance=false`;
                     console.log(pollinationsUrl, '--- pollinationsUrl ---');
-                    const res = await pollinationsFetch(pollinationsUrl, { signal: AbortSignal.timeout(60_000) });
+                    // flux-dev (and similar high-quality models) need more time than schnell
+                    const isSlowModel = modelParam.includes("dev") || modelParam.includes("pro") || modelParam.includes("realism");
+                    const pollinationsTimeout = isSlowModel ? 150_000 : 60_000;
+                    const res = await pollinationsFetch(pollinationsUrl, { signal: AbortSignal.timeout(pollinationsTimeout) });
                     const ct = res.headers.get("content-type") ?? "";
                     if (res.ok && ct.startsWith("image/")) {
                         console.log(`[ai/generate-image] Pollinations OK`);

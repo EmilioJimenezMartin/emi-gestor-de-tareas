@@ -503,6 +503,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             let telegramImageUrl = sampleUrl;
             deps.io?.emit("autopilot:log", { message: `🎨 Generando imagen con ${discoveryModel.name}…` });
             try {
+                const isSlowModel = (discoveryModel.modelId ?? "").includes("dev") || (discoveryModel.modelId ?? "").includes("pro");
                 const aiRes = await internalFetch(`${base}/ai/generate-image`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -512,7 +513,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                         provider: discoveryModel.provider,
                         width: 1024, height: 1024,
                     }),
-                    signal: AbortSignal.timeout(90_000),
+                    signal: AbortSignal.timeout(isSlowModel ? 180_000 : 90_000),
                 });
                 const ct = aiRes.headers.get("content-type") ?? "";
                 if (aiRes.ok && ct.startsWith("image/")) {
@@ -656,7 +657,12 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 { text: "🗑️ Descartar", callback_data: `descartar:${String(action._id)}` },
             ]];
             if (action.imageUrl) {
-                const imgRes = await fetch(action.imageUrl).catch(() => null);
+                // Use pollinationsFetch for Pollinations URLs (converts old image.pollinations.ai → new gen.pollinations.ai gateway)
+                const { pollinationsFetch } = await import("../lib/pollinations-circuit.js");
+                const fetchFn = action.imageUrl.includes("pollinations.ai")
+                    ? (url: string) => pollinationsFetch(url, { signal: AbortSignal.timeout(60_000) })
+                    : (url: string) => fetch(url, { signal: AbortSignal.timeout(30_000) });
+                const imgRes = await fetchFn(action.imageUrl).catch(() => null);
                 const buf = imgRes?.ok ? Buffer.from(await imgRes.arrayBuffer()) : null;
                 if (buf) {
                     await sendTelegramImageWithButtons(buf, `🔄 <b>Reintentar: ${action.nicheName}</b>\n¿Qué hacemos?`, buttons);

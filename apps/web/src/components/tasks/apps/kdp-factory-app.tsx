@@ -992,10 +992,13 @@ export function KdpFactoryApp() {
         setDnaLoading(true);
         try {
             const res = await fetch(`${API_BASE_URL}/prompt-dna/top?limit=8`);
-            if (!res.ok) return;
+            if (!res.ok) { toast.error("Error cargando DNA"); return; }
             const data = await res.json();
-            setDnaData(data);
-        } finally { setDnaLoading(false); }
+            const hasAny = Object.values(data).some((arr: any) => arr.length > 0);
+            setDnaData(hasAny ? data : null);
+            if (!hasAny) toast("Sin señales aún — favorita imágenes de catálogo para alimentar el DNA", { icon: "🧬" });
+        } catch { toast.error("Error de conexión al cargar DNA"); }
+        finally { setDnaLoading(false); }
     };
 
     const approveAutoClone = async (id: string) => {
@@ -14626,40 +14629,66 @@ export function KdpFactoryApp() {
                                     </div>
                                 )}
 
-                                {dnaData && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {(["theme", "specs", "details", "particulars"] as const).map(partType => {
-                                            const parts = dnaData[partType] ?? [];
-                                            const cfg: Record<string, { label: string; border: string; bg: string; text: string }> = {
-                                                theme:       { label: "Tema",              border: "border-fuchsia-500/15", bg: "bg-fuchsia-500/[0.04]", text: "text-fuchsia-400" },
-                                                specs:       { label: "Especificaciones",  border: "border-violet-500/15",  bg: "bg-violet-500/[0.04]",  text: "text-violet-400"  },
-                                                details:     { label: "Detalles",          border: "border-purple-500/15",  bg: "bg-purple-500/[0.04]",  text: "text-purple-400"  },
-                                                particulars: { label: "Particularidades",  border: "border-indigo-500/15",  bg: "bg-indigo-500/[0.04]",  text: "text-indigo-400"  },
-                                            };
-                                            const { label, border, bg, text } = cfg[partType];
-                                            return (
-                                                <div key={partType} className={`rounded-2xl border ${border} ${bg} p-4 space-y-2`}>
-                                                    <p className={`text-[10px] font-black uppercase tracking-widest ${text}`}>{label}</p>
-                                                    {parts.length === 0 ? (
-                                                        <p className="text-sm text-neutral-700">Sin señales aún</p>
-                                                    ) : parts.map((p, i) => (
-                                                        <div key={p._id} className="flex items-start gap-2.5">
-                                                            <span className="text-sm font-black text-neutral-600 shrink-0 w-4 text-right">{i + 1}</span>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm text-neutral-300 truncate" title={p.partValue}>{p.partValue}</p>
-                                                                <div className="flex items-center gap-2 mt-0.5">
-                                                                    {p.favoriteHits > 0 && <span className="text-sm text-rose-400 flex items-center gap-0.5"><Heart size={8} className="fill-rose-400" /> {p.favoriteHits}</span>}
-                                                                    {p.bookHits > 0 && <span className="text-sm text-amber-400 flex items-center gap-0.5"><BookOpen size={8} /> {p.bookHits}</span>}
-                                                                    <span className={`text-sm font-black ${text}`}>DNA {p.dnaScore}</span>
+                                {dnaData && (() => {
+                                    const topTheme = dnaData.theme?.[0]?.partValue ?? "";
+                                    return (
+                                        <>
+                                            {/* Global action */}
+                                            {topTheme && (
+                                                <button
+                                                    onClick={() => {
+                                                        setCloneInput(topTheme);
+                                                        setIntelliMode("clone");
+                                                    }}
+                                                    className="w-full h-10 rounded-2xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-xs font-black text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Dna size={13} /> Buscar nicho con el tema top: <span className="text-white truncate max-w-[180px]">{topTheme}</span>
+                                                </button>
+                                            )}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                {(["theme", "specs", "details", "particulars"] as const).map(partType => {
+                                                    const parts = dnaData[partType] ?? [];
+                                                    const cfg: Record<string, { label: string; border: string; bg: string; text: string }> = {
+                                                        theme:       { label: "Tema",             border: "border-fuchsia-500/15", bg: "bg-fuchsia-500/[0.04]", text: "text-fuchsia-400" },
+                                                        specs:       { label: "Specs",            border: "border-violet-500/15",  bg: "bg-violet-500/[0.04]",  text: "text-violet-400"  },
+                                                        details:     { label: "Detalles",         border: "border-purple-500/15",  bg: "bg-purple-500/[0.04]",  text: "text-purple-400"  },
+                                                        particulars: { label: "Particularidades", border: "border-indigo-500/15",  bg: "bg-indigo-500/[0.04]",  text: "text-indigo-400"  },
+                                                    };
+                                                    const { label, border, bg, text } = cfg[partType];
+                                                    return (
+                                                        <div key={partType} className={`rounded-2xl border ${border} ${bg} p-4 space-y-2`}>
+                                                            <p className={`text-[10px] font-black uppercase tracking-widest ${text}`}>{label}</p>
+                                                            {parts.length === 0 ? (
+                                                                <p className="text-sm text-neutral-700">Sin señales aún</p>
+                                                            ) : parts.map((p, i) => (
+                                                                <div key={p._id} className="flex items-start gap-2">
+                                                                    <span className="text-[11px] font-black text-neutral-600 shrink-0 w-4 text-right mt-0.5">{i + 1}</span>
+                                                                    <div className="flex-1 min-w-0 space-y-0.5">
+                                                                        <p className="text-xs text-neutral-300 leading-snug" title={p.partValue}>{p.partValue}</p>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {p.favoriteHits > 0 && <span className="text-[10px] text-rose-400 flex items-center gap-0.5"><Heart size={8} className="fill-rose-400" /> {p.favoriteHits}</span>}
+                                                                            {p.bookHits > 0 && <span className="text-[10px] text-amber-400 flex items-center gap-0.5"><BookOpen size={8} /> {p.bookHits}</span>}
+                                                                            <span className={`text-[10px] font-black ${text}`}>DNA {p.dnaScore}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {partType === "theme" && (
+                                                                        <button
+                                                                            onClick={() => { setCloneInput(p.partValue); setIntelliMode("clone"); }}
+                                                                            title="Buscar nicho con este tema"
+                                                                            className="shrink-0 p-1 rounded-lg text-neutral-600 hover:text-fuchsia-300 hover:bg-fuchsia-500/10 transition-all"
+                                                                        >
+                                                                            <Search size={11} />
+                                                                        </button>
+                                                                    )}
                                                                 </div>
-                                                            </div>
+                                                            ))}
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                                    );
+                                                })}
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
                     )}

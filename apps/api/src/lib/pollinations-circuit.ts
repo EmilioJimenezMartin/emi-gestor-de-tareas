@@ -95,7 +95,7 @@ const LEGACY_MODEL_MAP: Record<string, { model: string; promptSuffix?: string }>
 };
 
 /** Modelos válidos en gen.pollinations.ai — cualquier otro se mapea a flux. */
-const VALID_GATEWAY_MODELS = new Set(["flux", "zimage", "klein", "kontext", "gptimage", "gptimage-large", "nova-canvas"]);
+const VALID_GATEWAY_MODELS = new Set(["flux", "flux-dev", "flux-pro", "zimage", "klein", "kontext", "gptimage", "gptimage-large", "nova-canvas"]);
 
 /**
  * Reescribe URLs del API antiguo al gateway nuevo gen.pollinations.ai.

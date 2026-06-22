@@ -1384,23 +1384,47 @@ Estructura exacta:
             // 5 · Generar imagen + enviar a Telegram en background
             setImmediate(async () => {
                 try {
-                    const port = process.env.PORT || 3001;
                     let imageBytes: Buffer | null = null;
-                    try {
-                        const res = await fetch(`http://localhost:${port}/ai/generate-image`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", ...(process.env.SERVER_API_KEY ? { Authorization: `Bearer ${process.env.SERVER_API_KEY}` } : {}) },
-                            body: JSON.stringify({ prompt: fullPrompt, modelId: aiModel.modelId, provider: aiModel.provider, width: 768, height: 1024 }),
-                            signal: AbortSignal.timeout(90_000),
-                        });
-                        if (res.ok && (res.headers.get("content-type") ?? "").startsWith("image/")) {
-                            imageBytes = Buffer.from(await res.arrayBuffer());
+
+                    // Intento 1: pollinationsFetch directo (sin capa HTTP interna — sin límite de 150s de ai.ts)
+                    if (aiModel.provider === "Pollinations") {
+                        try {
+                            const { pollinationsFetch } = await import("../lib/pollinations-circuit.js");
+                            const isSlowModel = (aiModel.modelId ?? "").includes("dev") || (aiModel.modelId ?? "").includes("pro");
+                            const seed = Math.floor(Math.random() * 999999);
+                            const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=768&height=1024&seed=${seed}&model=${encodeURIComponent(aiModel.modelId ?? "flux")}&enhance=false&nologo=true`;
+                            console.log(`[clone-telegram bg] Pollinations directo model=${aiModel.modelId} slow=${isSlowModel}`);
+                            const res = await pollinationsFetch(pollinationsUrl, {
+                                signal: AbortSignal.timeout(isSlowModel ? 240_000 : 90_000),
+                            });
+                            const ct = res.headers.get("content-type") ?? "";
+                            if (res.ok && ct.startsWith("image/")) {
+                                imageBytes = Buffer.from(await res.arrayBuffer());
+                                console.log(`[clone-telegram bg] Pollinations OK (${imageBytes.length} bytes)`);
+                            } else {
+                                await res.body?.cancel().catch(() => {});
+                                console.warn(`[clone-telegram bg] Pollinations ${res.status}`);
+                            }
+                        } catch (e: any) {
+                            console.warn(`[clone-telegram bg] Pollinations error: ${e?.message}`);
                         }
-                    } catch { /* fallback a texto */ }
+                    }
+
+                    // Intento 2: cadena completa de proveedores (Pollinations schnell → Cloudflare → SiliconFlow → HF)
+                    if (!imageBytes) {
+                        console.log(`[clone-telegram bg] Fallback generateImage (provider=${aiModel.provider} model=${aiModel.modelId})`);
+                        const { generateImage } = await import("../lib/image-gen.js");
+                        imageBytes = await generateImage(fullPrompt).catch((e: any) => {
+                            console.warn(`[clone-telegram bg] generateImage falló: ${e?.message}`);
+                            return null;
+                        });
+                        if (imageBytes) console.log(`[clone-telegram bg] generateImage OK (${imageBytes.length} bytes)`);
+                        else console.warn("[clone-telegram bg] generateImage también falló — enviando texto");
+                    }
 
                     const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
                     const compLabel = clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta";
-                    const caption = [
+                    const captionFull = [
                         `🎯 <b>Clone Engine — Nicho candidato</b>`,
                         ``,
                         `📚 <b>${clone.nicheName}</b>`,
@@ -1413,6 +1437,8 @@ Estructura exacta:
                         `${compEmoji} Competencia: <b>${compLabel}</b>`,
                         ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 70)}</i>`] : []),
                     ].join("\n");
+                    // Telegram limita caption de sendPhoto a 1024 chars
+                    const caption = captionFull.length > 1020 ? captionFull.slice(0, 1017) + "..." : captionFull;
 
                     const rows = [[
                         { text: "✅ Crear nicho", callback_data: `continuar:${String(action._id)}` },
@@ -1422,10 +1448,14 @@ Estructura exacta:
                     let msgId: number | null = null;
                     if (imageBytes) {
                         msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
+                        if (msgId) console.log(`[clone-telegram bg] Telegram imagen OK msgId=${msgId}`);
+                        else console.warn("[clone-telegram bg] sendTelegramImageWithButtons devolvió null — fallback a texto");
                     }
                     if (!msgId) {
                         const { sendTelegramButtons } = await import("../lib/telegram.js");
-                        msgId = await sendTelegramButtons(caption, rows);
+                        msgId = await sendTelegramButtons(captionFull, rows);
+                        if (msgId) console.log(`[clone-telegram bg] Telegram texto OK msgId=${msgId}`);
+                        else console.warn("[clone-telegram bg] sendTelegramButtons también falló");
                     }
 
                     if (msgId) { action.messageId = msgId; await action.save(); }
