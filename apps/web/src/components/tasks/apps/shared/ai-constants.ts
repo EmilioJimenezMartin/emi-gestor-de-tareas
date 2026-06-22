@@ -45,7 +45,8 @@ export const AI_MODELS: AIModel[] = [
     { id: "coloringbook-redmond", name: "ColoringBook.Redmond (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond", status: "blocked" },
     { id: "coloringbook-redmond-v2", name: "ColoringBook.Redmond V2 (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond-V2", status: "blocked" },
     // Pollinations — gateway nuevo gen.pollinations.ai con API key (proxy backend)
-    { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", type: "Gratis · API Key propia", modelId: "flux", status: "ok" },
+    { id: "pollinations-flux", name: "FLUX Schnell (Pollinations)", provider: "Pollinations", type: "Gratis · Rápido", modelId: "flux", status: "ok" },
+    { id: "pollinations-flux-dev", name: "FLUX Dev (Pollinations)", provider: "Pollinations", type: "Gratis · Alta calidad", modelId: "flux-dev", status: "ok" },
     { id: "pollinations-flux-realism", name: "FLUX Realism (Pollinations)", provider: "Pollinations", type: "Gratis · Fotorrealista", modelId: "flux-realism", status: "ok" },
     { id: "pollinations-flux-anime", name: "FLUX Anime (Pollinations)", provider: "Pollinations", type: "Gratis · Anime/Ilustración", modelId: "flux-anime", status: "ok" },
     { id: "pollinations-turbo", name: "Turbo (Pollinations)", provider: "Pollinations", type: "Gratis · Ultra Rápido", modelId: "turbo", status: "ok" },

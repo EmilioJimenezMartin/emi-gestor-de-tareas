@@ -169,6 +169,8 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (request.body.pipelineHasListings !== undefined) update.pipelineHasListings = Boolean(request.body.pipelineHasListings);
             if (Array.isArray(request.body.coverCandidates)) update.coverCandidates = request.body.coverCandidates;
             if (request.body.backCoverUrl !== undefined) update.backCoverUrl = request.body.backCoverUrl;
+            if (request.body.sampleImageUrl !== undefined) update.sampleImageUrl = request.body.sampleImageUrl;
+            if (request.body.discoveryImagePrompt !== undefined) update.discoveryImagePrompt = request.body.discoveryImagePrompt;
             const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             // When autopilot is enabled on a niche that's already past the catalog phase, kick off autopilot-run
@@ -1085,6 +1087,99 @@ Return JSON array: [{"situation": "<2-4 word label in Spanish>", "prompt": "<sce
                 catalogs: created,
                 situations: situations.map(s => s.situation),
             });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // GET /niches/:id/situations?count=N — generate N situation prompts without creating catalogs
+    app.get("/niches/:id/situations", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const n = Math.min(Math.max(2, Number(request.query?.count ?? 4)), 10);
+            const niche = await Niche.findById(request.params.id).lean() as any;
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+            const { buildColoringBookPrompt } = await import("./autopilot.js");
+
+            const style = niche.styleCategory ?? "generic";
+            const visualCoreName = niche.name
+                .split(":")[0]
+                .replace(/\s+(coloring\s*book|activity\s*book|printable|for\s+adults?|for\s+kids?|for\s+seniors?|with\s+\d+|vol\s*\.|volume\s*\d)\b.*/i, "")
+                .trim() || niche.name.split(":")[0].trim();
+
+            const discoveryPrompt = (niche.discoveryImagePrompt || niche.generatedPrompt || "").trim();
+            const discoveryAnchorBlock = discoveryPrompt
+                ? `\n\nAPPROVED VISUAL STYLE (this is the EXACT prompt that generated the accepted sample image — every situation MUST match this visual style, same technique, same line art quality):\n"${discoveryPrompt}"\nIMPORTANT: Do NOT reinvent the visual style. Keep the same drawing technique, level of detail, and aesthetic. Only change the SUBJECT or SCENE.`
+                : "";
+
+            const audienceHint: Record<string, string> = {
+                children: "TARGET AUDIENCE: Children (ages 4-10). Simple, bold, friendly subjects — animals, toys, fairy-tale scenes.",
+                teens:    "TARGET AUDIENCE: Teens (ages 11-17). Trendy, expressive subjects — pop culture, fantasy, anime-adjacent, nature.",
+                adults:   "TARGET AUDIENCE: Adults. Intricate, detailed, meditative subjects — fine patterns, architecture, botanicals, elaborate fantasy.",
+            };
+            const audience = niche.targetAudience && niche.targetAudience !== "all"
+                ? audienceHint[niche.targetAudience] ?? ""
+                : "";
+
+            const ALL_VARIATION_AXES = [
+                `different sub-types of ${visualCoreName} (e.g. by species, style variant, historical period…)`,
+                `different settings/environments where ${visualCoreName} appear (nature, urban, mythological, cosmic…)`,
+                `different cultural/historical inspirations (Japanese, Celtic, Art Nouveau, Tribal, Geometric, Baroque…)`,
+                `different moods or energy (serene/meditative, playful/fun, dramatic/powerful, festive/celebratory…)`,
+                `different composition approaches (symmetrical mandala-like, scattered repeat, single focal scene, border pattern…)`,
+            ];
+            const shuffledAxes = ALL_VARIATION_AXES.sort(() => Math.random() - 0.5).slice(0, Math.min(n, 4));
+
+            const antiObviousOptions = [
+                `Avoid the first ${n} ideas that come to mind — dig deeper for less obvious but equally relevant sub-themes.`,
+                `Do NOT default to the most common or generic variations. Seek specific, visually distinctive sub-themes.`,
+                `Prioritise specificity over generality — "owls in a forest mandala" beats "nature mandala".`,
+            ];
+            const antiObvious = antiObviousOptions[Math.floor(Math.random() * antiObviousOptions.length)];
+
+            const user = `Niche subject: "${visualCoreName}"
+Full niche name: "${niche.name}"
+Description: ${niche.description || "(none)"}
+Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}
+
+Generate exactly ${n} DISTINCT situations for this niche. Rules:
+1. "${visualCoreName}" MUST be the central element of every situation — never drift to an unrelated subject.
+2. Each situation must be visually distinct (different sub-type, setting, cultural style, or mood).
+3. ${antiObvious}
+Spread across: ${shuffledAxes.map((a, i) => `${i + 1}. ${a}`).join("\n")}${discoveryPrompt ? "\nEach prompt MUST preserve the visual technique from the approved style anchor. Vary the SUBJECT, not the drawing style.\n" : ""}
+
+For each situation write an IMAGE GENERATION PROMPT in English (30-60 words): a concrete scene/subject description with "${visualCoreName}" at its core. No extra style/technical keywords — those are added automatically.
+
+GOOD example for "Mandalas": {"situation":"Fauna del bosque","prompt":"intricate mandala with forest animals — deer, owls and foxes arranged in circular symmetry, fine organic line patterns"}
+BAD example (subject drift): {"situation":"Jardín zen","prompt":"peaceful zen garden with raked gravel, stones and cherry blossom trees"} — mandalas are missing!
+
+Return JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
+
+            const raw = await generateTextWithLLM(
+                `You are a creative director for coloring book and printable art production. Reply ONLY with a valid JSON array, no markdown fences, no explanations.`,
+                user
+            );
+
+            const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+            const start = clean.indexOf("[");
+            const end = clean.lastIndexOf("]");
+            if (start === -1 || end === -1) return reply.status(502).send({ error: "AI did not return valid JSON" });
+
+            let parsed: Array<{ situation: string; prompt: string }>;
+            try { parsed = JSON.parse(clean.slice(start, end + 1)); }
+            catch { return reply.status(502).send({ error: "Malformed JSON from AI" }); }
+
+            const situations = parsed
+                .filter(s => s?.situation && s?.prompt)
+                .slice(0, n)
+                .map(s => ({
+                    label: s.situation,
+                    prompt: buildColoringBookPrompt(s.prompt.trim(), style),
+                }));
+
+            return reply.send({ situations });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

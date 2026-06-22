@@ -99,6 +99,7 @@ import {
     Undo2,
     Redo2,
     Dna,
+    FlaskConical,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -158,7 +159,7 @@ const PRODUCT_TYPES = [
     { id: "landing-page-template", name: "Landing Page Template", icon: <FileText size={18} />, color: "text-cyan-400", bg: "bg-cyan-500/10" }
 ];
 
-import { AI_MODELS } from "./shared/ai-constants";
+import { AI_MODELS, generateImageBlobUrl } from "./shared/ai-constants";
 
 const AI_DIMENSIONS = [
     { id: "sq", name: "Square", ratio: "1:1", width: 1024, height: 1024 },
@@ -654,13 +655,29 @@ export function KdpFactoryApp() {
     const [autoCloneCount, setAutoCloneCount] = useState(5);
 
     // Model Comparator state
-    const COMPARE_MODEL_IDS = ["sf-flux-schnell", "pollinations-flux", "cf-flux-schnell", "cf-sdxl-lightning", "cf-dreamshaper", "leo-phoenix"] as const;
+    const COMPARE_MODEL_IDS = [
+        "pollinations-flux-dev", "pollinations-flux", "pollinations-flux-anime", "pollinations-turbo",
+        "sf-flux-schnell", "cf-flux-schnell", "cf-sdxl-lightning", "cf-dreamshaper", "leo-phoenix",
+    ] as const;
     type CompareStatus = { status: "idle" | "loading" | "done" | "error"; blobUrl?: string };
     const [modelCompareNiche, setModelCompareNiche] = useState<NicheFE | null>(null);
     const [modelComparePrompt, setModelComparePrompt] = useState("");
     const [modelCompareResults, setModelCompareResults] = useState<Map<string, CompareStatus>>(new Map());
-    const [modelCompareActive, setModelCompareActive] = useState<string[]>(["sf-flux-schnell", "pollinations-flux", "cf-flux-schnell", "cf-sdxl-lightning", "cf-dreamshaper"]);
+    const [modelCompareActive, setModelCompareActive] = useState<string[]>(["pollinations-flux-dev", "sf-flux-schnell", "cf-sdxl-lightning"]);
     const [modelCompareRunning, setModelCompareRunning] = useState(false);
+    // Explosion mode
+    type CompareMode = "single" | "explosion";
+    const [compareMode, setCompareMode] = useState<CompareMode>("single");
+    const [explosionCount, setExplosionCount] = useState(3);
+    type ExplosionSituation = { label: string; prompt: string };
+    const [explosionSituations, setExplosionSituations] = useState<ExplosionSituation[]>([]);
+    // modelId → situation index → status
+    const [explosionResults, setExplosionResults] = useState<Map<string, Map<number, CompareStatus>>>(new Map());
+    const [explosionLoadingPrompts, setExplosionLoadingPrompts] = useState(false);
+    type ComparePreview = { blobUrl: string; modelId: string; prompt: string; situationLabel?: string; sitIdx?: number };
+    const [comparePreview, setComparePreview] = useState<ComparePreview | null>(null);
+    const [compareLinking, setCompareLinking] = useState(false);
+    const [linkedImageKeys, setLinkedImageKeys] = useState<Set<string>>(new Set());
 
     // Viral Niche Radar state
     type ViralNicheItem = { _id: string; term: string; termEs: string; sources: string[]; velocity: number; colorableScore: number; status: string; detectedAt: string; convertedNicheId?: string };
@@ -698,11 +715,36 @@ export function KdpFactoryApp() {
         } finally { setAutoCloneDiscovering(false); }
     };
 
+    const revokeCompareBlobs = (
+        singleResults: Map<string, CompareStatus>,
+        explResults: Map<string, Map<number, CompareStatus>>
+    ) => {
+        for (const r of singleResults.values()) if (r.blobUrl) URL.revokeObjectURL(r.blobUrl);
+        for (const inner of explResults.values()) for (const r of inner.values()) if (r.blobUrl) URL.revokeObjectURL(r.blobUrl);
+    };
+
+    const closeModelCompare = () => {
+        revokeCompareBlobs(modelCompareResults, explosionResults);
+        setModelCompareNiche(null);
+        setModelCompareResults(new Map());
+        setExplosionResults(new Map());
+        setExplosionSituations([]);
+        setComparePreview(null);
+        setLinkedImageKeys(new Set());
+    };
+
     const openModelCompare = (niche: NicheFE) => {
+        revokeCompareBlobs(modelCompareResults, explosionResults);
         setModelCompareNiche(niche);
         setModelComparePrompt(niche.discoveryImagePrompt || niche.generatedPrompt || "");
         setModelCompareResults(new Map());
         setModelCompareRunning(false);
+        setCompareMode("single");
+        setExplosionSituations([]);
+        setExplosionResults(new Map());
+        setExplosionLoadingPrompts(false);
+        setComparePreview(null);
+        setLinkedImageKeys(new Set());
     };
 
     const runModelComparison = async () => {
@@ -740,6 +782,172 @@ export function KdpFactoryApp() {
             });
             if (!res.ok) throw new Error((await res.json()).error);
             toast.success(`Catálogo lanzado con ${m.name}`);
+            void fetchCatalogs();
+        } catch (e: any) { toast.error(e.message ?? "Error"); }
+    };
+
+    const runExplosionComparison = async () => {
+        if (!modelCompareNiche || modelCompareActive.length === 0) return;
+        setExplosionLoadingPrompts(true);
+        setExplosionSituations([]);
+        setExplosionResults(new Map());
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/situations?count=${explosionCount}`);
+            if (!res.ok) throw new Error((await res.json()).error);
+            const { situations } = await res.json() as { situations: ExplosionSituation[] };
+            setExplosionSituations(situations);
+            setExplosionLoadingPrompts(false);
+
+            // Init all cells as loading
+            const initMap = new Map<string, Map<number, CompareStatus>>(
+                modelCompareActive.map(id => [id, new Map(situations.map((_: ExplosionSituation, i: number) => [i, { status: "loading" as const }]))])
+            );
+            setExplosionResults(new Map(initMap));
+
+            const total = modelCompareActive.length * situations.length;
+            let done = 0;
+            for (const modelId of modelCompareActive) {
+                const m = AI_MODELS.find(m => m.id === modelId);
+                if (!m) continue;
+                for (let i = 0; i < situations.length; i++) {
+                    const idx = i;
+                    generateImageBlobUrl(API_BASE_URL, { prompt: situations[idx].prompt, modelId: m.modelId, provider: m.provider, width: 768, height: 1024 })
+                        .then(blobUrl => setExplosionResults(prev => {
+                            const n = new Map(prev);
+                            const inner = new Map(n.get(modelId) ?? []);
+                            inner.set(idx, { status: "done", blobUrl });
+                            n.set(modelId, inner);
+                            return n;
+                        }))
+                        .catch(() => setExplosionResults(prev => {
+                            const n = new Map(prev);
+                            const inner = new Map(n.get(modelId) ?? []);
+                            inner.set(idx, { status: "error" });
+                            n.set(modelId, inner);
+                            return n;
+                        }))
+                        .finally(() => { done++; if (done >= total) setModelCompareRunning(false); });
+                }
+            }
+            setModelCompareRunning(true);
+        } catch (e: any) {
+            setExplosionLoadingPrompts(false);
+            toast.error(e.message ?? "Error generando situaciones");
+        }
+    };
+
+    const eliminateCompareImage = () => {
+        if (!comparePreview) return;
+        URL.revokeObjectURL(comparePreview.blobUrl);
+        if (compareMode === "single") {
+            setModelCompareResults(prev => { const n = new Map(prev); n.delete(comparePreview.modelId); return n; });
+        } else {
+            setExplosionResults(prev => {
+                const n = new Map(prev);
+                const inner = new Map(n.get(comparePreview.modelId) ?? []);
+                inner.delete(comparePreview.sitIdx!);
+                n.set(comparePreview.modelId, inner);
+                return n;
+            });
+        }
+        setComparePreview(null);
+    };
+
+    const linkImageToNiche = async () => {
+        if (!comparePreview || !modelCompareNiche || compareLinking) return;
+        setCompareLinking(true);
+        try {
+            // blob URL → base64 bytes (not dataUrl — upload-image wants raw base64)
+            const blob = await fetch(comparePreview.blobUrl).then(r => r.blob());
+            const imageBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result as string;
+                    // strip "data:image/xxx;base64," prefix
+                    resolve(dataUrl.split(",")[1] ?? dataUrl);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+
+            // Upload to Cloudinary tagged with nicheId so it appears in the niche gallery
+            const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageBase64, nicheId: modelCompareNiche._id }),
+            });
+            if (!uploadRes.ok) throw new Error((await uploadRes.json()).error ?? "Upload failed");
+            const { image } = await uploadRes.json();
+            const cloudUrl: string = image.url;
+
+            const modelName = AI_MODELS.find(m => m.id === comparePreview.modelId)?.name;
+
+            // Add to "Muestra" catalog (creates it if needed) — makes the image available for book creation
+            const catalogRes = await fetch(`${API_BASE_URL}/catalogs/add-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    nicheId: modelCompareNiche._id,
+                    image: { publicId: image.publicId, url: cloudUrl, width: image.width, height: image.height },
+                    modelName,
+                }),
+            });
+            if (!catalogRes.ok) throw new Error((await catalogRes.json()).error ?? "Catalog error");
+            const { catalog: muestraCatalog } = await catalogRes.json();
+
+            // Also save discoveryImagePrompt on the niche if not already set
+            const needsAnchor = !modelCompareNiche.discoveryImagePrompt;
+            if (needsAnchor) {
+                await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sampleImageUrl: cloudUrl, discoveryImagePrompt: comparePreview.prompt }),
+                });
+                setNiches(prev => prev.map(n => n._id === modelCompareNiche._id
+                    ? { ...n, sampleImageUrl: cloudUrl, discoveryImagePrompt: comparePreview.prompt }
+                    : n));
+                setModelCompareNiche(prev => prev ? { ...prev, sampleImageUrl: cloudUrl, discoveryImagePrompt: comparePreview.prompt } : prev);
+            }
+
+            const key = compareMode === "explosion" && comparePreview.sitIdx !== undefined
+                ? `${comparePreview.modelId}::${comparePreview.sitIdx}`
+                : comparePreview.modelId;
+            setLinkedImageKeys(prev => new Set([...prev, key]));
+
+            // Update iaCatalogs so gallery shows the new image immediately
+            setIaCatalogs(prev => {
+                const existing = prev.find(c => c._id === String(muestraCatalog._id));
+                if (existing) {
+                    return prev.map(c => c._id === String(muestraCatalog._id) ? { ...muestraCatalog, images: muestraCatalog.images ?? [] } : c);
+                }
+                return [{ ...muestraCatalog, images: muestraCatalog.images ?? [] }, ...prev];
+            });
+            // Also update niche catalogIds locally
+            setNiches(prev => prev.map(n => n._id === modelCompareNiche._id && !n.catalogIds?.includes(String(muestraCatalog._id))
+                ? { ...n, catalogIds: [...(n.catalogIds ?? []), String(muestraCatalog._id)], pipelineHasCatalogs: true }
+                : n));
+
+            toast.success("Imagen añadida al catálogo «Muestra»");
+            setComparePreview(null);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al vincular");
+        } finally {
+            setCompareLinking(false);
+        }
+    };
+
+    const launchCatalogWithModelAndSituation = async (modelId: string, situationLabel: string) => {
+        if (!modelCompareNiche) return;
+        const m = AI_MODELS.find(m => m.id === modelId);
+        if (!m) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/explode-catalogs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ count: 1, imagesPerCatalog: 5, model: { id: m.id, name: m.name, provider: m.provider, modelId: m.modelId } }),
+            });
+            if (!res.ok) throw new Error((await res.json()).error);
+            toast.success(`Catálogo "${situationLabel}" lanzado con ${m.name}`);
             void fetchCatalogs();
         } catch (e: any) { toast.error(e.message ?? "Error"); }
     };
@@ -13399,6 +13607,7 @@ export function KdpFactoryApp() {
                                                             <button onClick={() => openNicheForm(niche)} className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={14} /></button>
                                                         </div>
                                                         <button onClick={() => setExplodeNicheId(niche._id)} className="p-2 rounded-lg text-violet-500/70 hover:text-violet-300 hover:bg-violet-500/10 transition-all" title="Explosión IA: 5 catálogos con situaciones distintas"><Layers size={14} /></button>
+                                                        <button onClick={() => openModelCompare(niche)} className="p-2 rounded-lg text-amber-500/70 hover:text-amber-300 hover:bg-amber-500/10 transition-all" title="Comparar modelos de imagen"><FlaskConical size={14} /></button>
                                                         <button onClick={() => setNicheDeleteId(niche._id)} className="p-2 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all" title="Eliminar nicho"><Trash2 size={14} /></button>
                                                     </div>
                                                 </div>
@@ -19077,6 +19286,229 @@ export function KdpFactoryApp() {
                         </FullModal>
                 );
             })()}
+
+            {/* Model Comparator */}
+            <FullModal open={!!modelCompareNiche} onClose={closeModelCompare} zIndex={120} maxWidth="max-w-5xl">
+                {modelCompareNiche && (
+                    <div className="relative flex flex-col h-full">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-white/8 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                                    <FlaskConical size={20} className="text-amber-400" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-black text-white">Comparador de modelos</p>
+                                    <p className="text-xs text-neutral-500 truncate max-w-[280px]">{modelCompareNiche.name}</p>
+                                </div>
+                            </div>
+                            <button onClick={closeModelCompare} className="p-2 rounded-xl text-neutral-500 hover:text-white hover:bg-white/8 transition-all"><X size={18} /></button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                            {/* Mode toggle */}
+                            <div className="flex rounded-2xl bg-white/[0.04] border border-white/8 p-1 gap-1">
+                                <button
+                                    onClick={() => { setCompareMode("single"); setExplosionSituations([]); setExplosionResults(new Map()); }}
+                                    className={`flex-1 h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${compareMode === "single" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "text-neutral-500 hover:text-neutral-300"}`}
+                                >
+                                    <FlaskConical size={13} /> Un prompt
+                                </button>
+                                <button
+                                    onClick={() => { setCompareMode("explosion"); setModelCompareResults(new Map()); }}
+                                    className={`flex-1 h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${compareMode === "explosion" ? "bg-violet-500/20 text-violet-300 border border-violet-500/30" : "text-neutral-500 hover:text-neutral-300"}`}
+                                >
+                                    <Layers size={13} /> Explosión IA
+                                </button>
+                            </div>
+
+                            {/* Model toggles — shared between modes */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-black text-neutral-400 uppercase tracking-wider">Modelos a comparar</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {COMPARE_MODEL_IDS.map(id => {
+                                        const m = AI_MODELS.find(m => m.id === id);
+                                        const active = modelCompareActive.includes(id);
+                                        return (
+                                            <button
+                                                key={id}
+                                                onClick={() => setModelCompareActive(prev => active ? prev.filter(x => x !== id) : [...prev, id])}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${active ? "bg-amber-500/15 border-amber-500/40 text-amber-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:border-white/20"}`}
+                                            >
+                                                {m?.name ?? id}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* ── SINGLE MODE ── */}
+                            {compareMode === "single" && (<>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black text-neutral-400 uppercase tracking-wider">Prompt</label>
+                                    <textarea
+                                        value={modelComparePrompt}
+                                        onChange={e => setModelComparePrompt(e.target.value)}
+                                        rows={3}
+                                        className="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-neutral-600 resize-none focus:outline-none focus:border-amber-500/40"
+                                        placeholder="Escribe o edita el prompt…"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => void runModelComparison()}
+                                    disabled={modelCompareRunning || !modelComparePrompt.trim() || modelCompareActive.length === 0}
+                                    className="w-full h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-sm font-black text-amber-300 hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                                >
+                                    {modelCompareRunning ? <><Loader2 size={15} className="animate-spin" /> Generando…</> : <><FlaskConical size={15} /> Lanzar comparación</>}
+                                </button>
+                                {modelCompareResults.size > 0 && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                        {[...modelCompareResults.entries()].map(([modelId, res]) => {
+                                            const m = AI_MODELS.find(m => m.id === modelId);
+                                            return (
+                                                <div key={modelId} className="rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden flex flex-col group/cell">
+                                                    <div className="aspect-[3/4] bg-black/40 flex items-center justify-center relative cursor-pointer"
+                                                        onClick={() => res.status === "done" && res.blobUrl && setComparePreview({ blobUrl: res.blobUrl, modelId, prompt: modelComparePrompt })}>
+                                                        {res.status === "loading" && <Loader2 size={24} className="text-amber-400/60 animate-spin" />}
+                                                        {res.status === "error" && <div className="flex flex-col items-center gap-1"><X size={20} className="text-rose-400" /><p className="text-[10px] text-neutral-600">Error</p></div>}
+                                                        {res.status === "done" && res.blobUrl && <>
+                                                            <img src={res.blobUrl} alt={m?.name ?? modelId} className="w-full h-full object-cover" />
+                                                            <div className="absolute inset-0 bg-black/0 group-hover/cell:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/cell:opacity-100">
+                                                                <Maximize2 size={22} className="text-white drop-shadow" />
+                                                            </div>
+                                                        </>}
+                                                    </div>
+                                                    <div className="p-2 space-y-1.5">
+                                                        <p className="text-[11px] font-bold text-neutral-300 text-center truncate">{m?.name ?? modelId}</p>
+                                                        {res.status === "done" && (
+                                                            <button onClick={() => void launchCatalogWithModel(modelId)} className="w-full h-7 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[11px] font-bold text-violet-300 hover:bg-violet-500/25 transition-all flex items-center justify-center gap-1">
+                                                                <Layers size={11} /> Crear catálogo
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </>)}
+
+                            {/* ── EXPLOSION MODE ── */}
+                            {compareMode === "explosion" && (<>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 space-y-1">
+                                        <label className="text-xs font-black text-neutral-400 uppercase tracking-wider">Situaciones a generar</label>
+                                        <p className="text-xs text-neutral-600">La IA crea N prompts distintos del nicho. Cada modelo los renderiza todos.</p>
+                                    </div>
+                                    <div className="flex items-center gap-1 bg-white/[0.04] border border-white/8 rounded-xl px-1">
+                                        {[2, 3, 4, 5].map(n => (
+                                            <button key={n} onClick={() => setExplosionCount(n)}
+                                                className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${explosionCount === n ? "bg-violet-500/20 text-violet-300" : "text-neutral-600 hover:text-white"}`}
+                                            >{n}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => void runExplosionComparison()}
+                                    disabled={explosionLoadingPrompts || modelCompareRunning || modelCompareActive.length === 0}
+                                    className="w-full h-11 rounded-2xl bg-violet-500/15 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                                >
+                                    {explosionLoadingPrompts ? <><Loader2 size={15} className="animate-spin" /> Generando prompts…</> : modelCompareRunning ? <><Loader2 size={15} className="animate-spin" /> Generando imágenes…</> : <><Layers size={15} /> Lanzar explosión</>}
+                                </button>
+
+                                {/* Explosion matrix: rows = situations, columns = models */}
+                                {explosionSituations.length > 0 && (
+                                    <div className="space-y-6">
+                                        {explosionSituations.map((sit, sitIdx) => (
+                                            <div key={sitIdx} className="space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 rounded-lg bg-violet-500/15 flex items-center justify-center text-[10px] font-black text-violet-400">{sitIdx + 1}</div>
+                                                    <p className="text-xs font-bold text-violet-300">{sit.label}</p>
+                                                    <div className="flex-1 h-px bg-white/5" />
+                                                </div>
+                                                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(modelCompareActive.length, 5)}, minmax(0, 1fr))` }}>
+                                                    {modelCompareActive.map(modelId => {
+                                                        const m = AI_MODELS.find(m => m.id === modelId);
+                                                        const res = explosionResults.get(modelId)?.get(sitIdx);
+                                                        return (
+                                                            <div key={modelId} className="rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden flex flex-col group/cell">
+                                                                <div className="aspect-[3/4] bg-black/40 flex items-center justify-center relative cursor-pointer"
+                                                                    onClick={() => res?.status === "done" && res.blobUrl && setComparePreview({ blobUrl: res.blobUrl, modelId, prompt: sit.prompt, situationLabel: sit.label, sitIdx })}>
+                                                                    {(!res || res.status === "loading") && <Loader2 size={20} className="text-violet-400/50 animate-spin" />}
+                                                                    {res?.status === "error" && <div className="flex flex-col items-center gap-1"><X size={16} className="text-rose-400" /><p className="text-[9px] text-neutral-600">Error</p></div>}
+                                                                    {res?.status === "done" && res.blobUrl && <>
+                                                                        <img src={res.blobUrl} alt={`${m?.name} · ${sit.label}`} className="w-full h-full object-cover" />
+                                                                        <div className="absolute inset-0 bg-black/0 group-hover/cell:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/cell:opacity-100">
+                                                                            <Maximize2 size={18} className="text-white drop-shadow" />
+                                                                        </div>
+                                                                    </>}
+                                                                </div>
+                                                                <div className="p-1.5 space-y-1">
+                                                                    <p className="text-[10px] font-bold text-neutral-400 text-center truncate">{m?.name ?? modelId}</p>
+                                                                    {res?.status === "done" && (
+                                                                        <button onClick={() => void launchCatalogWithModelAndSituation(modelId, sit.label)} className="w-full h-6 rounded-lg bg-violet-500/15 border border-violet-500/30 text-[10px] font-bold text-violet-300 hover:bg-violet-500/25 transition-all flex items-center justify-center gap-0.5">
+                                                                            <Layers size={10} /> Catálogo
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>)}
+                        </div>
+
+                        {/* Lightbox overlay */}
+                        {comparePreview && (() => {
+                            const linkedKey = compareMode === "explosion" && comparePreview.sitIdx !== undefined
+                                ? `${comparePreview.modelId}::${comparePreview.sitIdx}`
+                                : comparePreview.modelId;
+                            const isLinked = linkedImageKeys.has(linkedKey);
+                            return (
+                                <div className="absolute inset-0 z-10 bg-black/85 backdrop-blur-sm flex flex-col" onClick={() => setComparePreview(null)}>
+                                    <div className="flex items-center justify-between px-5 py-4 shrink-0" onClick={e => e.stopPropagation()}>
+                                        <div>
+                                            <p className="text-sm font-black text-white">{AI_MODELS.find(m => m.id === comparePreview.modelId)?.name ?? comparePreview.modelId}</p>
+                                            {comparePreview.situationLabel && <p className="text-xs text-violet-300 mt-0.5">{comparePreview.situationLabel}</p>}
+                                        </div>
+                                        <button onClick={() => setComparePreview(null)} className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-white/10 transition-all"><X size={18} /></button>
+                                    </div>
+
+                                    <div className="flex-1 flex items-center justify-center px-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+                                        <img src={comparePreview.blobUrl} alt="preview" className="max-h-full max-w-full rounded-2xl shadow-2xl object-contain" />
+                                    </div>
+
+                                    <div className="flex items-center gap-3 px-5 py-4 shrink-0" onClick={e => e.stopPropagation()}>
+                                        {isLinked ? (
+                                            <div className="flex-1 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-sm font-black text-emerald-500 flex items-center justify-center gap-2">
+                                                <Dna size={15} /> Vinculada al nicho
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => void linkImageToNiche()}
+                                                disabled={compareLinking}
+                                                className="flex-1 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-sm font-black text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                                            >
+                                                {compareLinking ? <><Loader2 size={15} className="animate-spin" /> Vinculando…</> : <><Dna size={15} /> Vincular al nicho</>}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={eliminateCompareImage}
+                                            className="h-11 px-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-sm font-black text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <Trash2 size={15} /> Eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
+            </FullModal>
 
             {/* Custom Catalog from Cloudinary Modal */}
             {showCustomCatalogModal && (

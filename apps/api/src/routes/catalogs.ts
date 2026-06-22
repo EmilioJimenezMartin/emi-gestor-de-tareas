@@ -227,6 +227,63 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
         }
     });
 
+    // POST /catalogs/add-image — add a single image to an existing catalog or create "Muestra" catalog for the niche
+    app.post("/catalogs/add-image", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { nicheId, image, modelName } = request.body as {
+                nicheId: string;
+                image: { publicId: string; url: string; width?: number; height?: number };
+                modelName?: string;
+            };
+            if (!nicheId || !image?.url) return reply.status(400).send({ error: "nicheId e image.url son requeridos" });
+
+            const niche = await Niche.findById(nicheId).lean() as any;
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            const catalogName = `Muestra — ${niche.name}`;
+
+            // Find existing "Muestra" catalog for this niche or create it
+            let catalog = await Catalog.findOne({ name: catalogName, nicheIds: nicheId }).lean() as any;
+            if (!catalog) {
+                catalog = await Catalog.create({
+                    name: catalogName,
+                    prompt: niche.discoveryImagePrompt || niche.generatedPrompt || niche.name,
+                    aiModel: { id: "comparador", name: modelName ?? "Comparador", provider: "Manual", modelId: "" },
+                    width: image.width ?? 768,
+                    height: image.height ?? 1024,
+                    totalImages: 0,
+                    images: [],
+                    status: "completed",
+                    queueOrder: Date.now(),
+                    nicheIds: [nicheId],
+                });
+                await Niche.findByIdAndUpdate(nicheId, {
+                    $addToSet: { catalogIds: String(catalog._id) },
+                    $set: { pipelineHasCatalogs: true },
+                });
+            }
+
+            const imgEntry = {
+                publicId: image.publicId,
+                url: image.url,
+                width: image.width ?? 768,
+                height: image.height ?? 1024,
+                bytes: 0,
+                createdAt: new Date().toISOString(),
+            };
+            const updated = await Catalog.findByIdAndUpdate(
+                catalog._id,
+                { $push: { images: imgEntry }, $inc: { totalImages: 1 } },
+                { new: true }
+            ).lean();
+
+            return reply.status(201).send({ catalog: updated });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /catalogs/from-cloudinary — create a completed catalog from existing Cloudinary images (no generation)
     app.post("/catalogs/from-cloudinary", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
