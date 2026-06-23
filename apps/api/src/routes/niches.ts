@@ -220,6 +220,33 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /niches/:id/confirm-prompt — record an approved prompt into the niche's prompt memory (max 10)
+    app.post("/niches/:id/confirm-prompt", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const { prompt, source = "comparator" } = request.body ?? {};
+            if (!prompt?.trim()) return reply.status(400).send({ error: "prompt requerido" });
+
+            const niche = await Niche.findById(id).lean() as any;
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            const existing: any[] = niche.confirmedPrompts ?? [];
+            // Skip if same prompt already stored
+            if (existing.some((p: any) => p.prompt === prompt.trim())) {
+                return reply.send({ ok: true, skipped: true });
+            }
+            // Keep max 10, remove oldest if needed
+            const updated = [...existing, { prompt: prompt.trim(), source, addedAt: new Date() }]
+                .slice(-10);
+
+            await Niche.findByIdAndUpdate(id, { $set: { confirmedPrompts: updated } });
+            return reply.send({ ok: true, total: updated.length });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     app.delete("/niches/:id", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
@@ -947,10 +974,11 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
             const niche = await Niche.findById(request.params.id).lean() as any;
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
-            // 1. Load existing catalog prompts so the AI can avoid repeating them
+            // 1. Load existing catalog prompts — completed ones anchor on-topic style, all avoid repetition
             const existingCatalogs = await Catalog.find({ nicheIds: String(niche._id) })
-                .select("name prompt")
+                .select("name prompt status")
                 .lean() as any[];
+            const completedCatalogs = existingCatalogs.filter((c: any) => c.status === "completed" || c.status === "published");
             const usedPrompts = existingCatalogs
                 .map((c: any) => c.prompt?.trim())
                 .filter(Boolean)
@@ -974,6 +1002,16 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
                 .replace(/\s+(coloring\s*book|activity\s*book|printable|for\s+adults?|for\s+kids?|for\s+seniors?|with\s+\d+|vol\s*\.|volume\s*\d)\b.*/i, "")
                 .trim() || niche.name.split(":")[0].trim();
 
+            // confirmedPrompts (user hand-picked) take priority over completed catalog prompts
+            const confirmedPrompts: string[] = (niche.confirmedPrompts ?? []).map((p: any) => p.prompt).filter(Boolean);
+            const referencePrompts = confirmedPrompts.length > 0
+                ? confirmedPrompts
+                : completedCatalogs.map((c: any) => c.prompt).filter(Boolean);
+
+            const onTopicAnchorBlock = referencePrompts.length > 0
+                ? `\n\n${confirmedPrompts.length > 0 ? "USER-APPROVED PROMPTS (hand-picked by the owner as working well for this niche)" : "ON-TOPIC REFERENCE (prompts from completed catalogs)"}:\n${referencePrompts.slice(0, 5).map((p, i) => `  ${i + 1}. "${p}"`).join("\n")}\nStudy these carefully — they define exactly what subject matter belongs in this niche. Your new situations must match this specificity and keep "${visualCoreName}" as the undeniable core.`
+                : "";
+
             const alreadyUsedBlock = usedPrompts.length > 0
                 ? `\n\nALREADY USED — do NOT repeat or closely resemble any of these (${usedPrompts.length} existing catalogs):\n${usedPrompts.map((p, i) => `${i + 1}. ${p}`).join("\n")}${usedSituations.length ? `\nUsed situation labels: ${usedSituations.join(", ")}` : ""}`
                 : "";
@@ -993,45 +1031,34 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
                 ? `\n\nAPPROVED VISUAL STYLE (this is the EXACT prompt that generated the accepted sample image — every situation you create MUST produce images that look like this same visual style, same technique, same line art quality):\n"${discoveryPrompt}"\nIMPORTANT: Do NOT reinvent the visual style. Keep the same drawing technique, level of detail, and aesthetic. Only change the SUBJECT or SCENE composition.`
                 : "";
 
-            // Randomised variation axes — shuffled each call so the AI explores different dimensions
-            const ALL_VARIATION_AXES = [
-                `different sub-types of ${visualCoreName} (e.g. by animal species, plant family, building style…)`,
-                `different settings/environments where ${visualCoreName} appear (nature, urban, mythological, cosmic…)`,
-                `different cultural/historical inspirations (Japanese, Celtic, Art Nouveau, Tribal, Geometric, Baroque…)`,
-                `different moods or energy (serene/meditative, playful/fun, dramatic/powerful, festive/celebratory…)`,
-                `different composition approaches (symmetrical mandala-like, scattered repeat, single focal scene, border pattern…)`,
-                `different levels of intricacy (simple bold outlines, moderate detail, highly intricate fine-line…)`,
-                `different symbolic themes within ${visualCoreName} (seasonal, elemental, spiritual, folkloric, pop-culture…)`,
-            ];
-            const shuffledAxes = ALL_VARIATION_AXES.sort(() => Math.random() - 0.5).slice(0, Math.min(n, 4));
-            const axesBlock = `\nSPREAD your ${n} situations across these variation axes (pick the most relevant ones):\n${shuffledAxes.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}`;
+            const user = `You are an expert in "${visualCoreName}" as a visual art niche for coloring books. You know every sub-genre, iconic character type, signature scene, and distinctive motif that defines this niche.
 
-            // Rotating anti-obvious nudge — prevents the LLM from always picking the same top-of-mind choices
-            const antiObviousOptions = [
-                `Avoid the first ${n} ideas that come to mind — dig deeper for less obvious but equally relevant sub-themes.`,
-                `Do NOT default to the most common or generic variations. Seek specific, visually distinctive sub-themes.`,
-                `Challenge yourself: think about what a seasoned KDP publisher would choose to stand out on Amazon.`,
-                `Prioritise specificity over generality — "owls in a forest mandala" beats "nature mandala".`,
-            ];
-            const antiObvious = antiObviousOptions[Math.floor(Math.random() * antiObviousOptions.length)];
-
-            const user = `Niche subject: "${visualCoreName}"
-Full niche name: "${niche.name}"
+Niche: "${visualCoreName}"
+Full title: "${niche.name}"
 Description: ${niche.description || "(none)"}
-Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${alreadyUsedBlock}
+Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${onTopicAnchorBlock}${alreadyUsedBlock}
 
-Generate exactly ${n} DISTINCT catalog situations for this niche. Rules:
-1. "${visualCoreName}" MUST be the central element of every situation — never drift to an unrelated subject.
-2. Each situation must be visually distinct (different sub-type, setting, cultural style, or mood) — not just "more of the same".
-3. ${antiObvious}
-${axesBlock}
-${usedPrompts.length > 0 ? "\nMANDATORY: Situations already used are listed above. You MUST produce entirely different sub-themes.\n" : ""}${audience ? `\n${audienceHint[niche.targetAudience ?? ""] ?? ""}\n` : ""}${discoveryPrompt ? "\nEach prompt MUST preserve the visual technique from the approved style anchor. Vary the SUBJECT, not the drawing style.\n" : ""}
-For each situation, write an IMAGE GENERATION PROMPT in English (30-60 words): a concrete scene/subject description with "${visualCoreName}" at its core. No extra style/technical keywords — those are added automatically.
+YOUR TASK: Generate exactly ${n} image prompts. Each prompt must describe something that lives 100% INSIDE the world of "${visualCoreName}" — not something generic that uses "${visualCoreName}" as a tag or backdrop.
 
-GOOD example for "Mandalas": {"situation": "Fauna del bosque", "prompt": "intricate mandala with forest animals — deer, owls and foxes arranged in circular symmetry, fine organic line patterns"}
-BAD example (subject drift): {"situation": "Jardín zen", "prompt": "peaceful zen garden with raked gravel, stones and cherry blossom trees"} — mandalas are missing!
+MENTAL STEP (do this first, don't output it): Think of the 6-8 most iconic, specific visual sub-categories, character archetypes, signature scenes, or motifs that are NATIVE to "${visualCoreName}". Use those as your source material.
 
-Return JSON array: [{"situation": "<2-4 word label in Spanish>", "prompt": "<scene prompt in English>"}]`;
+THE TEST — before finalising each prompt, ask: "If someone who has never heard of ${visualCoreName} saw this image, would they immediately think of ${visualCoreName}?" If NO → the prompt is wrong, rewrite it.
+
+WRONG (niche as tag/modifier):
+- Niche "Anime" → "a sports competition scene" ✗ (sports exist without anime)
+- Niche "Anime" → "a space battle with rockets" ✗ (space battles exist without anime)
+- Niche "Mandalas" → "a zen garden with raked gravel" ✗ (zen gardens exist without mandalas)
+
+RIGHT (niche is the actual subject):
+- Niche "Anime" → "a shōnen hero mid-battle, explosive ki aura radiating outward, dynamic action lines and dramatic expression" ✓
+- Niche "Anime" → "a magical girl mid-transformation, flowing ribbons and sparkling particles forming around her silhouette" ✓
+- Niche "Mandalas" → "an intricate lotus mandala with nested geometric petals and sacred geometry in concentric rings" ✓
+
+VARIATION: The ${n} situations must be visually distinct. Vary the specific sub-type, iconic character/motif, or signature scenario WITHIN "${visualCoreName}". Do NOT vary by external settings or unrelated genres.${usedPrompts.length > 0 ? "\n\nALREADY USED — produce entirely different sub-themes, do not repeat:\n" + usedPrompts.slice(0, 20).map((p, i) => `${i + 1}. ${p}`).join("\n") : ""}${discoveryPrompt ? "\n\nSTYLE RULE: Each prompt MUST preserve the visual technique from the approved style anchor above. Change the subject, not the drawing style." : ""}
+
+Write each prompt in English, 25-55 words. No style keywords (added automatically).
+
+Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
 
             const raw = await generateTextWithLLM(system, user);
             const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
@@ -1114,6 +1141,22 @@ Return JSON array: [{"situation": "<2-4 word label in Spanish>", "prompt": "<sce
                 ? `\n\nAPPROVED VISUAL STYLE (this is the EXACT prompt that generated the accepted sample image — every situation MUST match this visual style, same technique, same line art quality):\n"${discoveryPrompt}"\nIMPORTANT: Do NOT reinvent the visual style. Keep the same drawing technique, level of detail, and aesthetic. Only change the SUBJECT or SCENE.`
                 : "";
 
+            // Pull sample prompts from existing catalogs of this niche as concrete on-topic anchors
+            const existingCatalogs = await Catalog.find(
+                { nicheIds: String(niche._id), status: { $in: ["completed", "published"] } },
+                { prompt: 1, name: 1 }
+            ).sort({ createdAt: -1 }).limit(5).lean() as any[];
+
+            // confirmedPrompts are hand-picked by the user — highest quality anchor
+            const confirmedPrompts: string[] = (niche.confirmedPrompts ?? []).map((p: any) => p.prompt).filter(Boolean);
+            const referencePrompts = confirmedPrompts.length > 0
+                ? confirmedPrompts
+                : existingCatalogs.map((c: any) => c.prompt).filter(Boolean);
+
+            const existingPromptsBlock = referencePrompts.length > 0
+                ? `\n\n${confirmedPrompts.length > 0 ? "USER-APPROVED PROMPTS (hand-picked by the owner as working well for this niche)" : "ON-TOPIC REFERENCE (prompts from completed catalogs)"}:\n${referencePrompts.slice(0, 5).map((p, i) => `  ${i + 1}. "${p}"`).join("\n")}\nStudy these carefully — they define exactly what subject matter belongs in this niche. Your new situations must match this specificity and keep "${visualCoreName}" as the undeniable core.`
+                : "";
+
             const audienceHint: Record<string, string> = {
                 children: "TARGET AUDIENCE: Children (ages 4-10). Simple, bold, friendly subjects — animals, toys, fairy-tale scenes.",
                 teens:    "TARGET AUDIENCE: Teens (ages 11-17). Trendy, expressive subjects — pop culture, fantasy, anime-adjacent, nature.",
@@ -1123,42 +1166,37 @@ Return JSON array: [{"situation": "<2-4 word label in Spanish>", "prompt": "<sce
                 ? audienceHint[niche.targetAudience] ?? ""
                 : "";
 
-            const ALL_VARIATION_AXES = [
-                `different sub-types of ${visualCoreName} (e.g. by species, style variant, historical period…)`,
-                `different settings/environments where ${visualCoreName} appear (nature, urban, mythological, cosmic…)`,
-                `different cultural/historical inspirations (Japanese, Celtic, Art Nouveau, Tribal, Geometric, Baroque…)`,
-                `different moods or energy (serene/meditative, playful/fun, dramatic/powerful, festive/celebratory…)`,
-                `different composition approaches (symmetrical mandala-like, scattered repeat, single focal scene, border pattern…)`,
-            ];
-            const shuffledAxes = ALL_VARIATION_AXES.sort(() => Math.random() - 0.5).slice(0, Math.min(n, 4));
+            const user = `You are an expert in "${visualCoreName}" as a visual art niche for coloring books. You know every sub-genre, iconic character type, signature scene, and distinctive motif that defines this niche.
 
-            const antiObviousOptions = [
-                `Avoid the first ${n} ideas that come to mind — dig deeper for less obvious but equally relevant sub-themes.`,
-                `Do NOT default to the most common or generic variations. Seek specific, visually distinctive sub-themes.`,
-                `Prioritise specificity over generality — "owls in a forest mandala" beats "nature mandala".`,
-            ];
-            const antiObvious = antiObviousOptions[Math.floor(Math.random() * antiObviousOptions.length)];
-
-            const user = `Niche subject: "${visualCoreName}"
-Full niche name: "${niche.name}"
+Niche: "${visualCoreName}"
+Full title: "${niche.name}"
 Description: ${niche.description || "(none)"}
-Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}
+Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${existingPromptsBlock}
 
-Generate exactly ${n} DISTINCT situations for this niche. Rules:
-1. "${visualCoreName}" MUST be the central element of every situation — never drift to an unrelated subject.
-2. Each situation must be visually distinct (different sub-type, setting, cultural style, or mood).
-3. ${antiObvious}
-Spread across: ${shuffledAxes.map((a, i) => `${i + 1}. ${a}`).join("\n")}${discoveryPrompt ? "\nEach prompt MUST preserve the visual technique from the approved style anchor. Vary the SUBJECT, not the drawing style.\n" : ""}
+YOUR TASK: Generate exactly ${n} image prompts. Each prompt must describe something that lives 100% INSIDE the world of "${visualCoreName}" — not something generic that uses "${visualCoreName}" as a tag or backdrop.
 
-For each situation write an IMAGE GENERATION PROMPT in English (30-60 words): a concrete scene/subject description with "${visualCoreName}" at its core. No extra style/technical keywords — those are added automatically.
+MENTAL STEP (do this first, don't output it): Think of the 6-8 most iconic, specific visual sub-categories, character archetypes, signature scenes, or motifs that are NATIVE to "${visualCoreName}". Use those as your source material, not generic concepts.
 
-GOOD example for "Mandalas": {"situation":"Fauna del bosque","prompt":"intricate mandala with forest animals — deer, owls and foxes arranged in circular symmetry, fine organic line patterns"}
-BAD example (subject drift): {"situation":"Jardín zen","prompt":"peaceful zen garden with raked gravel, stones and cherry blossom trees"} — mandalas are missing!
+THE TEST — before finalising each prompt, ask: "If a person who has never heard of ${visualCoreName} saw this image, would they immediately think of ${visualCoreName}?" If NO → the prompt is wrong.
 
-Return JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
+WRONG approach (niche as tag/modifier):
+- Niche "Anime" → "a sports competition scene" ✗ (sports exist without anime)
+- Niche "Anime" → "a space battle with rockets" ✗ (space battles exist without anime)
+- Niche "Mandalas" → "a zen garden with raked gravel" ✗ (zen gardens exist without mandalas)
+
+RIGHT approach (niche as the actual subject):
+- Niche "Anime" → "a shōnen hero mid-battle, explosive ki aura radiating outward, dynamic action lines and dramatic expression" ✓
+- Niche "Anime" → "a magical girl mid-transformation, flowing ribbons and sparkling particles forming around her silhouette" ✓
+- Niche "Mandalas" → "an intricate lotus mandala with nested geometric petals and sacred geometry in concentric rings" ✓
+
+VARIATION RULE: The ${n} situations must be visually distinct — vary the specific sub-type, iconic character/motif, or signature scenario WITHIN "${visualCoreName}". Do NOT vary by external settings or unrelated genres.${discoveryPrompt ? "\n\nSTYLE RULE: Each prompt MUST preserve the visual technique from the approved style anchor above. Change the subject, not the drawing style." : ""}
+
+Write each prompt in English, 25-55 words, describing only the scene/subject — no style keywords (added automatically).
+
+Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
 
             const raw = await generateTextWithLLM(
-                `You are a creative director for coloring book and printable art production. Reply ONLY with a valid JSON array, no markdown fences, no explanations.`,
+                `You are an expert visual content creator for coloring book publishing. Reply ONLY with a valid JSON array. No markdown, no explanations, no extra text.`,
                 user
             );
 

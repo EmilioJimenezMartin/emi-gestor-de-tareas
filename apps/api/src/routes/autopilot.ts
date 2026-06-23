@@ -494,6 +494,17 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             // Save: discoveryImagePrompt = full wrapped prompt (used as style anchor in explode-catalogs)
             //       generatedPrompt = RAW scene desc only (prevents double-wrapping on future runs)
             await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt, generatedPrompt: sceneDesc, discoveryAiModel: discoveryModel } });
+
+            // Add to prompt memory — user approved this image via Telegram, so the prompt is validated
+            const nicheForMemory = await Niche.findById(nicheId).lean() as any;
+            if (nicheForMemory && samplePrompt) {
+                const existing: any[] = nicheForMemory.confirmedPrompts ?? [];
+                if (!existing.some((p: any) => p.prompt === samplePrompt)) {
+                    const updated = [...existing, { prompt: samplePrompt, source: "discovery", addedAt: new Date() }].slice(-10);
+                    await Niche.findByIdAndUpdate(nicheId, { $set: { confirmedPrompts: updated } });
+                }
+            }
+
             deps.io?.emit("niches:updated");
 
             const port = process.env.PORT || 3001;

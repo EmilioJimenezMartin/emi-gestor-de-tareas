@@ -913,6 +913,14 @@ export function KdpFactoryApp() {
                     : n));
                 setModelCompareNiche(prev => prev ? { ...prev, sampleImageUrl: cloudUrl, discoveryImagePrompt: comparePreview.prompt } : prev);
             }
+            // Record this prompt in the niche's prompt memory (fire-and-forget)
+            if (comparePreview.prompt) {
+                fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/confirm-prompt`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt: comparePreview.prompt, source: "comparator" }),
+                }).catch(() => {});
+            }
 
             const key = compareMode === "explosion" && comparePreview.sitIdx !== undefined
                 ? `${comparePreview.modelId}::${comparePreview.sitIdx}`
