@@ -34,6 +34,10 @@ const CB_OPENER = "masterful coloring book page, crisp black ink line art on pur
 // Sujeto fiel: va justo después del estilo, y se refuerza que NO se añada contenido extra
 const CB_FIDELITY = "depicting exactly and only the following subject, faithful to the description, intricate detail concentrated on the subject itself";
 
+// Instrucción de manos — va ANTES del subject para máximo peso de atención en FLUX
+// Estrategia: esconder o simplificar, nunca intentar dibujar dedos individuales
+const CB_HANDS = "IMPORTANT: if any human or animal characters are present — draw ALL hands and paws as simple closed-fist shapes or rounded mitten silhouettes with NO individual fingers, OR hide hands entirely behind the body, clothing, objects, or fur — never attempt to draw individual fingers or finger joints";
+
 // Style modifiers — describen CÓMO dibujar, nunca QUÉ añadir (no inventan escenas)
 const CB_STYLE_MODIFIERS: Record<string, string> = {
     funko:        "funko pop vinyl figure style, oversized spherical head twice the body size, large circular blank eyes, no nose, tiny stubby body and limbs, chibi collectible toy proportions, bold rounded simplified silhouette, clean toy product design",
@@ -50,7 +54,7 @@ const CB_STYLE_MODIFIERS: Record<string, string> = {
     realistic:    "naturalistic specimen-level precision, anatomically accurate rendering, texture implied through line density",
 };
 
-const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, if human or animal figures are present draw hands and paws as simple rounded mitten shapes or hide them behind the body, no extra fingers, no four fingers, no three fingers, no fused fingers, no deformed hands, no malformed limbs, simplified anatomy, correct number of fingers if visible";
+const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, no individual fingers, no finger joints, no detailed hands, no deformed hands, no extra fingers, no missing fingers";
 
 // Si el prompt del usuario pide explícitamente algo que NO es página de colorear
 // (color, foto, póster, patrón…), la fórmula CB no debe aplicarse aunque el
@@ -66,8 +70,8 @@ export function buildColoringBookPrompt(particulars: string, style = "generic"):
     const effectiveStyle = /funko/i.test(particulars) ? "funko" : style;
     const modifier = CB_STYLE_MODIFIERS[effectiveStyle];
     return modifier
-        ? `${CB_OPENER}, ${modifier}, ${CB_FIDELITY}: ${particulars}, ${CB_EXCLUSIONS}`
-        : `${CB_OPENER}, ${CB_FIDELITY}: ${particulars}, ${CB_EXCLUSIONS}`;
+        ? `${CB_OPENER}, ${modifier}, ${CB_FIDELITY}: ${particulars}, ${CB_HANDS}, ${CB_EXCLUSIONS}`
+        : `${CB_OPENER}, ${CB_FIDELITY}: ${particulars}, ${CB_HANDS}, ${CB_EXCLUSIONS}`;
 }
 
 // ── Poster prompts ────────────────────────────────────────────────────────────
