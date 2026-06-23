@@ -1180,6 +1180,8 @@ export function KdpFactoryApp() {
     const [nicheFilterMaxImgs, setNicheFilterMaxImgs] = useState<number | "">("");
     const [nicheFilterMinCats, setNicheFilterMinCats] = useState<number | "">("");
     const [nicheFilterMaxCats, setNicheFilterMaxCats] = useState<number | "">("");
+    const [selectedNicheIds, setSelectedNicheIds] = useState<Set<string>>(new Set());
+    const [bulkNicheMode, setBulkNicheMode] = useState(false);
     // Toolbar de catálogos IA
     const [iaCatalogSearch, setIaCatalogSearch] = useState("");
     const [iaCatalogStatusFilter, setIaCatalogStatusFilter] = useState<"all" | "active" | "queued" | "completed" | "failed" | "cancelled">("all");
@@ -8550,78 +8552,123 @@ export function KdpFactoryApp() {
                     </div>
 
                     {apRuns.length === 0 && !apRunsLoading ? (
-                        <p className="text-[11px] text-neutral-700 px-1">Sin ejecuciones registradas</p>
+                        <div className="rounded-2xl border border-dashed border-white/[0.06] p-6 text-center">
+                            <p className="text-[11px] text-neutral-700">Sin ejecuciones registradas</p>
+                        </div>
                     ) : (
-                        <div className="max-h-[280px] overflow-y-auto space-y-1 pr-0.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                            {apRuns.map(run => {
-                                const duration = run.finishedAt
-                                    ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 60000)
-                                    : null;
-                                const isRunning = run.status === "running";
-                                const isOk = run.status === "completed";
-                                const isAborted = run.status === "aborted";
-                                const discovered = run.discovered ?? 0;
-                                const catalogsCreated = run.catalogsCreated ?? 0;
-                                const pipelineProcessed = run.pipelineProcessed ?? 0;
-                                const duplicatesSkipped = (run as any).duplicatesSkipped ?? 0;
-                                const idle = !isRunning && discovered === 0 && catalogsCreated === 0 && pipelineProcessed === 0;
-                                return (
-                                    <div key={run._id} className={`rounded-xl border px-3 py-2 text-[11px] ${
-                                        isOk && !idle  ? "bg-emerald-500/[0.02] border-emerald-500/[0.08]"
-                                        : isAborted    ? "bg-rose-500/[0.02] border-rose-500/[0.08]"
-                                        : isRunning    ? "bg-amber-500/[0.03] border-amber-500/20"
-                                        : idle         ? "bg-white/[0.01] border-white/[0.03] opacity-50"
-                                        : "bg-white/[0.01] border-white/[0.04]"
-                                    }`}>
-                                        {/* Row 1: status + date + duration */}
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm leading-none shrink-0">
-                                                {isOk ? (idle ? "💤" : "✅") : isAborted ? "⛔" : isRunning ? "⏳" : "❌"}
-                                            </span>
-                                            <span className="font-mono text-neutral-500 text-[10px]">
-                                                {new Date(run.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
-                                                {" "}{new Date(run.startedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                                            </span>
-                                            {duration !== null && (
-                                                <span className={`text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-md ${duration > 20 ? "text-orange-400 bg-orange-500/10" : "text-neutral-700 bg-white/[0.04]"}`}>
-                                                    {duration}m
+                        <div className="max-h-[320px] overflow-y-auto pr-0.5">
+                            {/* Timeline */}
+                            <div className="relative pl-8">
+                                {/* Connecting spine */}
+                                <div className="absolute left-[14px] top-2 bottom-2 w-px bg-gradient-to-b from-amber-500/30 via-white/[0.06] to-transparent" />
+                                <div className="space-y-3">
+                                {apRuns.map((run, ri) => {
+                                    const duration = run.finishedAt
+                                        ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 60000)
+                                        : null;
+                                    const isRunning = run.status === "running";
+                                    const isOk = run.status === "completed";
+                                    const isAborted = run.status === "aborted";
+                                    const discovered = run.discovered ?? 0;
+                                    const catalogsCreated = run.catalogsCreated ?? 0;
+                                    const pipelineProcessed = run.pipelineProcessed ?? 0;
+                                    const duplicatesSkipped = (run as any).duplicatesSkipped ?? 0;
+                                    const idle = !isRunning && discovered === 0 && catalogsCreated === 0 && pipelineProcessed === 0;
+                                    const total = discovered + catalogsCreated + pipelineProcessed;
+                                    // Bar widths — proportional to their max expected value
+                                    const dW = total > 0 ? Math.round((discovered / total) * 100) : 0;
+                                    const cW = total > 0 ? Math.round((catalogsCreated / total) * 100) : 0;
+                                    const pW = total > 0 ? Math.round((pipelineProcessed / total) * 100) : 0;
+                                    return (
+                                        <div key={run._id} className="relative">
+                                            {/* Timeline node */}
+                                            <div className={`absolute -left-8 top-3 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center transition-all
+                                                ${isRunning  ? "border-amber-400 bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                                                : isOk&&!idle ? "border-emerald-500/60 bg-emerald-500/15"
+                                                : isAborted  ? "border-rose-500/50 bg-rose-500/10"
+                                                : idle       ? "border-white/[0.08] bg-transparent"
+                                                :               "border-white/15 bg-white/[0.04]"}`}>
+                                                {isRunning && <span className="absolute inset-0 rounded-full bg-amber-400/30 animate-ping" />}
+                                                <span className="text-[8px] leading-none">
+                                                    {isRunning ? "⚡" : isOk && !idle ? "✓" : isAborted ? "✕" : idle ? "·" : "✓"}
                                                 </span>
-                                            )}
-                                            {isRunning && <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest animate-pulse ml-auto">en curso</span>}
-                                            {idle && !isRunning && <span className="text-[9px] text-neutral-700 ml-auto">sin cambios</span>}
-                                        </div>
-                                        {/* Row 2: stats chips — only if there's something to show */}
-                                        {!idle && (
-                                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                                {discovered > 0 && (
-                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px] font-black">
-                                                        🔍 <span>{discovered} nicho{discovered !== 1 ? "s" : ""}</span>
+                                            </div>
+                                            {/* Card */}
+                                            <div className={`rounded-2xl border px-3.5 py-3 transition-all
+                                                ${isRunning  ? "border-amber-500/20 bg-amber-500/[0.04]"
+                                                : isOk&&!idle ? "border-emerald-500/[0.12] bg-emerald-500/[0.025]"
+                                                : isAborted  ? "border-rose-500/[0.12] bg-rose-500/[0.02]"
+                                                : idle       ? "border-white/[0.03] bg-transparent opacity-40"
+                                                :               "border-white/[0.06] bg-white/[0.015]"}`}>
+                                                {/* Top row: date + duration + running badge */}
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`text-[11px] font-black tabular-nums
+                                                        ${isRunning ? "text-amber-300" : isOk&&!idle ? "text-emerald-400" : isAborted ? "text-rose-400" : "text-neutral-500"}`}>
+                                                        {new Date(run.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
                                                     </span>
+                                                    <span className="text-[10px] text-neutral-700 tabular-nums">
+                                                        {new Date(run.startedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                                    </span>
+                                                    {duration !== null && (
+                                                        <span className={`ml-auto text-[10px] font-black tabular-nums px-2 py-0.5 rounded-lg
+                                                            ${duration > 30 ? "text-orange-400 bg-orange-500/15 border border-orange-500/20" : "text-neutral-600 bg-white/[0.04]"}`}>
+                                                            {duration}m
+                                                        </span>
+                                                    )}
+                                                    {isRunning && (
+                                                        <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest animate-pulse ml-auto">en curso</span>
+                                                    )}
+                                                </div>
+                                                {/* Production bar — only if there's work done */}
+                                                {!idle && total > 0 && (
+                                                    <div className="mt-2.5 space-y-1.5">
+                                                        {/* Stacked bar */}
+                                                        <div className="flex gap-px h-1.5 rounded-full overflow-hidden bg-white/[0.04]">
+                                                            {discovered > 0 && <div className="bg-sky-500 transition-all" style={{ width: `${dW}%` }} />}
+                                                            {catalogsCreated > 0 && <div className="bg-violet-500 transition-all" style={{ width: `${cW}%` }} />}
+                                                            {pipelineProcessed > 0 && <div className="bg-emerald-500 transition-all" style={{ width: `${pW}%` }} />}
+                                                        </div>
+                                                        {/* Legend */}
+                                                        <div className="flex items-center gap-3 flex-wrap">
+                                                            {discovered > 0 && (
+                                                                <span className="flex items-center gap-1 text-[9px] font-black text-sky-400">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
+                                                                    {discovered} descubierto{discovered !== 1 ? "s" : ""}
+                                                                </span>
+                                                            )}
+                                                            {duplicatesSkipped > 0 && (
+                                                                <span className="flex items-center gap-1 text-[9px] font-black text-neutral-600">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-600 shrink-0" />
+                                                                    {duplicatesSkipped} dup.
+                                                                </span>
+                                                            )}
+                                                            {catalogsCreated > 0 && (
+                                                                <span className="flex items-center gap-1 text-[9px] font-black text-violet-400">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
+                                                                    {catalogsCreated} catálogo{catalogsCreated !== 1 ? "s" : ""}
+                                                                </span>
+                                                            )}
+                                                            {pipelineProcessed > 0 && (
+                                                                <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                                                    {pipelineProcessed} pipeline
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 )}
-                                                {duplicatesSkipped > 0 && (
-                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-neutral-500/10 border border-neutral-500/20 text-neutral-500 text-[10px] font-black">
-                                                        ⏭ <span>{duplicatesSkipped} duplicado{duplicatesSkipped !== 1 ? "s" : ""}</span>
-                                                    </span>
+                                                {idle && !isRunning && (
+                                                    <p className="text-[9px] text-neutral-700 mt-1">Sin actividad</p>
                                                 )}
-                                                {catalogsCreated > 0 && (
-                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black">
-                                                        🏭 <span>{catalogsCreated} catálogo{catalogsCreated !== 1 ? "s" : ""}</span>
-                                                    </span>
-                                                )}
-                                                {pipelineProcessed > 0 && (
-                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black">
-                                                        ⚙️ <span>{pipelineProcessed} paso{pipelineProcessed !== 1 ? "s" : ""}</span>
-                                                    </span>
+                                                {run.abortReason && (
+                                                    <p className="text-rose-400/60 text-[10px] mt-1.5 leading-snug border-t border-rose-500/10 pt-1.5">{run.abortReason}</p>
                                                 )}
                                             </div>
-                                        )}
-                                        {/* Row 3: abort reason */}
-                                        {run.abortReason && (
-                                            <p className="text-rose-400/70 text-[10px] mt-1 leading-snug">{run.abortReason}</p>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                        </div>
+                                    );
+                                })}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -12791,6 +12838,13 @@ export function KdpFactoryApp() {
                                 <Mic size={13} />
                                 <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Nicho</span>
                             </button>
+                            <button
+                                onClick={() => { setBulkNicheMode(v => !v); if (bulkNicheMode) setSelectedNicheIds(new Set()); }}
+                                title="Selección múltiple"
+                                className={`flex items-center gap-1.5 h-10 px-3 rounded-2xl border text-sm font-black transition-all ${bulkNicheMode ? "bg-violet-500/20 border-violet-500/40 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.2)]" : "bg-white/[0.03] border-white/10 text-neutral-500 hover:text-violet-300 hover:border-violet-500/30 hover:bg-violet-500/10"}`}>
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0.5" y="0.5" width="4.5" height="4.5" rx="1" stroke="currentColor"/><rect x="0.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor"/><rect x="8" y="0.5" width="4.5" height="4.5" rx="1" fill="currentColor" opacity="0.5"/><rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor"/></svg>
+                                {bulkNicheMode ? "Salir" : "Selección"}
+                            </button>
                             <button onClick={() => openNicheForm()}
                                 className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-sky-600 hover:from-sky-500 hover:to-sky-500 text-white text-sm font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(14,165,233,0.4)]">
                                 <Plus size={14} /> Nuevo nicho
@@ -13570,8 +13624,17 @@ export function KdpFactoryApp() {
                                 <span className="text-sm text-neutral-700 ml-1 tabular-nums">{listNiches.length} nichos</span>
                             </div>
                         )}
+                        <style>{`
+@keyframes nicheCardIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scoreRingDraw {
+    to { stroke-dashoffset: var(--ring-to); }
+}
+`}</style>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {pagedNiches.map(niche => {
+                            {pagedNiches.map((niche, cardIndex) => {
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                     const cardPhase = (niche.phase === "pdf" ? "seo" : niche.phase) ?? "niche";
@@ -13601,8 +13664,23 @@ export function KdpFactoryApp() {
                                         ...cloudinaryImages.filter(ci => ci.nicheId === niche._id).map(ci => ci.url),
                                     ].filter((u): u is string => Boolean(u))
                                         .filter((u, i, arr) => arr.indexOf(u) === i);
+                                    const isSelected = selectedNicheIds.has(niche._id);
                                     return (
-                                        <div key={niche._id} className={`group relative rounded-2xl border bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${isActivo ? "border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.10)]" : "border-white/[0.08]"} ${activeHoverBorder} ${activeHoverShadow} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                        <div key={niche._id}
+                                            style={{ animationName: "nicheCardIn", animationDuration: "0.38s", animationTimingFunction: "cubic-bezier(0.25,0.46,0.45,0.94)", animationFillMode: "both", animationDelay: `${cardIndex * 40}ms` }}
+                                            className={`group relative rounded-2xl border bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${isActivo ? "border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.10)]" : isSelected ? "border-violet-500/50 shadow-[0_0_20px_rgba(139,92,246,0.15)]" : "border-white/[0.08]"} ${isSelected ? "" : activeHoverBorder} ${isSelected ? "" : activeHoverShadow} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                        {/* Bulk select overlay */}
+                                        {bulkNicheMode && (
+                                            <button
+                                                onClick={() => setSelectedNicheIds(prev => {
+                                                    const next = new Set(prev);
+                                                    next.has(niche._id) ? next.delete(niche._id) : next.add(niche._id);
+                                                    return next;
+                                                })}
+                                                className={`absolute top-3 right-3 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "bg-violet-500 border-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.5)]" : "bg-black/40 border-white/30 hover:border-violet-400"}`}>
+                                                {isSelected && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="2,5 4,7.5 8,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                            </button>
+                                        )}
                                             {coverThumb && (
                                                 <div className="absolute inset-0 pointer-events-none">
                                                     <img src={coverThumb} alt=""
@@ -13660,19 +13738,44 @@ export function KdpFactoryApp() {
                                                                     {niche.targetAudience === "children" ? "👦 Niños" : niche.targetAudience === "teens" ? "🧑 Teens" : "🧑‍💼 Adultos"}
                                                                 </button>
                                                             )}
-                                                            {niche.score != null ? (
-                                                                <button onClick={() => void scoreNicheWithAI(niche)} disabled={scoringNicheId === niche._id} title={niche.scoreReason ?? "Puntuación IA — click para recalcular"}
-                                                                    className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${niche.score >= 70 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25" : niche.score >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25" : "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25"}`}>
-                                                                    {scoringNicheId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <Sparkles size={8} />}
-                                                                    {niche.score}/100
-                                                                </button>
-                                                            ) : (
-                                                                <button onClick={() => void scoreNicheWithAI(niche)} disabled={scoringNicheId === niche._id} title="Calcular score con IA"
-                                                                    className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border border-white/10 text-neutral-600 hover:border-sky-500/30 hover:text-sky-400 hover:bg-sky-500/10 transition-all">
-                                                                    {scoringNicheId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <Sparkles size={8} />}
-                                                                    Score IA
-                                                                </button>
-                                                            )}
+                                                            {/* Score ring */}
+                                                            {(() => {
+                                                                const R = 18; const C = 2 * Math.PI * R;
+                                                                const s = niche.score;
+                                                                const offset = s != null ? C * (1 - s / 100) : C;
+                                                                const ringColor = s == null ? "#404040" : s >= 70 ? "#10b981" : s >= 40 ? "#f59e0b" : "#ef4444";
+                                                                const textColor = s == null ? "text-neutral-600" : s >= 70 ? "text-emerald-400" : s >= 40 ? "text-amber-400" : "text-rose-400";
+                                                                return (
+                                                                    <button onClick={() => void scoreNicheWithAI(niche)} disabled={scoringNicheId === niche._id}
+                                                                        title={niche.scoreReason ?? (s != null ? "Score IA — click para recalcular" : "Calcular score con IA")}
+                                                                        className="shrink-0 relative hover:scale-110 transition-transform">
+                                                                        <svg width="44" height="44" viewBox="0 0 48 48" style={{ transform: "rotate(-90deg)" }}>
+                                                                            <circle cx="24" cy="24" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+                                                                            <circle cx="24" cy="24" r={R} fill="none"
+                                                                                stroke={ringColor} strokeWidth="3" strokeLinecap="round"
+                                                                                strokeDasharray={C}
+                                                                                strokeDashoffset={C}
+                                                                                style={{ "--ring-to": offset } as React.CSSProperties}
+                                                                            >
+                                                                                <animate attributeName="stroke-dashoffset"
+                                                                                    from={C} to={offset}
+                                                                                    dur="1.1s" begin={`${cardIndex * 40 + 300}ms`}
+                                                                                    fill="freeze"
+                                                                                    calcMode="spline" keyTimes="0;1" keySplines="0.25 0.46 0.45 0.94"
+                                                                                />
+                                                                            </circle>
+                                                                        </svg>
+                                                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-0">
+                                                                            {scoringNicheId === niche._id
+                                                                                ? <span className="w-2.5 h-2.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                                                                                : s != null
+                                                                                    ? <span className={`text-[11px] font-black tabular-nums leading-none ${textColor}`}>{s}</span>
+                                                                                    : <Sparkles size={10} className="text-neutral-600" />
+                                                                            }
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })()}
                                                             {niche.marketScan ? (
                                                                 <button onClick={() => void runMarketScan(niche)} disabled={marketScanningId === niche._id}
                                                                     title={`Amazon real · US: ${niche.marketScan.us?.resultCount ?? "?"} resultados, mediana ${niche.marketScan.us?.medianReviews ?? "?"} reviews · ES: ${niche.marketScan.es?.resultCount ?? "?"} resultados · demanda ${niche.marketScan.scoreBreakdown?.demand ?? "?"}/40, oferta ${niche.marketScan.scoreBreakdown?.supply ?? "?"}/30, competencia ${niche.marketScan.scoreBreakdown?.competition ?? "?"}/30 — click para reescanear`}
@@ -13867,60 +13970,54 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 )}
 
-                                                {/* ─ Pipeline progress bar ─ */}
+                                                {/* ─ Phase step track ─ */}
                                                 {(() => {
-                                                    const pipelinePhases = ["niche","catalog","libro","seo","cover","published"] as const;
+                                                    const STEPS = [
+                                                        { id: "niche"    as const, label: "Nicho",    short: "N",   lineColor: "bg-sky-500",     dotColor: "bg-sky-500",     dotGlow: "shadow-[0_0_8px_rgba(14,165,233,0.7)]",     ring: "ring-sky-500/40" },
+                                                        { id: "catalog"  as const, label: "Catálogos",short: "Cat", lineColor: "bg-blue-500",    dotColor: "bg-blue-500",    dotGlow: "shadow-[0_0_8px_rgba(59,130,246,0.7)]",     ring: "ring-blue-500/40" },
+                                                        { id: "libro"    as const, label: "Libro",    short: "PDF", lineColor: "bg-indigo-500",  dotColor: "bg-indigo-500",  dotGlow: "shadow-[0_0_8px_rgba(99,102,241,0.7)]",     ring: "ring-indigo-500/40" },
+                                                        { id: "seo"      as const, label: "SEO",      short: "SEO", lineColor: "bg-violet-500",  dotColor: "bg-violet-500",  dotGlow: "shadow-[0_0_8px_rgba(139,92,246,0.7)]",     ring: "ring-violet-500/40" },
+                                                        { id: "cover"    as const, label: "Portada",  short: "Cov", lineColor: "bg-fuchsia-500", dotColor: "bg-fuchsia-500", dotGlow: "shadow-[0_0_8px_rgba(217,70,239,0.7)]",     ring: "ring-fuchsia-500/40" },
+                                                        { id: "published"as const, label: "Publicado",short: "Pub", lineColor: "bg-emerald-500", dotColor: "bg-emerald-500", dotGlow: "shadow-[0_0_10px_rgba(16,185,129,0.8)]",    ring: "ring-emerald-500/40" },
+                                                    ];
                                                     const np = niche.phase === "pdf" ? "seo" : (niche.phase ?? "niche");
-                                                    const currentIdx = pipelinePhases.indexOf(np as typeof pipelinePhases[number]);
-                                                    const segColors = ["bg-sky-500","bg-blue-500","bg-indigo-500","bg-violet-500","bg-fuchsia-500","bg-emerald-500"];
+                                                    const currentIdx = STEPS.findIndex(s => s.id === np);
                                                     return (
-                                                        <div className="flex items-center gap-px h-1 rounded-full overflow-hidden">
-                                                            {pipelinePhases.map((p, i) => (
-                                                                <div key={p} className={`flex-1 h-full rounded-full transition-all duration-300 ${i < currentIdx ? segColors[i] : i === currentIdx ? `${segColors[i]} opacity-80` : "bg-white/[0.04]"}`} />
-                                                            ))}
-                                                        </div>
-                                                    );
-                                                })()}
-
-                                                {/* ─ Phase pipeline ─ */}
-                                                {(() => {
-                                                    const PHASE_META: Record<NonNullable<NicheFE["phase"]>, { label: string; dot: string; active: string }> = {
-                                                        niche:     { label: "Nicho",     dot: "bg-sky-400",      active: "border-sky-500/40 bg-sky-500/10 text-sky-300" },
-                                                        catalog:   { label: "Catálogos", dot: "bg-blue-400",     active: "border-blue-500/40 bg-blue-500/10 text-blue-300" },
-                                                        libro:     { label: "Libro PDF", dot: "bg-indigo-400",   active: "border-indigo-500/40 bg-indigo-500/10 text-indigo-300" },
-                                                        seo:       { label: "SEO",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
-                                                        pdf:       { label: "SEO",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
-                                                        cover:     { label: "Portada",   dot: "bg-fuchsia-400",  active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300" },
-                                                        published: { label: "Publicado", dot: "bg-emerald-400",  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
-                                                    };
-                                                    const phases = ["niche", "catalog", "libro", "seo", "cover", "published"] as NonNullable<NicheFE["phase"]>[];
-                                                    return (
-                                                        <div className="flex items-center gap-1 pt-2 border-t border-white/[0.04] flex-wrap">
-                                                            {phases.map((p, i) => {
-                                                                const np = niche.phase === "pdf" ? "seo" : (niche.phase ?? "niche");
-                                                                const isActive = np === p;
-                                                                const meta = PHASE_META[p];
-                                                                return (
-                                                                    <React.Fragment key={p}>
-                                                                        {i > 0 && <span className="text-neutral-800 text-xs select-none">›</span>}
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                if (isActive) return;
-                                                                                fetch(`${API_BASE_URL}/niches/${niche._id}`, {
-                                                                                    method: "PATCH",
-                                                                                    headers: { "Content-Type": "application/json" },
-                                                                                    body: JSON.stringify({ phase: p }),
-                                                                                }).catch(() => {});
-                                                                                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: p } : n));
-                                                                            }}
-                                                                            className={`flex items-center gap-1 px-2 h-5 rounded-md border text-xs font-black uppercase tracking-wider transition-all ${isActive ? meta.active : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}
-                                                                        >
-                                                                            {isActive && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />}
-                                                                            {meta.label}
-                                                                        </button>
-                                                                    </React.Fragment>
-                                                                );
-                                                            })}
+                                                        <div className="pt-3 border-t border-white/[0.04]">
+                                                            <div className="flex items-center">
+                                                                {STEPS.map((step, i) => {
+                                                                    const isDone    = i < currentIdx;
+                                                                    const isCurrent = i === currentIdx;
+                                                                    const isFuture  = i > currentIdx;
+                                                                    return (
+                                                                        <React.Fragment key={step.id}>
+                                                                            {/* connector line */}
+                                                                            {i > 0 && (
+                                                                                <div className={`flex-1 h-px transition-all duration-500 ${isDone || isCurrent ? step.lineColor + " opacity-60" : "bg-white/[0.06]"}`} />
+                                                                            )}
+                                                                            {/* step dot + label */}
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    if (isCurrent) return;
+                                                                                    fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: step.id }) }).catch(() => {});
+                                                                                    setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: step.id } : n));
+                                                                                }}
+                                                                                title={`Mover a: ${step.label}`}
+                                                                                className="flex flex-col items-center gap-1 group/step shrink-0"
+                                                                            >
+                                                                                <div className={`w-2.5 h-2.5 rounded-full border-2 transition-all duration-300
+                                                                                    ${isCurrent ? `${step.dotColor} border-transparent ${step.dotGlow} ring-2 ${step.ring} scale-125` : ""}
+                                                                                    ${isDone    ? `${step.dotColor} border-transparent opacity-70` : ""}
+                                                                                    ${isFuture  ? "bg-transparent border-white/15 group-hover/step:border-white/35" : ""}
+                                                                                `} />
+                                                                                <span className={`text-[8px] font-black uppercase tracking-wider transition-colors leading-none whitespace-nowrap
+                                                                                    ${isCurrent ? "text-white" : isDone ? "text-neutral-500" : "text-neutral-700 group-hover/step:text-neutral-500"}
+                                                                                `}>{step.short}</span>
+                                                                            </button>
+                                                                        </React.Fragment>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         </div>
                                                     );
                                                 })()}
@@ -14284,6 +14381,66 @@ export function KdpFactoryApp() {
                         </>
                         );
                     })()}
+
+                    {/* ── Bulk action bar ── */}
+                    {selectedNicheIds.size > 0 && (
+                        <ModalPortal>
+                            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none" style={{ animationName: "nicheCardIn", animationDuration: "0.3s", animationFillMode: "both" }}>
+                                <div className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[rgba(18,18,22,0.92)] backdrop-blur-xl border border-violet-500/30 shadow-[0_8px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(139,92,246,0.1),0_0_30px_rgba(139,92,246,0.15)]">
+                                    <div className="flex items-center gap-2 pr-3 border-r border-white/10">
+                                        <div className="w-5 h-5 rounded-full bg-violet-500/30 flex items-center justify-center">
+                                            <span className="text-[10px] font-black text-violet-300">{selectedNicheIds.size}</span>
+                                        </div>
+                                        <span className="text-sm font-black text-neutral-300">seleccionados</span>
+                                    </div>
+                                    {/* Change phase */}
+                                    {([
+                                        { phase: "niche"    as const, label: "Nicho",    color: "text-sky-400 hover:bg-sky-500/15 hover:border-sky-500/30" },
+                                        { phase: "catalog"  as const, label: "Catálogos",color: "text-blue-400 hover:bg-blue-500/15 hover:border-blue-500/30" },
+                                        { phase: "libro"    as const, label: "Libro",    color: "text-indigo-400 hover:bg-indigo-500/15 hover:border-indigo-500/30" },
+                                        { phase: "seo"      as const, label: "SEO",      color: "text-violet-400 hover:bg-violet-500/15 hover:border-violet-500/30" },
+                                        { phase: "cover"    as const, label: "Portada",  color: "text-fuchsia-400 hover:bg-fuchsia-500/15 hover:border-fuchsia-500/30" },
+                                        { phase: "published"as const, label: "Publicado",color: "text-emerald-400 hover:bg-emerald-500/15 hover:border-emerald-500/30" },
+                                    ]).map(opt => (
+                                        <button key={opt.phase}
+                                            onClick={() => {
+                                                const ids = [...selectedNicheIds];
+                                                ids.forEach(id => {
+                                                    fetch(`${API_BASE_URL}/niches/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: opt.phase }) }).catch(() => {});
+                                                });
+                                                setNiches(prev => prev.map(n => selectedNicheIds.has(n._id) ? { ...n, phase: opt.phase } : n));
+                                                setSelectedNicheIds(new Set());
+                                                setBulkNicheMode(false);
+                                            }}
+                                            className={`h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black transition-all ${opt.color}`}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                    <div className="h-4 w-px bg-white/10 mx-1" />
+                                    {/* Archive */}
+                                    <button
+                                        onClick={() => {
+                                            const ids = [...selectedNicheIds];
+                                            ids.forEach(id => {
+                                                fetch(`${API_BASE_URL}/niches/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "archived" }) }).catch(() => {});
+                                            });
+                                            setNiches(prev => prev.map(n => selectedNicheIds.has(n._id) ? { ...n, status: "archived" } : n));
+                                            setSelectedNicheIds(new Set());
+                                            setBulkNicheMode(false);
+                                            toast.success(`${ids.length} nicho${ids.length > 1 ? "s" : ""} archivado${ids.length > 1 ? "s" : ""}`);
+                                        }}
+                                        className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 transition-all">
+                                        Archivar
+                                    </button>
+                                    {/* Dismiss */}
+                                    <button onClick={() => { setSelectedNicheIds(new Set()); setBulkNicheMode(false); }}
+                                        className="w-6 h-6 rounded-full bg-white/8 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/15 transition-all ml-1">
+                                        <X size={11} />
+                                    </button>
+                                </div>
+                            </div>
+                        </ModalPortal>
+                    )}
 
                     {/* ── Table view ── */}
                     {!isLoadingNiches && nicheViewMode === "table" && (() => {
