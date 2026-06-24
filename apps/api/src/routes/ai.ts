@@ -1411,12 +1411,18 @@ FORBIDDEN WORDS: beautiful, stunning, gorgeous, amazing, lovely, wonderful, intr
 
 NEVER mention: line style, outlines, coloring, black and white, or page format.
 
+LIMBS RULE — CRITICAL: AI image generators frequently add or remove limbs from creatures. To avoid broken anatomy:
+- NEVER count or specify the number of limbs, legs, wings, or arms (not "four legs", not "eight legs", not "both wings spread")
+- For creatures, describe posture and action WITHOUT counting body parts: "a dragon rearing up" not "a four-legged dragon"; "a spider crouching" not "a spider with all eight legs"
+- MAX 2 distinct living creatures in a single scene. If the niche involves a group, use "a group of [creature]s" as a background texture, never enumerate individuals (no "three cats and two dogs")
+- For insects and arachnids, use the creature's name only — never reference leg count
+- For scenes with many objects (more than 4), cluster them as a mass/collection, not a numbered list: "a pile of books" not "seven stacked books"
+
 HANDS RULE — CRITICAL: AI image generators cannot reliably render hands with the correct number of fingers. To avoid broken hands in the output:
-- NEVER describe open, outstretched, or spread hands/fingers
-- If a character must hold something, write: "gripping [object]", "clutching [object]", "holding [object] with both hands wrapped around it" — the object obscures finger detail
-- Prefer poses where hands are: in pockets, behind back, under chin, crossed at chest, resting on lap, or holding tools/weapons/shields that cover finger visibility
-- If the scene is a close-up of a character where hands are NOT the focus, omit hand description entirely
-- NEVER write: "outstretched hands", "open palms", "five fingers", "hand reaching", "waving hand"
+- ALWAYS hide or fully obscure hands — tuck in pockets, behind back, under fur, gripping objects that cover finger detail, or place off-frame
+- If a character holds something, write: "gripping [object]", "clutching [object]", "both hands wrapped around [object]" — the object must fully cover finger detail
+- NEVER write: "outstretched hands", "open palms", "five fingers", "hand reaching", "waving hand", "spread fingers", "pointing finger"
+- When in doubt: omit hand description entirely and describe pose from shoulders up or from the torso action
 
 Return ONLY: {"particulars": "...55-80 words..."}`;
             })(),

@@ -732,15 +732,19 @@ export function KdpFactoryApp() {
     const [discoverySendingId, setDiscoverySendingId] = useState<string | null>(null);
     const [insightCreating, setInsightCreating] = useState(false);
     const [radarScanning, setRadarScanning] = useState(false);
+    const [deleteDiscoveryId, setDeleteDiscoveryId] = useState<string | null>(null);
 
     const addDiscoveryLog = (level: DiscoveryLog["level"], msg: string, src: DiscoveryLog["src"]) => {
         setDiscoveryLog(prev => [{ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, ts: new Date().toISOString(), level, msg, src }, ...prev].slice(0, 300));
     };
 
+    const normalizeName = (s: string) => s.toLowerCase().replace(/[^a-z0-9À-ɏ]+/g, " ").trim();
+
     const pushDiscoveryItems = (newItems: DiscoveryItem[]) => {
         setDiscoveryItems(prev => {
             const existingIds = new Set(prev.map(i => i.id));
-            const toAdd = newItems.filter(i => !existingIds.has(i.id));
+            const existingNames = new Set(prev.map(i => normalizeName(i.name)));
+            const toAdd = newItems.filter(i => !existingIds.has(i.id) && !existingNames.has(normalizeName(i.name)));
             const updated = prev.map(existing => {
                 const incoming = newItems.find(n => n.id === existing.id);
                 return incoming ? { ...existing, ...incoming } : existing;
@@ -12691,21 +12695,24 @@ export function KdpFactoryApp() {
                         try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
                         return next;
                     });
-                    // Push to unified discovery table
+                    // Push to unified discovery table — source book first, then clones
                     const ts = Date.now();
-                    pushDiscoveryItems(clones.map((c, i) => ({
-                        id: `clone-${ts}-${i}`,
-                        source: "clone" as DiscoverySource,
-                        name: c.nicheName,
-                        title: c.title || c.titleTemplate,
-                        competition: c.competition,
-                        addedAt: new Date().toISOString(),
-                        status: "new" as DiscoveryStatus,
-                        rawClone: c,
-                        rawSourceTitle: src.title,
-                        rawSourceUrl: input,
-                    })));
-                    addDiscoveryLog("success", `Clone Engine: ${clones.length} nichos ← "${src.title || input}"`, "clone");
+                    const sourceClone: CloneResult = {
+                        nicheName: src.title || input,
+                        title: src.title || input,
+                        titleTemplate: src.title || input,
+                        audience: "adults",
+                        coverBrief: `Coloring book cover for ${src.title || input}`,
+                        keywords: (src.title || input).split(/\s+/).filter((w: string) => w.length > 3).slice(0, 6),
+                        whyItWorks: src.formula ? `${src.formula} — BSR: ${src.bsr ?? "N/A"} · ${src.reviews ?? "?"} reseñas` : `Bestseller original — BSR: ${src.bsr ?? "N/A"} · ${src.reviews ?? "?"} reseñas`,
+                        competition: "medium" as const,
+                    };
+                    const allItems: DiscoveryItem[] = [
+                        { id: `clone-${ts}-src`, source: "clone" as DiscoverySource, name: src.title || input, title: src.title || input, competition: "medium", addedAt: new Date().toISOString(), status: "new" as DiscoveryStatus, rawClone: sourceClone, rawSourceTitle: src.title, rawSourceUrl: input },
+                        ...clones.map((c, i) => ({ id: `clone-${ts}-${i}`, source: "clone" as DiscoverySource, name: c.nicheName, title: c.title || c.titleTemplate, competition: c.competition, addedAt: new Date().toISOString(), status: "new" as DiscoveryStatus, rawClone: c, rawSourceTitle: src.title, rawSourceUrl: input })),
+                    ];
+                    pushDiscoveryItems(allItems);
+                    addDiscoveryLog("success", `Clone Engine: "${src.title || input}" + ${clones.length} clones → tabla`, "clone");
                 } catch (e: any) {
                     addDiscoveryLog("error", `Clone Engine: ${e.message ?? "Error"}`, "clone");
                     toast.error(e.message ?? "Error analizando bestseller");
@@ -15157,7 +15164,7 @@ export function KdpFactoryApp() {
                                                         </button>
                                                         {/* Eliminar */}
                                                         <button
-                                                            onClick={() => removeDiscoveryItem(item.id)}
+                                                            onClick={() => setDeleteDiscoveryId(item.id)}
                                                             className="shrink-0 h-7 w-7 rounded-xl bg-white/[0.02] border border-white/8 text-neutral-600 hover:text-rose-400 hover:border-rose-500/25 transition-all flex items-center justify-center">
                                                             <Trash2 size={9} />
                                                         </button>
@@ -15175,6 +15182,19 @@ export function KdpFactoryApp() {
 
                                 {/* Clone engine rendered hidden — keeps clone-run-internal in DOM */}
                                 <div className="hidden">{renderCloneEngine()}</div>
+
+                                {/* Confirm delete discovery item */}
+                                <ConfirmModal
+                                    open={deleteDiscoveryId !== null}
+                                    onClose={() => setDeleteDiscoveryId(null)}
+                                    onConfirm={() => { if (deleteDiscoveryId) { removeDiscoveryItem(deleteDiscoveryId); setDeleteDiscoveryId(null); } }}
+                                    title="¿Eliminar este elemento?"
+                                    description="Se borrará definitivamente de la tabla. Esta acción no se puede deshacer."
+                                    confirmLabel="Eliminar"
+                                    cancelLabel="Cancelar"
+                                    variant="danger"
+                                    icon={<Trash2 size={22} className="text-red-400" />}
+                                />
                             </div>
                         );
                     })()}

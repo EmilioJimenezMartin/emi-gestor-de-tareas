@@ -34,9 +34,11 @@ const CB_OPENER = "masterful coloring book page, crisp black ink line art on pur
 // Sujeto fiel: va justo después del estilo, y se refuerza que NO se añada contenido extra
 const CB_FIDELITY = "depicting exactly and only the following subject, faithful to the description, intricate detail concentrated on the subject itself";
 
-// Instrucción de manos — va ANTES del subject para máximo peso de atención en FLUX
-// Estrategia: esconder o simplificar, nunca intentar dibujar dedos individuales
-const CB_HANDS = "IMPORTANT: if any human or animal characters are present — draw ALL hands and paws as simple closed-fist shapes or rounded mitten silhouettes with NO individual fingers, OR hide hands entirely behind the body, clothing, objects, or fur — never attempt to draw individual fingers or finger joints";
+// Anatomía correcta de especies — evita que FLUX invente miembros extra o los elimine
+const CB_ANATOMY = "ANATOMY: every creature drawn with its exact standard species limb count — 4 legs for mammals, 8 legs for spiders and scorpions, 6 legs for insects, 2 legs and 2 wings for birds, 4 limbs for reptiles, 2 arms and 2 legs for humans — never add or omit limbs, tails, or wings beyond the species standard";
+
+// Instrucción de manos — SIEMPRE esconder, nunca intentar dibujar dedos individuales
+const CB_HANDS = "HANDS: ALL hands, paws, and claws MUST be fully hidden or obscured — tuck inside clothing, behind the body, under fur, gripping objects that cover finger detail, or placed off-frame — never attempt to draw open hands, spread fingers, individual digits, claws, or finger joints under any circumstances";
 
 // Style modifiers — describen CÓMO dibujar, nunca QUÉ añadir (no inventan escenas)
 const CB_STYLE_MODIFIERS: Record<string, string> = {
@@ -54,7 +56,7 @@ const CB_STYLE_MODIFIERS: Record<string, string> = {
     realistic:    "naturalistic specimen-level precision, anatomically accurate rendering, texture implied through line density",
 };
 
-const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, no individual fingers, no finger joints, no detailed hands, no deformed hands, no extra fingers, no missing fingers";
+const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, no individual fingers, no finger joints, no detailed hands, no deformed hands, no extra fingers, no missing fingers, no extra legs, no missing legs, no extra arms, no extra wings, no extra tails, no floating limbs, no fused body parts, no anatomical mutations, no extra heads, no merged creatures, no duplicate body parts";
 
 // Si el prompt del usuario pide explícitamente algo que NO es página de colorear
 // (color, foto, póster, patrón…), la fórmula CB no debe aplicarse aunque el
@@ -70,8 +72,8 @@ export function buildColoringBookPrompt(particulars: string, style = "generic"):
     const effectiveStyle = /funko/i.test(particulars) ? "funko" : style;
     const modifier = CB_STYLE_MODIFIERS[effectiveStyle];
     return modifier
-        ? `${CB_OPENER}, ${modifier}, ${CB_FIDELITY}: ${particulars}, ${CB_HANDS}, ${CB_EXCLUSIONS}`
-        : `${CB_OPENER}, ${CB_FIDELITY}: ${particulars}, ${CB_HANDS}, ${CB_EXCLUSIONS}`;
+        ? `${CB_OPENER}, ${modifier}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`
+        : `${CB_OPENER}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`;
 }
 
 // ── Poster prompts ────────────────────────────────────────────────────────────

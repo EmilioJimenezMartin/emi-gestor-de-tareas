@@ -1413,7 +1413,7 @@ Estructura exacta:
         try {
             // 1 · AI genera prompt de imagen (escena base, rápido ~3s)
             const imagePrompt = await generateTextWithLLM(
-                `You are an expert at writing image generation prompts for KDP coloring book covers. Write ONE prompt in English (max 20 words). The prompt must describe a coloring book scene — black line art, white background, detailed illustration. Output ONLY the prompt, no explanation, no JSON.`,
+                `You are an expert at writing image generation prompts for KDP coloring book covers. Write ONE prompt in English (max 20 words). The prompt must describe a coloring book scene — black line art, white background, detailed illustration. RULES: max 1-2 creatures per scene; never count limbs or fingers; hide all hands inside clothing or behind objects; describe creatures by posture/action, never by limb count. Output ONLY the prompt, no explanation, no JSON.`,
                 `Niche: ${clone.nicheName}\nKeywords: ${kws}\nAudience: ${clone.audience}`
             );
 
