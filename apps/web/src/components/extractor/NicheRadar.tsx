@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-    TrendingUp, Activity,
+    TrendingUp,
     Loader2, RefreshCw, Target, BarChart3, ShoppingBag,
     Users, DollarSign, Tag, Zap, Search,
     ShoppingCart, BookOpen, Flame,
@@ -12,6 +12,7 @@ import {
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
 import { SectionHeader } from "@/components/ui/section-header";
+import { ActivityConsole } from "@/components/ui/activity-console";
 import { toast } from "sonner";
 import { SearchQueryBuilder, type SearchConfig } from "@/components/search/SearchQueryBuilder";
 import { useSpeech } from "@/hooks/useSpeech";
@@ -238,15 +239,12 @@ export function NicheRadar({
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [generalResult, setGeneralResult] = useState<NicheInsight | null>(null);
-    const [showLogs, setShowLogs] = useState(true);
     const [history, setHistory] = useState<{ url: string; insight: NicheInsight; ts: number }[]>([]);
     const [showHelp, setShowHelp] = useState(false);
     const [launchingAction, setLaunchingAction] = useState<"telegram" | "catalog" | "save" | null>(null);
     const [similarNiches, setSimilarNiches] = useState<Array<{ niche: string; angle: string; audience: string; whyLessCompetition: string; keywordEn: string; _scan?: { score: number; verdict: string } | null; _scanning?: boolean; _saved?: boolean }>>([]);
     const [findingSimilar, setFindingSimilar] = useState(false);
     const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
-    const logsEndRef = useRef<HTMLDivElement>(null);
-    const isFirstLog = useRef(true);
     const activeJobId = useRef<string | null>(null);
     const pendingResultRef = useRef<{ count: number; mode: string } | null>(null);
     const { speak } = useSpeech();
@@ -357,13 +355,6 @@ export function NicheRadar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [apiUrl]);
 
-    useEffect(() => {
-        if (logs.length > 0 && logsEndRef.current) {
-            isFirstLog.current = false;
-            const container = logsEndRef.current.parentElement;
-            if (container) container.scrollTop = container.scrollHeight;
-        }
-    }, [logs]);
 
     const findSimilar = async (insight: NicheInsight) => {
         setFindingSimilar(true);
@@ -477,7 +468,6 @@ export function NicheRadar({
         setIsAnalyzing(true);
         setGeneralResult(null);
         setLogs([]);
-        isFirstLog.current = true;
         try {
             const body: Record<string, string> = { url: urlForBackend, mode, geminiModel, storageKey: effectiveStorageKey };
             if (mode === "general") {
@@ -500,11 +490,6 @@ export function NicheRadar({
             setIsAnalyzing(false);
         }
     };
-
-    const levelColor = (l: string) =>
-        l === "success" ? "text-emerald-400" : l === "error" ? "text-rose-400" : l === "warning" ? "text-amber-400" : "text-neutral-500";
-    const levelPrefix = (l: string) =>
-        l === "success" ? "▶" : l === "error" ? "✕" : l === "warning" ? "▲" : "›";
 
     // Btn gradient per intent
     const intentGradient: Record<Intent, string> = {
@@ -807,49 +792,12 @@ export function NicheRadar({
             </div>
 
             {/* ── Log terminal ── */}
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-neutral-900 border border-white/8 flex items-center justify-center">
-                            <Activity size={12} className="text-neutral-600" />
-                        </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 font-mono">Log</span>
-                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${isAnalyzing ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : logs.length > 0 ? "bg-white/5 text-neutral-600 border border-white/8" : "bg-white/5 text-neutral-700 border border-white/8"}`}>
-                            {isAnalyzing ? "RUNNING" : logs.length > 0 ? `${logs.length} líneas` : "IDLE"}
-                        </span>
-                    </div>
-                    <button onClick={() => setShowLogs(v => !v)} className="text-[9px] text-neutral-600 hover:text-white transition-colors font-black uppercase">
-                        {showLogs ? "Ocultar" : "Mostrar"}
-                    </button>
-                </div>
-                {showLogs && (
-                    <div className="h-[420px] rounded-2xl border border-white/8 bg-[#040404] overflow-hidden flex flex-col">
-                        <div className="h-8 bg-white/[0.015] border-b border-white/5 flex items-center px-3 gap-1.5 shrink-0">
-                            <div className="w-2 h-2 rounded-full bg-rose-500/40" />
-                            <div className="w-2 h-2 rounded-full bg-amber-500/40" />
-                            <div className={`w-2 h-2 rounded-full ${isAnalyzing ? "bg-emerald-500/60 animate-pulse" : "bg-emerald-500/20"}`} />
-                            <span className="text-[8px] font-mono text-neutral-800 ml-1">radar.log · {mode}</span>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-3 font-mono text-[9px] space-y-0.5">
-                            {logs.length === 0 ? (
-                                <div className="flex items-center justify-center h-full text-neutral-800 italic text-[9px]">Esperando análisis...</div>
-                            ) : (
-                                <>
-                                    {logs.map(log => (
-                                        <div key={log.id} className="flex gap-2 leading-relaxed animate-in fade-in duration-150">
-                                            <span className="text-neutral-800 shrink-0 opacity-50">{log.timestamp}</span>
-                                            <span className={`shrink-0 ${levelColor(log.level)}`}>{levelPrefix(log.level)}</span>
-                                            <span className={levelColor(log.level)}>{log.message}</span>
-                                        </div>
-                                    ))}
-                                    {isAnalyzing && <div className="animate-pulse pl-8 text-sky-400/40 text-lg">_</div>}
-                                </>
-                            )}
-                            <div ref={logsEndRef} />
-                        </div>
-                    </div>
-                )}
-            </div>
+            <ActivityConsole
+                logs={logs}
+                isRunning={isAnalyzing}
+                title={`radar.log · ${mode}`}
+                height="h-[420px]"
+            />
 
             {/* ── Empty state ── */}
             {!generalResult && !isAnalyzing && logs.length === 0 && (

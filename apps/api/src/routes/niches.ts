@@ -1077,14 +1077,18 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
                 : { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
 
             // 3. Crear un catálogo por situación — el primero arranca, el resto en cola
+            // When the niche has an approved discovery prompt (same one sent to Telegram),
+            // use it verbatim so catalog images match the approved preview exactly.
             const hasActive = await Catalog.exists({ status: { $in: ["queued", "pending", "running"] } });
             const created: any[] = [];
+            const useApprovedPrompt = !!discoveryPrompt && discoveryPrompt.includes("coloring book page");
             for (let i = 0; i < situations.length; i++) {
                 const s = situations[i];
                 const initialStatus = (i === 0 && !hasActive) ? "pending" : "queued";
                 const catalog = await Catalog.create({
                     name: `${niche.name} — ${s.situation}`,
-                    prompt: s.prompt.trim(),
+                    prompt: useApprovedPrompt ? discoveryPrompt : s.prompt.trim(),
+                    rawPrompt: useApprovedPrompt,
                     productType: niche.productType ?? "coloring-book",
                     creativity: 50,
                     negativePrompt: "",
@@ -1332,14 +1336,26 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
 
         try {
             let pageText = "";
-            for (const url of [amazonUrl, `https://www.amazon.com/dp/${cleanAsin}`]) {
-                const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
-                    headers: { "X-Return-Format": "text", "User-Agent": "Mozilla/5.0" },
-                    signal: AbortSignal.timeout(30_000),
-                });
-                if (jinaRes.ok) {
-                    const text = (await jinaRes.text()).slice(0, 50_000);
-                    if (text.length >= 300) { pageText = text; break; }
+            const jinaKey = process.env.JINA_API_KEY;
+            const urlsToTry = [amazonUrl, `https://www.amazon.com/dp/${cleanAsin}`];
+            const headerVariants = [
+                { "X-Return-Format": "text", ...(jinaKey ? { Authorization: `Bearer ${jinaKey}` } : {}), "Accept-Language": "en-US,en;q=0.9" },
+                { "X-Return-Format": "markdown", "X-No-Cache": "true", ...(jinaKey ? { Authorization: `Bearer ${jinaKey}` } : {}) },
+                { "X-Return-Format": "text", "X-No-Cache": "true" },
+            ];
+            outer: for (const url of urlsToTry) {
+                for (const hdrs of headerVariants) {
+                    try {
+                        const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+                            headers: hdrs as Record<string, string>,
+                            signal: AbortSignal.timeout(35_000),
+                        });
+                        if (jinaRes.ok) {
+                            const text = (await jinaRes.text()).slice(0, 50_000);
+                            if (text.length >= 200) { pageText = text; break outer; }
+                        }
+                    } catch { /* try next variant */ }
+                    await new Promise(r => setTimeout(r, 800));
                 }
             }
             if (!pageText) return reply.status(502).send({ error: "Amazon bloqueó la petición. Inténtalo de nuevo en unos segundos." });
@@ -1417,7 +1433,7 @@ Estructura exacta:
             });
 
             // 4 · Responder al frontend inmediatamente (no esperar 90s de imagen)
-            reply.send({ ok: true, actionId: String(action._id) });
+            reply.send({ ok: true, actionId: String(action._id), prompt: fullPrompt });
 
             // 5 · Generar imagen + enviar a Telegram en background
             setImmediate(async () => {

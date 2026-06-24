@@ -214,60 +214,57 @@ export async function registerViralNicheRoutes(app: FastifyInstance, deps: { io:
             autoApproveAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
         });
 
-        // Mark viral niche as "watched" (pending Telegram decision)
+        // 3 · Generate image + send to Telegram (synchronous — respond only after confirmed delivery)
+        const port = process.env.PORT || 3001;
+        let imageBytes: Buffer | null = null;
+        try {
+            const imgRes = await fetch(`http://localhost:${port}/ai/generate-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(process.env.SERVER_API_KEY ? { Authorization: `Bearer ${process.env.SERVER_API_KEY}` } : {}) },
+                body: JSON.stringify({ prompt: fullPrompt, modelId: aiModel.modelId, provider: aiModel.provider, width: 768, height: 1024 }),
+                signal: AbortSignal.timeout(30_000),
+            });
+            if (imgRes.ok && (imgRes.headers.get("content-type") ?? "").startsWith("image/")) {
+                imageBytes = Buffer.from(await imgRes.arrayBuffer());
+            }
+        } catch { /* fallback to text-only below */ }
+
+        const caption = [
+            `🔥 <b>Viral Radar — Nicho en tendencia</b>`,
+            ``,
+            `📚 <b>${nicheName}</b>`,
+            `⚡️ Velocidad: <b>${viral.velocity}/100</b>`,
+            `🔗 Detectado en: <i>${viral.sources.join(", ")}</i>`,
+            ``,
+            `¿Quieres convertirlo en nicho y lanzar catálogos?`,
+        ].join("\n");
+
+        const rows = [[
+            { text: "✅ Crear nicho", callback_data: `continuar:${String(action._id)}` },
+            { text: "🗑️ Descartar",   callback_data: `descartar:${String(action._id)}` },
+        ]];
+
+        let msgId: number | null = null;
+        if (imageBytes) {
+            msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
+        }
+        if (!msgId) {
+            msgId = await sendTelegramButtons(caption, rows);
+        }
+
+        if (!msgId) {
+            // Telegram send failed — clean up action and let frontend retry
+            await action.deleteOne();
+            return reply.status(502).send({ error: "No se pudo enviar a Telegram — revisa la configuración del bot" });
+        }
+
+        action.messageId = msgId;
+        await action.save();
+
+        // 4 · Mark as watched only after confirmed Telegram delivery
         await viral.updateOne({ status: "watched" });
         io.emit("viral:updated", { id: viral._id.toString(), status: "watched" });
 
-        // 3 · Respond immediately — image generation runs in background
-        reply.send({ ok: true, actionId: String(action._id) });
-
-        // 4 · Generate image + send to Telegram in background
-        setImmediate(async () => {
-            try {
-                const port = process.env.PORT || 3001;
-                let imageBytes: Buffer | null = null;
-                try {
-                    const res = await fetch(`http://localhost:${port}/ai/generate-image`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", ...(process.env.SERVER_API_KEY ? { Authorization: `Bearer ${process.env.SERVER_API_KEY}` } : {}) },
-                        body: JSON.stringify({ prompt: fullPrompt, modelId: aiModel.modelId, provider: aiModel.provider, width: 768, height: 1024 }),
-                        signal: AbortSignal.timeout(90_000),
-                    });
-                    if (res.ok && (res.headers.get("content-type") ?? "").startsWith("image/")) {
-                        imageBytes = Buffer.from(await res.arrayBuffer());
-                    }
-                } catch { /* fallback to text */ }
-
-                const caption = [
-                    `🔥 <b>Viral Radar — Nicho en tendencia</b>`,
-                    ``,
-                    `📚 <b>${nicheName}</b>`,
-                    `⚡️ Velocidad: <b>${viral.velocity}/100</b>`,
-                    `🔗 Detectado en: <i>${viral.sources.join(", ")}</i>`,
-                    ``,
-                    `¿Quieres convertirlo en nicho y lanzar catálogos?`,
-                ].join("\n");
-
-                const rows = [[
-                    { text: "✅ Crear nicho", callback_data: `continuar:${String(action._id)}` },
-                    { text: "🗑️ Descartar",   callback_data: `descartar:${String(action._id)}` },
-                ]];
-
-                let msgId: number | null = null;
-                if (imageBytes) {
-                    msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
-                }
-                if (!msgId) {
-                    msgId = await sendTelegramButtons(caption, rows);
-                }
-
-                if (msgId) { action.messageId = msgId; await action.save(); }
-
-                // If approved via Telegram later, mark viral niche as converted
-                // (handled in telegram-polling.ts via the standard clone-decision flow)
-            } catch (e: any) {
-                console.error(`[viral-telegram bg] Error para "${nicheName}":`, e.message);
-            }
-        });
+        return reply.send({ ok: true, actionId: String(action._id) });
     });
 }

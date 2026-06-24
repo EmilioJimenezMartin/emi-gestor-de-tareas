@@ -129,6 +129,12 @@ async function handleNicheDiscovery(
         ).lean();
 
         _io?.emit("niches:updated");
+        _io?.emit("telegram:approved", {
+            nicheName: tAction.nicheName,
+            prompt: (tAction as any).imagePrompt ?? "",
+            catalogs: cfg.catalogsPerNiche,
+            images: cfg.imagesPerCatalog,
+        });
         _io?.emit("telegram:notification", {
             message: `🚀 Pipeline lanzado desde Telegram · ${tAction.nicheName}`,
             type: "success",
@@ -693,6 +699,12 @@ async function processUpdate(update: any): Promise<void> {
                     }
 
                     _io?.emit("niches:updated");
+                    _io?.emit("telegram:approved", {
+                        nicheName: tAction.nicheName,
+                        prompt: tAction.imagePrompt ?? "",
+                        catalogs: cfg.catalogsPerNiche,
+                        images: cfg.imagesPerCatalog,
+                    });
                     await sendTelegram(
                         `🚀 <b>Pipeline lanzado — Clone Engine</b>\n` +
                         `📚 <b>${tAction.nicheName}</b>\n\n` +

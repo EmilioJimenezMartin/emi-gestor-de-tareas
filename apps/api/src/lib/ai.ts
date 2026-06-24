@@ -29,11 +29,13 @@ async function getConfig(): Promise<{ provider: LLMProvider; model: string; goog
     return { provider, model, googleKey, hfKey, groqKey, openrouterKey };
 }
 
-async function groqChat(groqKey: string, model: string, messages: Array<{ role: string; content: string }>, maxTokens = 1024, temperature = 0.4): Promise<string> {
+async function groqChat(groqKey: string, model: string, messages: Array<{ role: string; content: string }>, maxTokens = 1024, temperature = 0.4, jsonMode = false): Promise<string> {
+    const body: Record<string, unknown> = { model: model || "llama-3.3-70b-versatile", messages, max_tokens: maxTokens, temperature };
+    if (jsonMode) body.response_format = { type: "json_object" };
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-        body: JSON.stringify({ model: model || "llama-3.3-70b-versatile", messages, max_tokens: maxTokens, temperature }),
+        body: JSON.stringify(body),
     });
     if (!res.ok) {
         const err = await res.text();
@@ -488,24 +490,54 @@ export async function analyzePageForRadar(
     const userMsg = `Contenido de la página:\n\n${truncated}`;
 
     const parseJson = (text: string): any => {
-        const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+        // Strip ALL markdown fences (not just at edges — some models wrap mid-text)
+        const clean = text.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "").trim();
 
-        // 1. Try direct parse of the full text
+        // Helper: strip trailing incomplete tokens and close open brackets
+        const repair = (fragment: string): string => {
+            let s = fragment;
+            // Remove unclosed string at end (e.g. "key": "partial...)
+            if ((s.match(/"/g) ?? []).length % 2 !== 0) {
+                const lastQuote = s.lastIndexOf('"');
+                if (lastQuote !== -1) s = s.slice(0, lastQuote);
+            }
+            // Remove trailing incomplete key: value pairs
+            s = s
+                .replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/, "") // cut ,  "key": "partial_value
+                .replace(/,\s*"[^"]*"\s*:\s*[^,{[\]}"]*$/, "") // cut ,  "key": partial_number_or_bool
+                .replace(/,\s*"[^"]*"\s*:\s*$/, "") // cut ,  "key":
+                .replace(/,\s*"[^"]*"\s*$/, "") // cut ,  "key"
+                .replace(/,\s*$/, ""); // trailing comma
+            // Close unclosed brackets
+            const closers: string[] = [];
+            let inStr = false, esc = false;
+            for (const ch of s) {
+                if (esc) { esc = false; continue; }
+                if (ch === "\\") { esc = true; continue; }
+                if (ch === '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (ch === "{") closers.push("}");
+                else if (ch === "[") closers.push("]");
+                else if (ch === "}" || ch === "]") closers.pop();
+            }
+            return s + closers.reverse().join("");
+        };
+
+        // 1. Direct parse
         try { return JSON.parse(clean); } catch { /* continue */ }
 
-        // 2. Extract outermost { ... } and try again
+        // 2. Extract outermost { ... }
         const start = clean.indexOf("{");
         const end = clean.lastIndexOf("}");
-        if (start !== -1 && end !== -1 && end > start) {
+        if (start !== -1 && end > start) {
             try { return JSON.parse(clean.slice(start, end + 1)); } catch { /* continue */ }
         }
 
-        // 3. JSON was truncated mid-array — recover complete objects from nichos_detectados
+        // 3. Extract complete entries from nichos_detectados array + repair last partial entry
         const arrStart = clean.indexOf('"nichos_detectados"');
         if (arrStart !== -1) {
             const bracketOpen = clean.indexOf("[", arrStart);
             if (bracketOpen !== -1) {
-                // Collect complete {...} entries from the array
                 const entries: any[] = [];
                 let depth = 0, inStr = false, escape = false, objStart = -1;
                 for (let i = bracketOpen + 1; i < clean.length; i++) {
@@ -518,13 +550,22 @@ export async function analyzePageForRadar(
                     else if (ch === "}") {
                         depth--;
                         if (depth === 0 && objStart !== -1) {
-                            try { entries.push(JSON.parse(clean.slice(objStart, i + 1))); } catch { /* skip malformed */ }
+                            try { entries.push(JSON.parse(clean.slice(objStart, i + 1))); } catch { /* skip */ }
                             objStart = -1;
                         }
                     } else if (ch === "]" && depth === 0) break;
                 }
+                // Repair & rescue last partial entry (when truncation cut mid-entry)
+                if (objStart !== -1) {
+                    try { entries.push(JSON.parse(repair(clean.slice(objStart)))); } catch { /* skip */ }
+                }
                 if (entries.length > 0) return { nichos_detectados: entries };
             }
+        }
+
+        // 4. Repair top-level truncated JSON
+        if (start !== -1) {
+            try { return JSON.parse(repair(clean.slice(start))); } catch { /* fall through */ }
         }
 
         throw new Error(`La respuesta no contiene JSON válido: ${clean.slice(0, 200)}`);
@@ -561,7 +602,7 @@ export async function analyzePageForRadar(
             const raw = await groqChat(config.groqKey, modelFor("groq", "llama-3.3-70b-versatile"), [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userMsg },
-            ], 4096, 0.1);
+            ], 4096, 0.1, true);
             return parseJson(raw);
         }
         if (provider === "huggingface" && config.hfKey) {

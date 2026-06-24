@@ -115,10 +115,11 @@ import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
 import { KdpRingChart } from "@/components/ui/kdp-ring-chart";
 import { SectionHeader } from "@/components/ui/section-header";
 import { KdpTabBar, type KdpTabDef } from "@/components/ui/kdp-tab-bar";
+import { ActivityConsole } from "@/components/ui/activity-console";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
-import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
+import { RadarResultsTable, type EtsyListing } from "@/components/extractor/RadarResultsTable";
 import { RadarInsightsPanel } from "@/components/extractor/RadarInsightsPanel";
 import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
 import { NicheFilterBar, type NicheFilterStatus } from "@/components/tasks/apps/shared/niche-filter-bar";
@@ -631,7 +632,7 @@ export function KdpFactoryApp() {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
         return (saved === "niches" || saved === "intelligence" || saved === "calendar") ? saved as "niches" | "intelligence" | "calendar" : "niches";
     });
-    const [intelliMode, setIntelliMode] = useState<"scraping" | "clone" | "auto" | "viral" | "dna">("scraping");
+    const [intelliMode, setIntelliMode] = useState<"detector" | "insights" | "dna">("detector");
 
     // ── Clone Engine state ───────────────────────────────────────────────────
     type CloneResult = { nicheName: string; title: string; titleTemplate?: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: "low" | "medium" | "high" };
@@ -695,11 +696,159 @@ export function KdpFactoryApp() {
     const [dnaData, setDnaData] = useState<{ theme: DNAPart[]; specs: DNAPart[]; details: DNAPart[]; particulars: DNAPart[] } | null>(null);
     const [dnaLoading, setDnaLoading] = useState(false);
 
+    // ── Unified Discovery Hub state ──────────────────────────────────────────
+    type DiscoverySource = "radar" | "clone" | "autoclone" | "viral";
+    type DiscoveryStatus = "new" | "sent" | "saved" | "dismissed";
+    interface DiscoveryItem {
+        id: string;
+        source: DiscoverySource;
+        name: string;
+        title?: string;
+        competition?: string;
+        score?: number;
+        addedAt: string;
+        status: DiscoveryStatus;
+        // Clone Engine
+        rawClone?: CloneResult;
+        rawSourceTitle?: string;
+        rawSourceUrl?: string;
+        // Viral Radar
+        viralId?: string;
+        viralVelocity?: number;
+        viralSources?: string[];
+        // AutoClone
+        autoCloneId?: string;
+        autoCloneStatus?: string;
+        // Radar / Scraping
+        rawRadarRow?: EtsyListing;
+    }
+    type DiscoveryLog = { id: string; ts: string; level: "info" | "success" | "error" | "warn"; msg: string; src: DiscoverySource | "system" };
+    const [discoveryItems, setDiscoveryItems] = useState<DiscoveryItem[]>(() => {
+        try { return JSON.parse(typeof window !== "undefined" ? (localStorage.getItem("kdp-discovery-items") ?? "[]") : "[]"); } catch { return []; }
+    });
+    const [discoveryLog, setDiscoveryLog] = useState<DiscoveryLog[]>([]);
+    const [discoverySourceFilter, setDiscoverySourceFilter] = useState<DiscoverySource | "all">("all");
+    const [discoveryStatusFilter, setDiscoveryStatusFilter] = useState<DiscoveryStatus | "all">("all");
+    const [discoverySendingId, setDiscoverySendingId] = useState<string | null>(null);
+    const [insightCreating, setInsightCreating] = useState(false);
+    const [radarScanning, setRadarScanning] = useState(false);
+
+    const addDiscoveryLog = (level: DiscoveryLog["level"], msg: string, src: DiscoveryLog["src"]) => {
+        setDiscoveryLog(prev => [{ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, ts: new Date().toISOString(), level, msg, src }, ...prev].slice(0, 300));
+    };
+
+    const pushDiscoveryItems = (newItems: DiscoveryItem[]) => {
+        setDiscoveryItems(prev => {
+            const existingIds = new Set(prev.map(i => i.id));
+            const toAdd = newItems.filter(i => !existingIds.has(i.id));
+            const updated = prev.map(existing => {
+                const incoming = newItems.find(n => n.id === existing.id);
+                return incoming ? { ...existing, ...incoming } : existing;
+            });
+            const next = [...toAdd, ...updated].slice(0, 500);
+            try { localStorage.setItem("kdp-discovery-items", JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const updateDiscoveryItemStatus = (id: string, status: DiscoveryStatus) => {
+        setDiscoveryItems(prev => {
+            const next = prev.map(i => i.id === id ? { ...i, status } : i);
+            try { localStorage.setItem("kdp-discovery-items", JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const removeDiscoveryItem = (id: string) => {
+        setDiscoveryItems(prev => {
+            const next = prev.filter(i => i.id !== id);
+            try { localStorage.setItem("kdp-discovery-items", JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const sendDiscoveryToTelegram = async (item: DiscoveryItem) => {
+        if (discoverySendingId) return;
+        setDiscoverySendingId(item.id);
+        addDiscoveryLog("info", `📤 Enviando a Telegram: ${item.name}`, item.source);
+        try {
+            // Build a CloneResult for every source — all go through clone-telegram (image generation)
+            let clone: CloneResult;
+            let sourceTitle: string | undefined;
+            let sourceUrl: string | undefined;
+
+            if (item.rawClone) {
+                // Clone engine — use rawClone directly
+                clone = item.rawClone;
+                sourceTitle = item.rawSourceTitle;
+                sourceUrl = item.rawSourceUrl;
+            } else if (item.source === "radar" && item.rawRadarRow) {
+                const r = item.rawRadarRow;
+                clone = {
+                    nicheName: item.name,
+                    title: r.titulo_producto,
+                    titleTemplate: r.titulo_producto,
+                    audience: "adults",
+                    coverBrief: `Coloring book cover for ${item.name}`,
+                    keywords: item.name.split(/[\s,]+/).filter(Boolean).slice(0, 6),
+                    whyItWorks: `Detectado en ${r.fuente ?? "Radar"}: ${r.total_reseñas} reseñas, ${r.personas_carrito} en carrito${r.bestseller ? ", Bestseller" : ""}`,
+                    competition: "medium" as const,
+                };
+                sourceTitle = r.titulo_producto;
+                sourceUrl = r.url_producto;
+            } else {
+                // AutoClone, Viral, or any other source — build synthetic clone from name
+                const sources = (item.viralSources ?? []).join(", ");
+                clone = {
+                    nicheName: item.name,
+                    title: item.title ?? `${item.name} Coloring Book`,
+                    titleTemplate: item.title ?? `${item.name} Coloring Book`,
+                    audience: "adults",
+                    coverBrief: `Coloring book cover for ${item.name}`,
+                    keywords: item.name.split(/[\s,]+/).filter(Boolean).slice(0, 6),
+                    whyItWorks: sources ? `Tendencia detectada en: ${sources}` : `Nicho ${item.source}: ${item.name}`,
+                    competition: "medium" as const,
+                };
+                sourceTitle = item.source === "viral" ? `Viral Radar — ${sources || item.name}` : item.source === "autoclone" ? `AutoClone — ${item.title ?? item.name}` : item.name;
+            }
+
+            const res = await fetch(`${API_BASE_URL}/niches/clone-telegram`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ clone, sourceTitle, sourceUrl }),
+            });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Error Telegram"); }
+            const d = await res.json();
+            updateDiscoveryItemStatus(item.id, "sent");
+            addDiscoveryLog("success", `✅ Telegram ✓ ${item.name}`, item.source);
+            if (d.prompt) addDiscoveryLog("info", `📎 Prompt: ${d.prompt}`, item.source);
+            toast.success("Enviado a Telegram — apruébalo desde allí");
+        } catch (e: any) {
+            addDiscoveryLog("error", `Telegram error: ${e.message}`, item.source);
+            toast.error(e.message ?? "Error al enviar a Telegram");
+        } finally {
+            setDiscoverySendingId(null);
+        }
+    };
+
     const fetchAutoCloneQueue = async () => {
         setAutoCloneLoading(true);
         try {
             const res = await fetch(`${API_BASE_URL}/auto-clone/queue`);
-            if (res.ok) setAutoCloneItems(await res.json());
+            if (res.ok) {
+                const items: AutoCloneItem[] = await res.json();
+                setAutoCloneItems(items);
+                pushDiscoveryItems(items.map(item => ({
+                    id: `autoclone-${item._id}`,
+                    source: "autoclone" as DiscoverySource,
+                    name: item.topic,
+                    title: item.foundTitle,
+                    addedAt: item.createdAt,
+                    status: (item.status === "done" ? "saved" : item.status === "rejected" ? "dismissed" : "new") as DiscoveryStatus,
+                    autoCloneId: item._id,
+                    autoCloneStatus: item.status,
+                })));
+            }
         } catch {} finally { setAutoCloneLoading(false); }
     };
 
@@ -968,21 +1117,60 @@ export function KdpFactoryApp() {
     const fetchViralNiches = async () => {
         const res = await fetch(`${API_BASE_URL}/viral-niches`).catch(() => null);
         if (!res?.ok) return;
-        const data = await res.json();
-        setViralNiches(data ?? []);
+        const data: ViralNicheItem[] = await res.json() ?? [];
+        setViralNiches(data);
         setViralLoaded(true);
+        // Sync to unified discovery
+        pushDiscoveryItems(data.map(v => ({
+            id: `viral-${v._id}`,
+            source: "viral" as DiscoverySource,
+            name: v.termEs || v.term,
+            title: v.term,
+            score: v.velocity,
+            addedAt: v.detectedAt,
+            status: (v.status === "watched" ? "sent" : v.status === "converted" ? "saved" : v.status === "dismissed" ? "dismissed" : "new") as DiscoveryStatus,
+            viralId: v._id,
+            viralVelocity: v.velocity,
+            viralSources: v.sources,
+        })));
     };
 
     const runViralScan = async () => {
         setViralScanning(true);
+        addDiscoveryLog("info", "Viral Radar: escaneando Amazon, Pinterest, Google Trends…", "viral");
         try {
             const res = await fetch(`${API_BASE_URL}/viral-niches/scan`, { method: "POST" });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
+            addDiscoveryLog("success", `Viral Radar: ${data.count} nichos detectados`, "viral");
             toast.success(`${data.count} nichos virales detectados`);
             await fetchViralNiches();
-        } catch (e: any) { toast.error(e.message ?? "Error en viral scan"); }
+        } catch (e: any) {
+            addDiscoveryLog("error", `Viral Radar: ${e.message ?? "Error"}`, "viral");
+            toast.error(e.message ?? "Error en viral scan");
+        }
         finally { setViralScanning(false); }
+    };
+
+    const runRadarAutoScan = async () => {
+        if (radarScanning) return;
+        setRadarScanning(true);
+        addDiscoveryLog("info", "Radar: iniciando búsqueda automática inteligente (gap-finder)…", "radar");
+        try {
+            const res = await fetch(`${API_BASE_URL}/radar/analyze`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: "gap-finder", storageKey: "RADAR_AUTO_DISCOVERY" }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error en Radar");
+            addDiscoveryLog("info", `Radar: job encolado (${data.jobId}) — los resultados llegarán vía socket`, "radar");
+            toast.success("Radar en marcha — resultados en la consola");
+        } catch (e: any) {
+            addDiscoveryLog("error", `Radar: ${e.message ?? "Error"}`, "radar");
+            toast.error(e.message ?? "Error en Radar");
+            setRadarScanning(false);
+        }
     };
 
     const sendViralToTelegram = async (id: string) => {
@@ -4428,12 +4616,74 @@ export function KdpFactoryApp() {
             if (clean) speak(clean.slice(0, 200));
         });
 
+        // Feed radar results into unified discovery table
+        (socket as any).on("radar:result", (data: any) => {
+            const rows: EtsyListing[] = data?.data?.nichos_detectados ?? [];
+            if (!rows.length) return;
+            const ts = Date.now();
+            const radarScore = (r: EtsyListing) =>
+                (r.bestseller ? 3 : 0) +
+                (r.personas_carrito >= 20 ? 3 : r.personas_carrito >= 10 ? 2 : r.personas_carrito > 0 ? 1 : 0) +
+                (r.total_reseñas >= 1000 ? 3 : r.total_reseñas >= 100 ? 2 : r.total_reseñas > 0 ? 1 : 0);
+            pushDiscoveryItems(rows.map((r, i) => ({
+                id: `radar-${ts}-${i}-${r.titulo_producto.slice(0, 20).replace(/\s+/g, "-")}`,
+                source: "radar" as DiscoverySource,
+                name: r.sub_nicho_estimado || r.titulo_producto.slice(0, 60),
+                title: r.titulo_producto,
+                score: Math.round((radarScore(r) / 9) * 100),
+                addedAt: r.fecha_detectado ?? new Date().toISOString(),
+                status: "new" as DiscoveryStatus,
+                rawRadarRow: r,
+            })));
+            addDiscoveryLog("success", `Radar: ${rows.length} productos → tabla unificada`, "radar");
+        });
+
+        // Feed radar logs into unified console
+        (socket as any).on("radar:log", (data: any) => {
+            const lvl = data.level;
+            addDiscoveryLog(
+                (lvl === "success" ? "success" : lvl === "error" ? "error" : lvl === "warning" ? "warn" : "info") as "info" | "success" | "error" | "warn",
+                String(data.message ?? ""),
+                "radar"
+            );
+        });
+        (socket as any).on("radar:done", () => { addDiscoveryLog("success", "Radar: análisis completado", "radar"); setRadarScanning(false); });
+        (socket as any).on("radar:error", (data: any) => { addDiscoveryLog("error", `Radar: ${String(data?.message ?? "Error")}`, "radar"); setRadarScanning(false); });
+
+        (socket as any).on("telegram:approved", (data: any) => {
+            addDiscoveryLog("success", `✅ Telegram aprobado: ${data.nicheName ?? "nicho"} — ${data.catalogs ?? "?"} catálogos × ${data.images ?? "?"} imgs`, "system");
+            if (data.prompt) {
+                addDiscoveryLog("info", `📎 Prompt: ${String(data.prompt)}`, "system");
+            }
+        });
+
         socket.on("autoclone:new", (data: { item: AutoCloneItem }) => {
             setAutoCloneItems(prev => [data.item, ...prev.filter(i => i._id !== data.item._id)]);
+            pushDiscoveryItems([{
+                id: `autoclone-${data.item._id}`,
+                source: "autoclone" as DiscoverySource,
+                name: data.item.topic,
+                title: data.item.foundTitle,
+                addedAt: data.item.createdAt,
+                status: "new" as DiscoveryStatus,
+                autoCloneId: data.item._id,
+                autoCloneStatus: data.item.status,
+            }]);
+            addDiscoveryLog("info", `AutoClone: candidato detectado — ${data.item.topic}`, "autoclone");
             toast.info(`AutoClone: nuevo candidato — ${data.item.topic}`);
         });
         socket.on("autoclone:updated", (data: { id: string; status: AutoCloneStatus; clones?: any[] }) => {
             setAutoCloneItems(prev => prev.map(i => i._id === data.id ? { ...i, status: data.status, ...(data.clones ? { clones: data.clones } : {}) } : i));
+            // Sync status to unified discovery table
+            setDiscoveryItems(prev => {
+                const next = prev.map(i => i.autoCloneId === data.id
+                    ? { ...i, autoCloneStatus: data.status, status: (data.status === "done" ? "saved" : data.status === "rejected" ? "dismissed" : "new") as DiscoveryStatus }
+                    : i);
+                try { localStorage.setItem("kdp-discovery-items", JSON.stringify(next)); } catch {}
+                return next;
+            });
+            const statusLabel = { pending_approval: "pendiente", approved: "aprobado", cloning: "clonando…", done: "✓ listo", rejected: "descartado" }[data.status] ?? data.status;
+            addDiscoveryLog(data.status === "done" ? "success" : data.status === "rejected" ? "warn" : "info", `AutoClone: ${data.id.slice(-6)} → ${statusLabel}`, "autoclone");
         });
         socket.on("autoclone:deleted", (data: { id: string }) => {
             setAutoCloneItems(prev => prev.filter(i => i._id !== data.id));
@@ -4596,7 +4846,8 @@ export function KdpFactoryApp() {
     }, [iaCatalogs]);
 
     useEffect(() => {
-        if (intelliMode === "viral" && !viralLoaded) void fetchViralNiches();
+        if ((intelliMode === "detector" || intelliMode === "insights") && !viralLoaded) void fetchViralNiches();
+        if (intelliMode === "detector" && autoCloneItems.length === 0) void fetchAutoCloneQueue();
         if (intelliMode === "dna" && !dnaData && !dnaLoading) void fetchDNA();
     }, [intelliMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -12440,7 +12691,23 @@ export function KdpFactoryApp() {
                         try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
                         return next;
                     });
+                    // Push to unified discovery table
+                    const ts = Date.now();
+                    pushDiscoveryItems(clones.map((c, i) => ({
+                        id: `clone-${ts}-${i}`,
+                        source: "clone" as DiscoverySource,
+                        name: c.nicheName,
+                        title: c.title || c.titleTemplate,
+                        competition: c.competition,
+                        addedAt: new Date().toISOString(),
+                        status: "new" as DiscoveryStatus,
+                        rawClone: c,
+                        rawSourceTitle: src.title,
+                        rawSourceUrl: input,
+                    })));
+                    addDiscoveryLog("success", `Clone Engine: ${clones.length} nichos ← "${src.title || input}"`, "clone");
                 } catch (e: any) {
+                    addDiscoveryLog("error", `Clone Engine: ${e.message ?? "Error"}`, "clone");
                     toast.error(e.message ?? "Error analizando bestseller");
                 } finally {
                     setIsCloning(false);
@@ -12588,7 +12855,7 @@ export function KdpFactoryApp() {
                                     <input value={cloneInput} onChange={e => setCloneInput(e.target.value)} onKeyDown={e => e.key === "Enter" && void runClone()}
                                         placeholder="https://www.amazon.es/…/dp/B0XXXXXXXX o solo el ASIN"
                                         className="flex-1 h-11 bg-white/[0.04] border border-white/10 rounded-2xl px-4 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-rose-500/40 transition-all font-mono" />
-                                    <button onClick={() => void runClone()} disabled={isCloning || !cloneInput.trim()}
+                                    <button id="clone-run-internal" onClick={() => void runClone()} disabled={isCloning || !cloneInput.trim()}
                                         className="h-11 px-5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-black text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center gap-2 shrink-0">
                                         {isCloning ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
                                         {isCloning ? "Analizando..." : "Analizar"}
@@ -14685,7 +14952,7 @@ export function KdpFactoryApp() {
             {/* ══ INTELLIGENCE HUB ══ */}
             {studioSubTab === "intelligence" && (
                 <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Header */}
+                    {/* Header + 3-tab switcher */}
                     <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                         <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-purple-400/40 to-transparent" />
                         <div className="p-6 space-y-5">
@@ -14693,22 +14960,19 @@ export function KdpFactoryApp() {
                                 <SectionHeader
                                     icon={<Zap size={20} />}
                                     title={<><span className="text-white">Intelligence </span><span className="bg-gradient-to-r from-violet-300 to-purple-400 bg-clip-text text-transparent">Hub</span></>}
-                                    subtitle="Descubre oportunidades de mercado · Clona bestsellers · Automatiza con IA — todo desde un único panel"
+                                    subtitle="Detecta nichos · Clona bestsellers · Analiza tendencias — todo en un único panel unificado"
                                     color="violet"
                                     size="lg"
                                 />
                             </div>
-                            {/* Mode switcher */}
-                            <div className="flex gap-2 flex-wrap">
+                            <div className="flex gap-2">
                                 {([
-                                    { id: "scraping" as const, label: "Radar / Scraping", icon: <Search size={11} />,     activeCls: "bg-amber-500/15 border-amber-500/30 text-amber-300"   },
-                                    { id: "clone"    as const, label: "Clone Engine",     icon: <Copy size={11} />,        activeCls: "bg-rose-500/15 border-rose-500/30 text-rose-300"      },
-                                    { id: "auto"     as const, label: "AutoClone IA",     icon: <Bot size={11} />,         activeCls: "bg-sky-500/15 border-sky-500/30 text-sky-300"         },
-                                    { id: "viral"    as const, label: "Viral Radar",      icon: <TrendingUp size={11} />,  activeCls: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" },
-                                    { id: "dna"      as const, label: "Prompt DNA",       icon: <Dna size={11} />,         activeCls: "bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300" },
+                                    { id: "detector" as const, label: "Detector",    icon: <Search size={11} />,     activeCls: "bg-violet-500/15 border-violet-500/30 text-violet-300"  },
+                                    { id: "insights" as const, label: "Insights",    icon: <Sparkles size={11} />,   activeCls: "bg-amber-500/15 border-amber-500/30 text-amber-300"    },
+                                    { id: "dna"      as const, label: "Prompt DNA",  icon: <Dna size={11} />,        activeCls: "bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300" },
                                 ]).map(m => (
                                     <button key={m.id} onClick={() => setIntelliMode(m.id)}
-                                        className={`h-9 px-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all border ${intelliMode === m.id ? m.activeCls : "bg-white/[0.03] border-white/8 text-neutral-500 hover:border-white/15 hover:text-neutral-300"}`}>
+                                        className={`h-9 px-5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all border ${intelliMode === m.id ? m.activeCls : "bg-white/[0.03] border-white/8 text-neutral-500 hover:border-white/15 hover:text-neutral-300"}`}>
                                         {m.icon}{m.label}
                                     </button>
                                 ))}
@@ -14716,325 +14980,362 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
 
-                    {/* Scraping mode */}
-                    {intelliMode === "scraping" && (
-                        <div className="space-y-5">
-                            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                                <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
-                                <div className="p-6">
-                                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} onStorageKeyChange={setRadarStorageKey} />
-                                    <RadarResultsTable
-                                        apiUrl={API_BASE_URL}
-                                        storageKey="ALL"
-                                        niches={niches}
-                                        onNicheCreated={() => void fetchNiches()}
-                                        pipelineAction={{
-                                            label: "🚀 Lanzar",
-                                            colorScheme: "amber",
-                                            isCreated: (_row) => false,
-                                            onCreate: async (row) => { await launchPipelineFromRow(row); },
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                                <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-indigo-400/20 to-transparent" />
-                                <div className="p-6 space-y-4">
-                                    <SectionHeader icon={<Sparkles size={15} />} title="Radar Insights" subtitle="Análisis IA del historial de productos detectados" color="violet" size="sm" />
-                                    <RadarInsightsPanel apiUrl={API_BASE_URL} />
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    {/* ── DETECTOR tab ── */}
+                    {intelliMode === "detector" && (() => {
+                        const srcCfg: Record<DiscoverySource, { label: string; color: string; dot: string; border: string; activeBg: string }> = {
+                            clone:     { label: "Clone",     color: "text-rose-400",    dot: "bg-rose-500",    border: "border-rose-500/30",    activeBg: "bg-rose-500/15"    },
+                            autoclone: { label: "AutoClone", color: "text-sky-400",     dot: "bg-sky-500",     border: "border-sky-500/30",     activeBg: "bg-sky-500/15"     },
+                            viral:     { label: "Viral",     color: "text-emerald-400", dot: "bg-emerald-500", border: "border-emerald-500/30", activeBg: "bg-emerald-500/15" },
+                            radar:     { label: "Radar",     color: "text-amber-400",   dot: "bg-amber-500",   border: "border-amber-500/30",   activeBg: "bg-amber-500/15"   },
+                        };
+                        const statusCfg: Record<DiscoveryStatus, { label: string; cls: string }> = {
+                            new:       { label: "Nuevo",      cls: "text-white bg-white/8 border-white/15"              },
+                            sent:      { label: "✓ Telegram", cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+                            saved:     { label: "Guardado",   cls: "text-violet-400 bg-violet-500/10 border-violet-500/20"  },
+                            dismissed: { label: "Descartado", cls: "text-neutral-600 bg-neutral-500/8 border-neutral-500/15" },
+                        };
+                        const filtered = discoveryItems.filter(i =>
+                            (discoverySourceFilter === "all" || i.source === discoverySourceFilter) &&
+                            (discoveryStatusFilter === "all" || i.status === discoveryStatusFilter)
+                        );
 
-                    {/* Clone mode */}
-                    {intelliMode === "clone" && renderCloneEngine()}
+                        const compColor = (c?: string) => c === "low" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : c === "medium" ? "text-amber-400 bg-amber-500/10 border-amber-500/20" : c === "high" ? "text-rose-400 bg-rose-500/10 border-rose-500/20" : "text-neutral-500 bg-neutral-500/8 border-neutral-500/15";
+                        const compLabel = (c?: string) => c === "low" ? "Baja" : c === "medium" ? "Media" : c === "high" ? "Alta" : "?";
 
-                    {/* Auto mode */}
-                    {intelliMode === "auto" && (
-                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                            <div className="h-px w-full bg-gradient-to-r from-sky-500/60 via-cyan-400/20 to-transparent" />
-                            <div className="p-6 space-y-5">
-                                <SectionHeader icon={<Bot size={20} />}
-                                    title={<><span className="text-white">AutoClone </span><span className="bg-gradient-to-r from-sky-300 to-cyan-400 bg-clip-text text-transparent">IA</span></>}
-                                    subtitle="La IA detecta nichos sin cubrir en tu catálogo y busca bestsellers automáticamente para clonar"
-                                    color="sky" size="lg" />
-                                <div className="flex items-center gap-3 p-4 rounded-2xl bg-sky-500/[0.05] border border-sky-500/15">
-                                    <Bot size={16} className="text-sky-400 shrink-0" />
-                                    <p className="text-sm text-neutral-400 flex-1">AutoClone analiza tu catálogo actual y descubre los {autoCloneCount} nichos con mayor oportunidad no cubierta</p>
-                                    <input type="number" min={1} max={10} value={autoCloneCount}
-                                        onChange={e => setAutoCloneCount(Math.min(10, Math.max(1, Number(e.target.value))))}
-                                        className="w-12 h-9 bg-white/[0.03] border border-white/10 rounded-xl text-center text-sm text-white focus:outline-none focus:border-sky-500/40 transition-all" />
-                                    <button onClick={discoverAutoClone} disabled={autoCloneDiscovering}
-                                        className="h-9 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 shrink-0">
-                                        {autoCloneDiscovering ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                        {autoCloneDiscovering ? "Descubriendo..." : "Descubrir"}
-                                    </button>
-                                </div>
-                                {autoCloneItems.length === 0 && !autoCloneDiscovering && (
-                                    <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-3">
-                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-sky-500/8 border border-sky-500/15">
-                                            <Bot size={20} className="text-sky-400/30" />
+                        return (
+                            <div className="space-y-4">
+                                {/* Source triggers bar */}
+                                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-purple-400/20 to-transparent" />
+                                    <div className="p-4 space-y-3">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fuentes activas</p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                                            {/* Clone Engine trigger */}
+                                            <div className="flex items-center gap-2 p-3 rounded-2xl bg-rose-500/[0.04] border border-rose-500/15">
+                                                <Copy size={12} className="text-rose-400 shrink-0" />
+                                                <input value={cloneInput} onChange={e => setCloneInput(e.target.value)}
+                                                    onKeyDown={e => { if (e.key === "Enter") { (document.getElementById("clone-run-btn") as HTMLButtonElement | null)?.click(); } }}
+                                                    placeholder="ASIN o URL bestseller"
+                                                    className="flex-1 min-w-0 bg-transparent text-[11px] text-white placeholder:text-neutral-700 focus:outline-none" />
+                                                <button id="clone-run-btn"
+                                                    onClick={() => { setTimeout(() => (document.getElementById("clone-run-internal") as HTMLButtonElement | null)?.click(), 50); }}
+                                                    disabled={!cloneInput.trim() || isCloning}
+                                                    className="h-6 px-2.5 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[9px] font-black uppercase tracking-widest hover:bg-rose-500/30 transition-all disabled:opacity-40 flex items-center gap-1 shrink-0">
+                                                    {isCloning ? <Loader2 size={8} className="animate-spin" /> : <Copy size={8} />} Clonar
+                                                </button>
+                                            </div>
+                                            {/* AutoClone trigger */}
+                                            <div className="flex items-center gap-2 p-3 rounded-2xl bg-sky-500/[0.04] border border-sky-500/15">
+                                                <Bot size={12} className="text-sky-400 shrink-0" />
+                                                <span className="flex-1 text-[11px] text-neutral-400">AutoClone · {autoCloneCount} nichos</span>
+                                                <input type="number" min={1} max={10} value={autoCloneCount}
+                                                    onChange={e => setAutoCloneCount(Math.min(10, Math.max(1, Number(e.target.value))))}
+                                                    className="w-9 h-6 bg-white/[0.04] border border-white/10 rounded-lg text-center text-[11px] text-white focus:outline-none" />
+                                                <button onClick={() => { addDiscoveryLog("info", `AutoClone: iniciando descubrimiento de ${autoCloneCount} nichos…`, "autoclone"); void discoverAutoClone(); }}
+                                                    disabled={autoCloneDiscovering}
+                                                    className="h-6 px-2.5 rounded-xl bg-sky-500/20 border border-sky-500/30 text-sky-300 text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/30 transition-all disabled:opacity-40 flex items-center gap-1 shrink-0">
+                                                    {autoCloneDiscovering ? <Loader2 size={8} className="animate-spin" /> : <Bot size={8} />} IA
+                                                </button>
+                                            </div>
+                                            {/* Viral scan trigger */}
+                                            <div className="flex items-center gap-2 p-3 rounded-2xl bg-emerald-500/[0.04] border border-emerald-500/15">
+                                                <TrendingUp size={12} className="text-emerald-400 shrink-0" />
+                                                <span className="flex-1 text-[11px] text-neutral-400">Viral Radar · Amazon + Pinterest</span>
+                                                <button onClick={() => void runViralScan()} disabled={viralScanning}
+                                                    className="h-6 px-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-500/30 transition-all disabled:opacity-40 flex items-center gap-1 shrink-0">
+                                                    {viralScanning ? <Loader2 size={8} className="animate-spin" /> : <Zap size={8} />} Scan
+                                                </button>
+                                            </div>
+                                            {/* Radar / Scraping trigger */}
+                                            <div className="flex items-center gap-2 p-3 rounded-2xl bg-amber-500/[0.04] border border-amber-500/15">
+                                                <Search size={12} className="text-amber-400 shrink-0" />
+                                                <span className="flex-1 text-[11px] text-neutral-400">Radar · Gap Finder IA</span>
+                                                <button onClick={() => void runRadarAutoScan()} disabled={radarScanning}
+                                                    className="h-6 px-2.5 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[9px] font-black uppercase tracking-widest hover:bg-amber-500/30 transition-all disabled:opacity-40 flex items-center gap-1 shrink-0">
+                                                    {radarScanning ? <Loader2 size={8} className="animate-spin" /> : <Search size={8} />} Scan
+                                                </button>
+                                            </div>
                                         </div>
-                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Pulsa Descubrir para que la IA analice tu catálogo y encuentre oportunidades de mercado</p>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                                </div>
 
-                    {/* ── VIRAL NICHE RADAR ── */}
-                    {intelliMode === "viral" && (
-                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                            <div className="h-px w-full bg-gradient-to-r from-emerald-500/60 via-teal-400/20 to-transparent" />
-                            <div className="p-6 space-y-5">
-                                <div className="flex items-start justify-between gap-4">
-                                    <SectionHeader
-                                        icon={<TrendingUp size={20} />}
-                                        title={<><span className="text-white">Viral </span><span className="bg-gradient-to-r from-emerald-300 to-teal-400 bg-clip-text text-transparent">Niche Radar</span></>}
-                                        subtitle="Detecta libros de colorear que están ganando tracción ahora mismo — antes de que lleguen al catálogo de Amazon"
-                                        color="emerald"
-                                        size="lg"
-                                    />
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        {viralLoaded && (
-                                            <button onClick={fetchViralNiches} className="h-9 px-3 rounded-2xl bg-white/[0.03] border border-white/8 text-neutral-500 hover:text-white transition-all flex items-center gap-1.5">
-                                                <RefreshCw size={11} />
+                                {/* Live Console — shared iOS-style terminal */}
+                                <ActivityConsole
+                                    logs={discoveryLog}
+                                    isRunning={isCloning || viralScanning || autoCloneDiscovering || radarScanning}
+                                    title="intelligence.log · todas las fuentes"
+                                    height="h-[260px]"
+                                />
+
+                                {/* Unified results table */}
+                                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-purple-400/20 to-transparent" />
+                                    {/* Table toolbar */}
+                                    <div className="px-5 py-3 flex items-center gap-2 flex-wrap border-b border-white/[0.05]">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 mr-1">Fuente</span>
+                                        {([["all", "Todas"] as const, ...Object.entries(srcCfg).map(([k, v]) => [k as DiscoverySource, v.label] as [DiscoverySource, string])]).map(([src, label]) => (
+                                            <button key={src} onClick={() => setDiscoverySourceFilter(src as DiscoverySource | "all")}
+                                                className={`h-7 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${discoverySourceFilter === src ? (src === "all" ? "bg-violet-500/20 border-violet-500/30 text-violet-300" : `${srcCfg[src as DiscoverySource].activeBg} ${srcCfg[src as DiscoverySource].border} ${srcCfg[src as DiscoverySource].color}`) : "bg-white/[0.02] border-white/8 text-neutral-600 hover:text-neutral-300"}`}>
+                                                {label}
+                                                {src !== "all" && <span className="ml-1 opacity-50">{discoveryItems.filter(i => i.source === src).length}</span>}
+                                            </button>
+                                        ))}
+                                        <div className="w-px h-5 bg-white/[0.08] mx-1" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 mr-1">Estado</span>
+                                        {([["all", "Todos"] as const, ["new", "Nuevo"] as const, ["sent", "Telegram"] as const, ["saved", "Guardado"] as const, ["dismissed", "Descartado"] as const]).map(([st, label]) => (
+                                            <button key={st} onClick={() => setDiscoveryStatusFilter(st as DiscoveryStatus | "all")}
+                                                className={`h-7 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${discoveryStatusFilter === st ? "bg-violet-500/20 border-violet-500/30 text-violet-300" : "bg-white/[0.02] border-white/8 text-neutral-600 hover:text-neutral-300"}`}>
+                                                {label}
+                                            </button>
+                                        ))}
+                                        <div className="flex-1" />
+                                        {discoveryItems.length > 0 && (
+                                            <button onClick={() => { if (window.confirm("¿Limpiar toda la tabla de descubrimientos?")) { setDiscoveryItems([]); try { localStorage.removeItem("kdp-discovery-items"); } catch {} } }}
+                                                className="h-7 px-3 rounded-xl text-[9px] font-black text-neutral-600 hover:text-rose-400 border border-white/8 hover:border-rose-500/30 bg-white/[0.02] transition-all">
+                                                Limpiar
                                             </button>
                                         )}
-                                        <button onClick={runViralScan} disabled={viralScanning}
-                                            className="h-9 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2">
-                                            {viralScanning ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                                            {viralScanning ? "Escaneando…" : "Escanear ahora"}
+                                    </div>
+
+                                    {filtered.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-16 gap-4">
+                                            <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-violet-500/6 border border-violet-500/15">
+                                                <Layers size={24} className="text-violet-400/30" />
+                                            </div>
+                                            <p className="text-sm text-neutral-700 text-center max-w-xs">
+                                                {discoveryItems.length === 0 ? "Lanza cualquier fuente para ver los resultados unificados aquí" : "Ningún resultado coincide con los filtros"}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-white/[0.03]">
+                                            {filtered.map((item) => {
+                                                const sc = srcCfg[item.source];
+                                                const isApproved = item.status === "saved";
+                                                const isDismissed = item.status === "dismissed";
+                                                const isSending = discoverySendingId === item.id;
+                                                return (
+                                                    <div key={item.id} className={`flex items-center gap-2 px-4 py-2.5 hover:bg-white/[0.015] transition-all ${isDismissed ? "opacity-35" : isApproved ? "opacity-55" : ""}`}>
+                                                        {/* Source badge */}
+                                                        <div className={`shrink-0 flex items-center gap-1.5 h-5 px-2 rounded-lg border text-[8px] font-black uppercase tracking-widest ${sc.activeBg} ${sc.border} ${sc.color}`}>
+                                                            <span className={`w-1 h-1 rounded-full ${sc.dot}`} />
+                                                            {sc.label}
+                                                        </div>
+                                                        {/* Title */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-[12px] font-black text-white truncate">{item.name}</p>
+                                                            {item.title && item.title !== item.name && (
+                                                                <p className="text-[9px] text-neutral-700 truncate">{item.title}</p>
+                                                            )}
+                                                        </div>
+                                                        {/* Aprobar */}
+                                                        <button
+                                                            onClick={() => {
+                                                                if (item.source === "autoclone" && item.autoCloneId) void approveAutoClone(item.autoCloneId);
+                                                                updateDiscoveryItemStatus(item.id, "saved");
+                                                            }}
+                                                            disabled={isApproved}
+                                                            className="shrink-0 h-7 px-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-30 disabled:cursor-default transition-all flex items-center gap-1">
+                                                            <Check size={9} /> Aprobar
+                                                        </button>
+                                                        {/* Rechazar */}
+                                                        <button
+                                                            onClick={() => {
+                                                                if (item.source === "autoclone" && item.autoCloneId) void rejectAutoClone(item.autoCloneId);
+                                                                updateDiscoveryItemStatus(item.id, "dismissed");
+                                                            }}
+                                                            disabled={isDismissed}
+                                                            className="shrink-0 h-7 px-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[9px] font-black text-rose-400 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-default transition-all flex items-center gap-1">
+                                                            <X size={9} /> Rechazar
+                                                        </button>
+                                                        {/* Telegram */}
+                                                        <button
+                                                            onClick={() => void sendDiscoveryToTelegram(item)}
+                                                            disabled={isSending}
+                                                            className={`shrink-0 h-7 px-2.5 rounded-xl border text-[9px] font-black flex items-center gap-1 disabled:opacity-50 transition-all ${item.status === "sent" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" : "bg-white/[0.03] border-white/10 text-neutral-400 hover:bg-sky-600/15 hover:border-sky-500/25 hover:text-sky-300"}`}>
+                                                            {isSending ? <Loader2 size={9} className="animate-spin" /> : item.status === "sent" ? <RefreshCw size={9} /> : <Send size={9} />}
+                                                            <span className="hidden sm:block">{item.status === "sent" ? "Reenviar" : "Telegram"}</span>
+                                                        </button>
+                                                        {/* Eliminar */}
+                                                        <button
+                                                            onClick={() => removeDiscoveryItem(item.id)}
+                                                            className="shrink-0 h-7 w-7 rounded-xl bg-white/[0.02] border border-white/8 text-neutral-600 hover:text-rose-400 hover:border-rose-500/25 transition-all flex items-center justify-center">
+                                                            <Trash2 size={9} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    {filtered.length > 0 && (
+                                        <div className="px-5 py-2 border-t border-white/[0.04] flex items-center justify-between">
+                                            <p className="text-[9px] text-neutral-700">{filtered.length} resultado{filtered.length !== 1 ? "s" : ""} · {discoveryItems.filter(i => i.status === "new").length} nuevos · {discoveryItems.filter(i => i.status === "sent").length} en Telegram</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Clone engine rendered hidden — keeps clone-run-internal in DOM */}
+                                <div className="hidden">{renderCloneEngine()}</div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* ── INSIGHTS tab ── */}
+                    {intelliMode === "insights" && (() => {
+                        const activeItems = discoveryItems.filter(i => i.status !== "dismissed");
+                        const topItems = [...activeItems].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 5);
+                        const bySource = (["clone","autoclone","viral","radar"] as DiscoverySource[]).map(s => ({
+                            src: s, count: discoveryItems.filter(i => i.source === s).length,
+                        })).filter(x => x.count > 0);
+                        const srcLabel: Record<DiscoverySource, string> = { clone: "Clone", autoclone: "AutoClone", viral: "Viral", radar: "Radar" };
+                        const srcColor: Record<DiscoverySource, string> = { clone: "text-rose-400", autoclone: "text-sky-400", viral: "text-emerald-400", radar: "text-amber-400" };
+                        const srcBadge: Record<DiscoverySource, string> = { clone: "text-rose-400 bg-rose-500/10 border-rose-500/20", autoclone: "text-sky-400 bg-sky-500/10 border-sky-500/20", viral: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", radar: "text-amber-400 bg-amber-500/10 border-amber-500/20" };
+
+                        const launchKeyNiche = async () => {
+                            const best = topItems[0];
+                            if (!best) { toast("Sin datos — lanza algún detector primero", { icon: "ℹ️" }); return; }
+                            setInsightCreating(true);
+                            try {
+                                await sendDiscoveryToTelegram(best);
+                                toast.success(`Nicho clave enviado a Telegram: ${best.name}`);
+                            } catch { toast.error("Error al lanzar el nicho clave"); }
+                            finally { setInsightCreating(false); }
+                        };
+
+                        return (
+                            <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-400">
+                                {/* Stats row */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {[
+                                        { label: "Detectados", value: discoveryItems.length, color: "text-white" },
+                                        { label: "En Telegram", value: discoveryItems.filter(i => i.status === "sent").length, color: "text-emerald-400" },
+                                        { label: "Guardados", value: discoveryItems.filter(i => i.status === "saved").length, color: "text-violet-400" },
+                                        { label: "Pendientes", value: discoveryItems.filter(i => i.status === "new").length, color: "text-amber-400" },
+                                    ].map(stat => (
+                                        <div key={stat.label} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 text-center">
+                                            <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mt-1">{stat.label}</p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Top nichos + CTA */}
+                                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-amber-500/80 via-orange-400/40 to-transparent" />
+                                    <div className="p-6 space-y-4">
+                                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                                            <SectionHeader icon={<Sparkles size={18} />} title="Top Nichos Detectados" subtitle="Mejores candidatos de la tabla común · ordenados por score" color="amber" size="sm" />
+                                            <button onClick={() => void launchKeyNiche()} disabled={insightCreating || topItems.length === 0}
+                                                className="h-9 px-5 rounded-2xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-300 text-[10px] font-black uppercase tracking-widest hover:from-amber-500/30 hover:to-orange-500/30 transition-all disabled:opacity-40 flex items-center gap-2 shrink-0">
+                                                {insightCreating ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                                                Lanzar nicho clave
+                                            </button>
+                                        </div>
+                                        {topItems.length === 0 ? (
+                                            <p className="text-sm text-neutral-700 text-center py-8">Sin datos — lanza detectores para poblar la tabla</p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {topItems.map((item, idx) => (
+                                                    <div key={item.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
+                                                        <span className="text-[11px] font-black text-neutral-600 w-4 shrink-0">#{idx + 1}</span>
+                                                        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border shrink-0 ${srcBadge[item.source]}`}>{item.source}</span>
+                                                        <p className="flex-1 text-[12px] font-black text-white truncate">{item.name}</p>
+                                                        {item.score != null && (
+                                                            <div className="shrink-0 flex items-center gap-1.5">
+                                                                <div className="w-12 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                                                                    <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400" style={{ width: `${item.score}%` }} />
+                                                                </div>
+                                                                <span className="text-[10px] font-black text-amber-400 tabular-nums">{item.score}</span>
+                                                            </div>
+                                                        )}
+                                                        <button onClick={() => void sendDiscoveryToTelegram(item)}
+                                                            className="shrink-0 h-7 px-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[9px] font-black hover:bg-sky-500/20 transition-all flex items-center gap-1">
+                                                            <Send size={9} /> TG
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {bySource.length > 0 && (
+                                            <div className="flex items-center gap-3 pt-2 border-t border-white/[0.05] flex-wrap">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Fuentes:</p>
+                                                {bySource.map(({ src, count }) => (
+                                                    <span key={src} className={`text-[9px] font-black ${srcColor[src]}`}>{srcLabel[src]} {count}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* RadarInsightsPanel */}
+                                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-purple-400/30 to-transparent" />
+                                    <div className="p-6 space-y-4">
+                                        <SectionHeader icon={<Layers size={18} />} title="Análisis Radar" subtitle="Conclusiones y recomendaciones IA del historial de escaneos" color="violet" size="sm" />
+                                        <RadarInsightsPanel apiUrl={API_BASE_URL} />
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* ── PROMPT DNA tab ── */}
+                    {intelliMode === "dna" && (
+                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-400">
+                            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                <div className="h-px w-full bg-gradient-to-r from-fuchsia-500/80 via-purple-400/40 to-transparent" />
+                                <div className="p-6 space-y-5">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <SectionHeader icon={<Dna size={20} />} title="Prompt DNA" subtitle="Fragmentos de prompt más exitosos · alimentado por favoritos de catálogos" color="violet" size="lg" />
+                                        <button onClick={() => void fetchDNA()} disabled={dnaLoading}
+                                            className="h-9 px-4 rounded-2xl bg-fuchsia-500/15 border border-fuchsia-500/25 text-fuchsia-300 text-[10px] font-black uppercase tracking-widest hover:bg-fuchsia-500/25 transition-all disabled:opacity-40 flex items-center gap-2 shrink-0">
+                                            {dnaLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Actualizar
                                         </button>
                                     </div>
-                                </div>
-
-                                {!viralLoaded && !viralScanning && (
-                                    <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-dashed border-emerald-500/15 bg-emerald-500/[0.02] gap-3">
-                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-emerald-500/8 border border-emerald-500/15">
-                                            <TrendingUp size={20} className="text-emerald-400/30" />
+                                    {dnaLoading ? (
+                                        <div className="flex items-center justify-center py-12 gap-3">
+                                            <Loader2 size={20} className="animate-spin text-fuchsia-400" />
+                                            <span className="text-sm text-neutral-500">Cargando señales DNA…</span>
                                         </div>
-                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Escanea Amazon Movers, Pinterest y Google Trends en busca de libros de colorear que están rompiendo</p>
-                                    </div>
-                                )}
-
-                                {viralNiches.filter(v => v.status !== "dismissed").length > 0 && (
-                                    <div className="space-y-2">
-                                        {viralNiches.filter(v => v.status !== "dismissed").map(v => (
-                                            <div key={v._id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${v.status === "converted" ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-white/6 bg-white/[0.02] hover:border-white/10"}`}>
-                                                {/* Velocity bar */}
-                                                <div className="shrink-0 w-10 flex flex-col items-center gap-0.5">
-                                                    <span className="text-sm font-black text-emerald-400">{v.velocity}</span>
-                                                    <div className="w-full h-1 rounded-full bg-white/10">
-                                                        <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all" style={{ width: `${v.velocity}%` }} />
-                                                    </div>
-                                                </div>
-                                                {/* Content */}
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-bold text-white truncate">{v.termEs || v.term}</p>
-                                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                                        <span className="text-sm text-neutral-600 font-mono">{v.term}</span>
-                                                        {v.sources.map(s => (
-                                                            <span key={s} className="text-sm px-1.5 py-0.5 rounded-md bg-white/[0.04] text-neutral-500 border border-white/6">{s}</span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                {/* Score */}
-                                                <div className="shrink-0 text-right">
-                                                    <p className="text-sm text-neutral-600">Coloreable</p>
-                                                    <p className="text-sm font-black text-teal-400">{v.colorableScore}%</p>
-                                                </div>
-                                                {/* Actions */}
-                                                <div className="shrink-0 flex items-center gap-1.5">
-                                                    {v.status === "converted" ? (
-                                                        <span className="text-sm text-emerald-500 font-black flex items-center gap-1"><Check size={10} /> Creado</span>
-                                                    ) : v.status === "watched" ? (
-                                                        <span className="text-sm text-amber-400 font-black flex items-center gap-1"><Send size={10} /> En Telegram</span>
-                                                    ) : (
-                                                        <>
-                                                            <button onClick={() => sendViralToTelegram(v._id)}
-                                                                className="h-8 px-3 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600/40 transition-all flex items-center gap-1.5">
-                                                                <Send size={9} /> Telegram
-                                                            </button>
-                                                            <button onClick={() => dismissViralNiche(v._id)}
-                                                                className="h-8 w-8 rounded-xl bg-white/[0.03] border border-white/8 text-neutral-600 hover:text-rose-400 transition-all flex items-center justify-center">
-                                                                <X size={11} />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
+                                    ) : !dnaData ? (
+                                        <div className="flex flex-col items-center justify-center py-14 gap-4">
+                                            <div className="w-14 h-14 rounded-2xl bg-fuchsia-500/6 border border-fuchsia-500/15 flex items-center justify-center">
+                                                <Dna size={24} className="text-fuchsia-400/30" />
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ── PROMPT DNA ── */}
-                    {intelliMode === "dna" && (
-                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                            <div className="h-px w-full bg-gradient-to-r from-fuchsia-500/60 via-purple-400/20 to-transparent" />
-                            <div className="p-6 space-y-5">
-                                <div className="flex items-start justify-between gap-4">
-                                    <SectionHeader
-                                        icon={<Dna size={20} />}
-                                        title={<><span className="text-white">Prompt </span><span className="bg-gradient-to-r from-fuchsia-300 to-purple-400 bg-clip-text text-transparent">DNA</span></>}
-                                        subtitle="El sistema aprende qué partes del prompt generan imágenes que favoritas o que acaban en libros publicados"
-                                        color="violet"
-                                        size="lg"
-                                    />
-                                    <button onClick={fetchDNA} disabled={dnaLoading}
-                                        className="h-9 px-5 rounded-2xl bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 shrink-0">
-                                        {dnaLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                        {dnaLoading ? "Cargando…" : "Ver DNA"}
-                                    </button>
-                                </div>
-
-                                <div className="p-4 rounded-2xl bg-fuchsia-500/[0.04] border border-fuchsia-500/15 flex items-start gap-3">
-                                    <Heart size={14} className="text-fuchsia-400 shrink-0 mt-0.5" />
-                                    <p className="text-sm text-neutral-400">Cada vez que marcas una imagen como favorita desde el preview de catálogo, o la incluyes en un PDF, el sistema registra qué partes del prompt la generaron. Con el tiempo verás qué temas, specs y detalles rinden más.</p>
-                                </div>
-
-                                {!dnaData && !dnaLoading && (
-                                    <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-dashed border-fuchsia-500/15 bg-fuchsia-500/[0.02] gap-3">
-                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-fuchsia-500/8 border border-fuchsia-500/15">
-                                            <Dna size={20} className="text-fuchsia-400/30" />
+                                            <div className="text-center">
+                                                <p className="text-sm font-black text-neutral-500">Sin señales todavía</p>
+                                                <p className="text-[11px] text-neutral-700 mt-1">Marca imágenes de catálogo como favoritas para alimentar el DNA</p>
+                                            </div>
                                         </div>
-                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Favorita imágenes de catálogo para empezar a construir tu DNA. El sistema aprenderá qué prompts son los tuyos.</p>
-                                    </div>
-                                )}
-
-                                {dnaData && (() => {
-                                    const topTheme = dnaData.theme?.[0]?.partValue ?? "";
-                                    return (
-                                        <>
-                                            {/* Global action */}
-                                            {topTheme && (
-                                                <button
-                                                    onClick={() => {
-                                                        setCloneInput(topTheme);
-                                                        setIntelliMode("clone");
-                                                    }}
-                                                    className="w-full h-10 rounded-2xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-xs font-black text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all flex items-center justify-center gap-2"
-                                                >
-                                                    <Dna size={13} /> Buscar nicho con el tema top: <span className="text-white truncate max-w-[180px]">{topTheme}</span>
-                                                </button>
-                                            )}
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                {(["theme", "specs", "details", "particulars"] as const).map(partType => {
-                                                    const parts = dnaData[partType] ?? [];
-                                                    const cfg: Record<string, { label: string; border: string; bg: string; text: string }> = {
-                                                        theme:       { label: "Tema",             border: "border-fuchsia-500/15", bg: "bg-fuchsia-500/[0.04]", text: "text-fuchsia-400" },
-                                                        specs:       { label: "Specs",            border: "border-violet-500/15",  bg: "bg-violet-500/[0.04]",  text: "text-violet-400"  },
-                                                        details:     { label: "Detalles",         border: "border-purple-500/15",  bg: "bg-purple-500/[0.04]",  text: "text-purple-400"  },
-                                                        particulars: { label: "Particularidades", border: "border-indigo-500/15",  bg: "bg-indigo-500/[0.04]",  text: "text-indigo-400"  },
-                                                    };
-                                                    const { label, border, bg, text } = cfg[partType];
-                                                    return (
-                                                        <div key={partType} className={`rounded-2xl border ${border} ${bg} p-4 space-y-2`}>
-                                                            <p className={`text-[10px] font-black uppercase tracking-widest ${text}`}>{label}</p>
-                                                            {parts.length === 0 ? (
-                                                                <p className="text-sm text-neutral-700">Sin señales aún</p>
-                                                            ) : parts.map((p, i) => (
-                                                                <div key={p._id} className="flex items-start gap-2">
-                                                                    <span className="text-[11px] font-black text-neutral-600 shrink-0 w-4 text-right mt-0.5">{i + 1}</span>
-                                                                    <div className="flex-1 min-w-0 space-y-0.5">
-                                                                        <p className="text-xs text-neutral-300 leading-snug" title={p.partValue}>{p.partValue}</p>
-                                                                        <div className="flex items-center gap-2">
-                                                                            {p.favoriteHits > 0 && <span className="text-[10px] text-rose-400 flex items-center gap-0.5"><Heart size={8} className="fill-rose-400" /> {p.favoriteHits}</span>}
-                                                                            {p.bookHits > 0 && <span className="text-[10px] text-amber-400 flex items-center gap-0.5"><BookOpen size={8} /> {p.bookHits}</span>}
-                                                                            <span className={`text-[10px] font-black ${text}`}>DNA {p.dnaScore}</span>
-                                                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {Object.entries(dnaData).map(([partType, parts]) => (
+                                                (parts as any[]).length > 0 && (
+                                                    <div key={partType} className="rounded-2xl border border-white/6 bg-white/[0.02] overflow-hidden">
+                                                        <div className="px-4 py-2.5 border-b border-white/[0.05] flex items-center gap-2">
+                                                            <Dna size={11} className="text-fuchsia-400/60" />
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{partType}</p>
+                                                        </div>
+                                                        <div className="divide-y divide-white/[0.03]">
+                                                            {(parts as any[]).map((p: any) => (
+                                                                <div key={p._id} className="px-4 py-2.5 flex items-center gap-3">
+                                                                    <p className="flex-1 text-[11px] text-neutral-300 truncate">{p.partValue}</p>
+                                                                    <div className="shrink-0 flex items-center gap-2">
+                                                                        <span className="text-[9px] font-mono text-fuchsia-400/70">★ {p.favoriteHits}</span>
+                                                                        <span className="text-[9px] font-mono text-neutral-700">/ {p.bookHits}</span>
                                                                     </div>
-                                                                    {partType === "theme" && (
-                                                                        <button
-                                                                            onClick={() => { setCloneInput(p.partValue); setIntelliMode("clone"); }}
-                                                                            title="Buscar nicho con este tema"
-                                                                            className="shrink-0 p-1 rounded-lg text-neutral-600 hover:text-fuchsia-300 hover:bg-fuchsia-500/10 transition-all"
-                                                                        >
-                                                                            <Search size={11} />
-                                                                        </button>
-                                                                    )}
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>
-                                    );
-                                })()}
+                                                    </div>
+                                                )
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
 
-                    {/* AutoClone Queue — visible in clone and auto modes */}
-                    {(intelliMode === "clone" || intelliMode === "auto") && autoCloneItems.length > 0 && (
-                        <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
-                            <div className="h-px w-full bg-gradient-to-r from-sky-500/40 via-cyan-400/10 to-transparent" />
-                            <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.05]">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-sky-400/70 flex items-center gap-1.5">
-                                    <Bot size={9} /> Cola AutoClone · {autoCloneItems.filter(i => i.status === "pending_approval").length} pendientes
-                                </p>
-                                <button onClick={fetchAutoCloneQueue} disabled={autoCloneLoading} className="h-6 w-6 rounded-lg text-neutral-600 hover:text-white transition-all flex items-center justify-center">
-                                    <RefreshCw size={10} className={autoCloneLoading ? "animate-spin" : ""} />
-                                </button>
-                            </div>
-                            <div className="divide-y divide-white/[0.04]">
-                                {autoCloneItems.map(item => {
-                                    const statusConfig = {
-                                        pending_approval: { label: "Pendiente", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-                                        approved:         { label: "Aprobado",  color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
-                                        cloning:          { label: "Clonando…", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
-                                        done:             { label: "Listo",     color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-                                        rejected:         { label: "Descartado",color: "text-neutral-600 bg-neutral-500/10 border-neutral-500/20" },
-                                    }[item.status];
-                                    return (
-                                        <div key={item._id} className={`px-5 py-3 flex items-center gap-3 ${item.status === "rejected" ? "opacity-35" : ""}`}>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <p className="text-sm font-black text-white">{item.topic}</p>
-                                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${statusConfig.color}`}>{statusConfig.label}</span>
-                                                    {item.status === "cloning" && <Loader2 size={9} className="animate-spin text-violet-400" />}
-                                                </div>
-                                                {item.asin ? (
-                                                    <a href={item.amazonUrl ?? `https://www.amazon.com/dp/${item.asin}`} target="_blank" rel="noopener noreferrer"
-                                                        className="text-[10px] text-sky-400 hover:underline font-mono flex items-center gap-1 mt-0.5">
-                                                        <ExternalLink size={8} /> {item.asin}{item.foundTitle ? ` · ${item.foundTitle.slice(0, 45)}` : ""}
-                                                    </a>
-                                                ) : (
-                                                    <p className="text-[10px] text-neutral-700 mt-0.5 italic">{item.searchQuery}</p>
-                                                )}
-                                                {item.clones && item.clones.length > 0 && (
-                                                    <p className="text-[9px] text-emerald-400 mt-0.5">{item.clones.length} clones → Telegram</p>
-                                                )}
-                                            </div>
-                                            {item.status === "pending_approval" && (
-                                                <div className="flex gap-1.5 shrink-0">
-                                                    <button onClick={() => void approveAutoClone(item._id)} disabled={!item.asin}
-                                                        className="h-7 px-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-30">
-                                                ✓
-                                            </button>
-                                            <button onClick={() => void rejectAutoClone(item._id)}
-                                                className="h-7 px-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[9px] font-black text-rose-400 hover:bg-rose-500/20 transition-all">
-                                                ✕
-                                            </button>
-                                        </div>
-                                    )}
-                                    {(item.status === "rejected" || item.status === "done") && (
-                                        <button onClick={() => void deleteAutoClone(item._id)}
-                                            className="h-7 w-7 rounded-xl text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all flex items-center justify-center shrink-0">
-                                            <Trash2 size={11} />
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
                 </div>
             )}
         </div>
