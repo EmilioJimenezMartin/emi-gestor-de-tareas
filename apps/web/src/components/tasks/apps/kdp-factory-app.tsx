@@ -445,6 +445,82 @@ function ModalPortal({ children }: { children: React.ReactNode }) {
     return createPortal(children, document.body);
 }
 
+function MergeNichesModal({ selectedNiches, initialName, onClose, onMerged }: {
+    selectedNiches: NicheFE[];
+    initialName: string;
+    onClose: () => void;
+    onMerged: (mergedNiche: any, catalogCount: number) => void;
+}) {
+    const [name, setName] = useState(initialName);
+    const [merging, setMerging] = useState(false);
+
+    const handleMerge = async () => {
+        if (!name.trim() || merging) return;
+        setMerging(true);
+        try {
+            const res = await fetch(`${API_URL}/niches/merge`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sourceIds: selectedNiches.map(n => n._id), targetName: name.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error al fusionar");
+            onMerged(data.niche, data.catalogCount);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al fusionar");
+        } finally {
+            setMerging(false);
+        }
+    };
+
+    return (
+        <ModalPortal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => !merging && onClose()}>
+                <div className="w-full max-w-sm rounded-3xl bg-[rgba(14,14,18,0.97)] border border-amber-500/25 shadow-[0_20px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(245,158,11,0.1)] p-6 space-y-5" onClick={e => e.stopPropagation()}>
+                    <div className="text-center space-y-1.5">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center mx-auto mb-3">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 4h5l2 10h7M9 14l5-5M9 14l5 5" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="2.5" cy="4" r="1.5" fill="#f59e0b"/><circle cx="15.5" cy="9" r="1.5" fill="#f59e0b"/></svg>
+                        </div>
+                        <p className="text-base font-black text-white">Fusionar nichos</p>
+                        <p className="text-xs text-neutral-500">Los catálogos e imágenes pasan al nuevo nicho.<br/>Los originales se eliminan definitivamente.</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/[0.03] border border-white/8 px-3 py-2.5 space-y-1">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fusionando</p>
+                        {selectedNiches.map(n => (
+                            <div key={n._id} className="flex items-center gap-2">
+                                <div className="w-1 h-1 rounded-full bg-amber-400/60" />
+                                <p className="text-xs text-neutral-400 truncate">{n.name}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre del nicho fusionado</label>
+                        <input
+                            autoFocus
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            onKeyDown={e => { if (e.key === "Enter") void handleMerge(); if (e.key === "Escape") onClose(); }}
+                            placeholder="Nuevo nombre…"
+                            className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 focus:bg-amber-500/5 transition-all"
+                        />
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={onClose} disabled={merging}
+                            className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all disabled:opacity-50">
+                            Cancelar
+                        </button>
+                        <button onClick={() => void handleMerge()} disabled={merging || !name.trim()}
+                            className="flex-1 h-11 rounded-2xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-black transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                            {merging ? <Loader2 size={14} className="animate-spin" /> : null}
+                            Fusionar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </ModalPortal>
+    );
+}
+
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
@@ -1374,6 +1450,8 @@ export function KdpFactoryApp() {
     const [nicheFilterMaxCats, setNicheFilterMaxCats] = useState<number | "">("");
     const [selectedNicheIds, setSelectedNicheIds] = useState<Set<string>>(new Set());
     const [bulkNicheMode, setBulkNicheMode] = useState(false);
+    const [mergeModalOpen, setMergeModalOpen] = useState(false);
+    const [mergeInitialName, setMergeInitialName] = useState("");
     // Toolbar de catálogos IA
     const [iaCatalogSearch, setIaCatalogSearch] = useState("");
     const [iaCatalogStatusFilter, setIaCatalogStatusFilter] = useState<"all" | "active" | "queued" | "completed" | "failed" | "cancelled">("all");
@@ -1626,6 +1704,31 @@ export function KdpFactoryApp() {
         } finally {
             setIsLoadingCatalogs(false);
         }
+    };
+
+    // Checks BOTH directions: catalog→niche (nicheIds) AND niche→catalog (catalogIds)
+    // The DB may have one or both populated depending on how the catalog was created/merged.
+    const catsForNiche = (niche: NicheFE) =>
+        iaCatalogs.filter(c =>
+            (c.nicheIds ?? []).includes(niche._id) ||
+            (niche.catalogIds ?? []).includes(c._id)
+        );
+
+    const fetchBookDrafts = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/book-drafts`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.drafts) {
+                setBookDrafts(data.drafts.map((d: any) => ({
+                    id: String(d._id),
+                    fileName: d.fileName,
+                    pages: d.pages ?? [],
+                    savedAt: typeof d.savedAt === "string" ? d.savedAt : new Date(d.savedAt).toISOString(),
+                    nicheId: d.nicheId,
+                })));
+            }
+        } catch { }
     };
 
     const deleteCatalogConfirmed = async (id: string) => {
@@ -2244,7 +2347,7 @@ export function KdpFactoryApp() {
         if (nicheQuickFilter === "published" && !(n.phase === "published" || n.lifecycleStage === "published")) return false;
         if (nicheFilterAudience !== "all" && (n.targetAudience ?? "all") !== nicheFilterAudience) return false;
         if (nicheFilterMinImgs !== "" || nicheFilterMaxImgs !== "" || nicheFilterMinCats !== "" || nicheFilterMaxCats !== "") {
-            const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+            const cats = catsForNiche(n);
             const imgs = cats.reduce((s, c) => s + (c.images?.length ?? 0), 0);
             const catsCount = cats.length;
             if (nicheFilterMinImgs !== "" && imgs < nicheFilterMinImgs) return false;
@@ -5662,7 +5765,7 @@ export function KdpFactoryApp() {
         // Derive pipeline data directly from live niches + iaCatalogs state (always in sync via sockets)
         const now = Date.now();
         const pipelineNiches = niches.map(n => {
-            const nicheCatalogs = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+            const nicheCatalogs = catsForNiche(n);
             const running  = nicheCatalogs.filter(c => c.status === "running");
             const completed = nicheCatalogs.filter(c => c.status === "completed");
             const queued   = nicheCatalogs.filter(c => c.status === "queued" || c.status === "pending");
@@ -6140,7 +6243,7 @@ export function KdpFactoryApp() {
                         const nSales = salesData.filter(s => s.nicheId === n._id);
                         const revenue = nSales.reduce((s, r) => s + r.royaltiesUsd, 0);
                         const units = nSales.reduce((s, r) => s + r.unitsSold, 0);
-                        const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+                        const cats = catsForNiche(n);
                         const images = cats.reduce((s, c) => s + c.images.length, 0);
                         const revenuePerImage = images > 0 ? revenue / images : 0;
                         return { n, revenue, units, cats: cats.length, images, revenuePerImage };
@@ -6406,7 +6509,7 @@ export function KdpFactoryApp() {
         // R3: Catálogos completados sin avanzar >1d
         const catalogDoneStuck = niches.filter(n => {
             if ((n.phase ?? "niche") !== "catalog") return false;
-            const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+            const cats = catsForNiche(n);
             return cats.length > 0 && cats.every(c => c.status === "completed") && lastActivity(n) < daysAgo(1);
         });
         // R4: Catálogos generando/pendientes hace >6h (posible cuelgue)
@@ -13206,7 +13309,7 @@ export function KdpFactoryApp() {
                     {niches.length > 0 && (() => {
                         const nicheChartData = niches
                             .map(n => {
-                                const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+                                const cats = catsForNiche(n);
                                 return { label: nd(n), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
                             });
                         return (
@@ -13619,7 +13722,7 @@ export function KdpFactoryApp() {
                                         if (p !== col.id) return false;
                                         return nicheMatchesFilters(n);
                                     });
-                                    const colImgs = colNiches.reduce((sum, n) => sum + iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).reduce((s, c) => s + c.images.length, 0), 0);
+                                    const colImgs = colNiches.reduce((sum, n) => sum + catsForNiche(n).reduce((s, c) => s + c.images.length, 0), 0);
                                     return (
                                         <div key={col.id} className={`rounded-2xl border ${col.colBg} flex flex-col`}>
                                             {/* Column header */}
@@ -13643,7 +13746,7 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 )}
                                                 {colNiches.map(niche => {
-                                                    const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
+                                                    const linkedCats = catsForNiche(niche);
                                                     const imgCount = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                                     const productLabel = NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType;
                                                     const styleLabel = (niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : niche.productType === "seamless-pattern" ? SEAMLESS_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory;
@@ -13859,13 +13962,13 @@ export function KdpFactoryApp() {
                                 if (nicheSortBy === "name") return dir * a.name.localeCompare(b.name, "es");
                                 if (nicheSortBy === "phase") return dir * ((phaseOrder[a.phase ?? "niche"] ?? 0) - (phaseOrder[b.phase ?? "niche"] ?? 0));
                                 if (nicheSortBy === "catalogs") {
-                                    const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length;
-                                    const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length;
+                                    const ac = catsForNiche(a).length;
+                                    const bc = catsForNiche(b).length;
                                     return dir * (ac - bc);
                                 }
                                 if (nicheSortBy === "images") {
-                                    const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0);
-                                    const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0);
+                                    const ai = catsForNiche(a).reduce((s, c) => s + c.images.length, 0);
+                                    const bi = catsForNiche(b).reduce((s, c) => s + c.images.length, 0);
                                     return dir * (ai - bi);
                                 }
                                 return 0;
@@ -13909,7 +14012,7 @@ export function KdpFactoryApp() {
 `}</style>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {pagedNiches.map((niche, cardIndex) => {
-                                    const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
+                                    const linkedCats = catsForNiche(niche);
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                     const cardPhase = (niche.phase === "pdf" ? "seo" : niche.phase) ?? "niche";
                                     const phaseGradient: Record<string, string> = { niche: "from-sky-500 via-sky-400 to-cyan-400", catalog: "from-blue-500 via-blue-400 to-sky-400", libro: "from-indigo-500 via-indigo-400 to-blue-400", seo: "from-violet-500 via-violet-400 to-indigo-400", cover: "from-fuchsia-500 via-fuchsia-400 to-violet-400", published: "from-emerald-500 via-emerald-400 to-cyan-400" };
@@ -14691,20 +14794,34 @@ export function KdpFactoryApp() {
                                         </button>
                                     ))}
                                     <div className="h-4 w-px bg-white/10 mx-1" />
-                                    {/* Archive */}
+                                    {/* Fusionar — solo disponible con 2+ seleccionados */}
+                                    {selectedNicheIds.size >= 2 && (
+                                        <button
+                                            onClick={() => {
+                                                const first = niches.find(n => selectedNicheIds.has(n._id));
+                                                setMergeInitialName(first?.name ?? "");
+                                                setMergeModalOpen(true);
+                                            }}
+                                            className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-amber-400 hover:bg-amber-500/15 hover:border-amber-500/30 transition-all flex items-center gap-1">
+                                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 2.5h3.5l1 6h3.5M5.5 8.5L8.5 5.5M5.5 8.5L8.5 11.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="1.5" cy="2.5" r="1" fill="currentColor"/><circle cx="9.5" cy="5.5" r="1" fill="currentColor"/></svg>
+                                            Fusionar
+                                        </button>
+                                    )}
+                                    {/* Hard delete */}
                                     <button
                                         onClick={() => {
                                             const ids = [...selectedNicheIds];
+                                            if (!window.confirm(`¿Eliminar ${ids.length} nicho${ids.length > 1 ? "s" : ""} permanentemente? Esta acción no se puede deshacer.`)) return;
                                             ids.forEach(id => {
-                                                fetch(`${API_BASE_URL}/niches/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "archived" }) }).catch(() => {});
+                                                fetch(`${API_BASE_URL}/niches/${id}`, { method: "DELETE" }).catch(() => {});
                                             });
-                                            setNiches(prev => prev.map(n => selectedNicheIds.has(n._id) ? { ...n, status: "archived" } : n));
+                                            setNiches(prev => prev.filter(n => !selectedNicheIds.has(n._id)));
                                             setSelectedNicheIds(new Set());
                                             setBulkNicheMode(false);
-                                            toast.success(`${ids.length} nicho${ids.length > 1 ? "s" : ""} archivado${ids.length > 1 ? "s" : ""}`);
+                                            toast.success(`${ids.length} nicho${ids.length > 1 ? "s" : ""} eliminado${ids.length > 1 ? "s" : ""}`);
                                         }}
                                         className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 transition-all">
-                                        Archivar
+                                        Eliminar
                                     </button>
                                     {/* Dismiss */}
                                     <button onClick={() => { setSelectedNicheIds(new Set()); setBulkNicheMode(false); }}
@@ -14714,6 +14831,26 @@ export function KdpFactoryApp() {
                                 </div>
                             </div>
                         </ModalPortal>
+                    )}
+
+                    {/* ── Merge niches modal ── */}
+                    {mergeModalOpen && (
+                        <MergeNichesModal
+                            selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
+                            initialName={mergeInitialName}
+                            onClose={() => setMergeModalOpen(false)}
+                            onMerged={(mergedNiche, catalogCount) => {
+                                setNiches(prev => [mergedNiche, ...prev.filter(n => !selectedNicheIds.has(n._id))]);
+                                setSelectedNicheIds(new Set());
+                                setBulkNicheMode(false);
+                                setMergeModalOpen(false);
+                                toast.success(`Fusión completada → "${mergedNiche.name}" (${catalogCount} catálogos)`);
+                                void fetchNiches();
+                                void fetchCatalogs();
+                                void fetchBookDrafts();
+                                void fetchCloudinaryImages();
+                            }}
+                        />
                     )}
 
                     {/* ── Table view ── */}
@@ -14728,8 +14865,8 @@ export function KdpFactoryApp() {
                                 if (nicheSortBy === "market") return dir * ((a.marketScan?.score ?? -1) - (b.marketScan?.score ?? -1));
                                 if (nicheSortBy === "date") return dir * (new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
                                 if (nicheSortBy === "name") return dir * a.name.localeCompare(b.name, "es");
-                                if (nicheSortBy === "catalogs") { const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length; const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length; return dir * (ac - bc); }
-                                if (nicheSortBy === "images") { const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0); const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0); return dir * (ai - bi); }
+                                if (nicheSortBy === "catalogs") { const ac = catsForNiche(a).length; const bc = catsForNiche(b).length; return dir * (ac - bc); }
+                                if (nicheSortBy === "images") { const ai = catsForNiche(a).reduce((s, c) => s + c.images.length, 0); const bi = catsForNiche(b).reduce((s, c) => s + c.images.length, 0); return dir * (ai - bi); }
                                 return 0;
                             });
                         if (tableNiches.length === 0) return null;
@@ -14750,7 +14887,7 @@ export function KdpFactoryApp() {
                                     </thead>
                                     <tbody>
                                         {tableNiches.map((niche, idx) => {
-                                            const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
+                                            const linkedCats = catsForNiche(niche);
                                             const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                             const cardPhase = nicheComputedPhases.get(niche._id) ?? "niche";
                                             const firstCatThumbT = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;

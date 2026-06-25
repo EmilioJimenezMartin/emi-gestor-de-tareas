@@ -3,7 +3,7 @@
 // nicho y lanza un catálogo por cada una (encolados en serie).
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, Loader2, X, Layers, Check } from "lucide-react";
+import { Sparkles, Loader2, X, Layers, Check, Plus } from "lucide-react";
 import { AI_MODELS } from "../shared/ai-constants";
 import type { NicheFE } from "./types";
 
@@ -67,6 +67,14 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
     const [modelId, setModelId] = useState<string>("default");
     const [launching, setLaunching] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [hints, setHints] = useState<string[]>([]);
+
+    const addHint = () => {
+        setHints(prev => [...prev, ""]);
+        setCount(c => Math.max(c, hints.length + 1));
+    };
+    const updateHint = (i: number, val: string) => setHints(prev => prev.map((h, idx) => idx === i ? val : h));
+    const removeHint = (i: number) => setHints(prev => prev.filter((_, idx) => idx !== i));
 
     // Load configured autopilot model as default
     useEffect(() => {
@@ -93,10 +101,11 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
             const model = selectedModel
                 ? { id: selectedModel.id, name: selectedModel.name, provider: selectedModel.provider, modelId: selectedModel.modelId }
                 : undefined;
+            const validHints = hints.map(h => h.trim()).filter(Boolean);
             const res = await fetch(`${API}/niches/${niche._id}/explode-catalogs`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ count, imagesPerCatalog: imagesPer, ...(model ? { model } : {}) }),
+                body: JSON.stringify({ count, imagesPerCatalog: imagesPer, ...(model ? { model } : {}), ...(validHints.length > 0 ? { hints: validHints } : {}) }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Error al lanzar la explosión");
@@ -140,6 +149,51 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
                     <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Catálogos a generar</label>
                         <Stepper value={count} onChange={setCount} min={1} max={20} presets={[3, 5, 7, 10]} />
+                    </div>
+
+                    {/* Sugerencias específicas */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sugerencias específicas <span className="normal-case text-neutral-700 font-normal">(opcional)</span></label>
+                            {hints.length < count && (
+                                <button onClick={addHint}
+                                    className="flex items-center gap-1 h-6 px-2 rounded-lg bg-violet-500/15 border border-violet-500/25 text-[9px] font-black text-violet-400 hover:bg-violet-500/25 transition-all">
+                                    <Plus size={9} /> Añadir
+                                </button>
+                            )}
+                        </div>
+                        {hints.length === 0 ? (
+                            <p className="text-[10px] text-neutral-700 leading-relaxed">
+                                Sugiere sub-temas concretos para uno o varios catálogos — p.ej. <span className="text-neutral-500">"Superman"</span>, <span className="text-neutral-500">"escena de batalla nocturna"</span>. La IA los toma como punto de partida y construye un prompt experto alrededor de ellos.
+                            </p>
+                        ) : (
+                            <div className="space-y-1.5">
+                                {hints.map((h, i) => (
+                                    <div key={i} className="flex items-center gap-2">
+                                        <div className="w-5 h-5 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
+                                            <span className="text-[9px] font-black text-violet-400">{i + 1}</span>
+                                        </div>
+                                        <input
+                                            autoFocus={i === hints.length - 1}
+                                            value={h}
+                                            onChange={e => updateHint(i, e.target.value)}
+                                            placeholder={`Sub-tema ${i + 1}…`}
+                                            className="flex-1 h-8 px-3 rounded-xl bg-white/[0.03] border border-white/10 text-xs font-black text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/30 transition-all"
+                                        />
+                                        <button onClick={() => removeHint(i)}
+                                            className="w-6 h-6 rounded-lg text-neutral-600 hover:text-rose-400 transition-all flex items-center justify-center shrink-0">
+                                            <X size={11} />
+                                        </button>
+                                    </div>
+                                ))}
+                                {hints.length < count && (
+                                    <button onClick={addHint}
+                                        className="w-full h-7 rounded-xl border border-dashed border-white/10 text-[9px] font-black text-neutral-700 hover:text-violet-400 hover:border-violet-500/30 transition-all flex items-center justify-center gap-1">
+                                        <Plus size={9} /> Otro sub-tema
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Imágenes por catálogo */}

@@ -22,6 +22,7 @@ function normalizeLevel(v: unknown): "unknown" | "low" | "medium" | "high" {
 import { Catalog } from "../models/catalog.js";
 import { BookDraft } from "../models/book-draft.js";
 import { Settings } from "../models/settings.js";
+import { getCloudinaryConfig, initCloudinary } from "./cloudinary.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { getAgenda } from "../lib/agenda.js";
 import { scanNicheMarket } from "../lib/market-scan.js";
@@ -242,6 +243,159 @@ export async function registerNicheRoutes(app: FastifyInstance) {
 
             await Niche.findByIdAndUpdate(id, { $set: { confirmedPrompts: updated } });
             return reply.send({ ok: true, total: updated.length });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── POST /niches/merge ────────────────────────────────────────────────────
+    app.post("/niches/merge", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { sourceIds, targetName } = (request.body ?? {}) as { sourceIds?: string[]; targetName?: string };
+            if (!Array.isArray(sourceIds) || sourceIds.length < 2) return reply.status(400).send({ error: "Se necesitan al menos 2 nichos para fusionar" });
+            if (!targetName?.trim()) return reply.status(400).send({ error: "Proporciona un nombre para el nicho fusionado" });
+
+            const sources = await Niche.find({ _id: { $in: sourceIds } }).lean() as any[];
+            if (sources.length < 2) return reply.status(404).send({ error: "No se encontraron suficientes nichos" });
+
+            const sourceIdStrs = sources.map((s: any) => String(s._id));
+
+            // ── 1. FIND ALL CATALOGS using BOTH directions ──────────────────────────
+            // Direction A: from niche.catalogIds arrays (may be stale)
+            const fromNicheArrays = sources.flatMap((s: any) => (s.catalogIds ?? []) as string[])
+                .map(String).filter(id => id && id !== "undefined" && id !== "null");
+
+            // Direction B: query Catalog collection — try both string AND ObjectId forms
+            const fromCatalogQuery = await Catalog.find({
+                nicheIds: { $in: sourceIdStrs }
+            }).select("_id nicheIds").lean() as any[];
+            const fromCatalogQueryIds = fromCatalogQuery.map((c: any) => String(c._id));
+
+            // Union of both — filter garbage values
+            const allCatalogIdStrs = [...new Set([...fromNicheArrays, ...fromCatalogQueryIds])]
+                .filter(id => id && id !== "undefined" && id !== "null");
+
+            console.log("[merge] sourceIdStrs:", sourceIdStrs);
+            console.log("[merge] fromNicheArrays (len):", fromNicheArrays.length, fromNicheArrays);
+            console.log("[merge] fromCatalogQuery (len):", fromCatalogQuery.length, fromCatalogQueryIds);
+            console.log("[merge] allCatalogIdStrs (len):", allCatalogIdStrs.length);
+
+            // ── 2. PICK BEST METADATA from sources ──────────────────────────────────
+            const mergedBookPdfUrl = sources.map((s: any) => s.bookPdfUrl).find(Boolean);
+            const mergedCoverUrl   = sources.map((s: any) => s.coverUrl).find(Boolean);
+            const mergedAsin       = sources.map((s: any) => s.asin).find(Boolean);
+            const mergedListings   = sources.flatMap((s: any) => s.listings ?? []);
+            // Derive phase from what data actually exists — never assume phase from source niches
+            const effectivePhase = (() => {
+                if (mergedAsin) return "published";
+                if (mergedCoverUrl) return "cover";
+                if (mergedListings.length > 0) return "seo";
+                if (mergedBookPdfUrl) return "libro";
+                if (allCatalogIdStrs.length > 0) return "catalog";
+                return "niche";
+            })();
+
+            const first = sources.find((s: any) => s.sampleImageUrl) ?? sources[0];
+            const merged = await Niche.create({
+                name: targetName.trim(),
+                status: "active",
+                phase: effectivePhase,
+                description: sources.map((s: any) => s.description || s.name).filter(Boolean).join(" · "),
+                tags: [...new Set(sources.flatMap((s: any) => s.tags ?? []))],
+                notes: `Fusión de: ${sources.map((s: any) => s.name).join(", ")}`,
+                score: Math.max(...sources.map((s: any) => s.score ?? 0)),
+                competition: first.competition ?? "unknown",
+                styleCategory: first.styleCategory ?? "generic",
+                styleCategories: [...new Set(sources.flatMap((s: any) => s.styleCategories ?? [s.styleCategory ?? "generic"]))],
+                productType: first.productType ?? "coloring-book",
+                // Pick first non-empty value for single-value fields
+                sampleImageUrl: sources.map((s: any) => s.sampleImageUrl).find(Boolean) ?? undefined,
+                coverUrl: sources.map((s: any) => s.coverUrl).find(Boolean) ?? undefined,
+                backCoverUrl: sources.map((s: any) => s.backCoverUrl).find(Boolean) ?? undefined,
+                bookPdfUrl: sources.map((s: any) => s.bookPdfUrl).find(Boolean) ?? undefined,
+                discoveryImagePrompt: sources.map((s: any) => s.discoveryImagePrompt).find(Boolean) ?? undefined,
+                generatedPrompt: sources.map((s: any) => s.generatedPrompt).find(Boolean) ?? undefined,
+                asin: sources.map((s: any) => s.asin).find(Boolean) ?? undefined,
+                etsyUrl: sources.map((s: any) => s.etsyUrl).find(Boolean) ?? undefined,
+                gumroadUrl: sources.map((s: any) => s.gumroadUrl).find(Boolean) ?? undefined,
+                // Merge arrays
+                listings: sources.flatMap((s: any) => s.listings ?? []),
+                confirmedPrompts: sources.flatMap((s: any) => s.confirmedPrompts ?? []),
+                coverCandidates: [...new Set(sources.flatMap((s: any) => s.coverCandidates ?? []))],
+                pendingCatalogPrompts: [...new Set(sources.flatMap((s: any) => s.pendingCatalogPrompts ?? []))],
+                catalogImageOrder: sources.flatMap((s: any) => s.catalogImageOrder ?? []),
+                royalties: sources.flatMap((s: any) => s.royalties ?? []),
+                autoPilotEnabled: sources.some((s: any) => s.autoPilotEnabled),
+                pipelineHasCatalogs: allCatalogIdStrs.length > 0,
+                pipelineHasPdf: sources.some((s: any) => s.pipelineHasPdf),
+                pipelineHasListings: sources.some((s: any) => s.pipelineHasListings),
+                pipelineHasCover: sources.some((s: any) => s.pipelineHasCover),
+            });
+
+            const mergedId = String((merged as any)._id);
+
+            // ── 3. REASSIGN ALL CATALOGS ─────────────────────────────────────────────
+            for (const catId of allCatalogIdStrs) {
+                const cat = await Catalog.findById(catId).lean() as any;
+                if (!cat) continue;
+                const existing: string[] = (cat.nicheIds ?? []).map(String);
+                const filtered = existing.filter(id => !sourceIdStrs.includes(id));
+                const newIds = [...new Set([...filtered, mergedId])];
+                await Catalog.findByIdAndUpdate(catId, { $set: { nicheIds: newIds } });
+            }
+            await Niche.findByIdAndUpdate(mergedId, { $set: { catalogIds: allCatalogIdStrs } });
+
+            // ── 4. REASSIGN SeoSnapshots + BookDrafts (do NOT delete) ────────────────
+            const { SeoSnapshot } = await import("../models/seo-snapshot.js");
+            for (const srcId of sourceIdStrs) {
+                await SeoSnapshot.updateMany({ nicheId: srcId }, { $set: { nicheId: mergedId } }).catch(() => {});
+                await BookDraft.updateMany({ nicheId: srcId }, { $set: { nicheId: mergedId } }).catch(() => {});
+                await TelegramAction.updateMany({ nicheId: srcId }, { $set: { nicheId: mergedId } }).catch(() => {});
+            }
+
+            // ── 5. REASSIGN Cloudinary loose images (context.nicheId + tag) ─────────
+            try {
+                const cldConfig = await getCloudinaryConfig();
+                if (cldConfig) {
+                    const cld = await initCloudinary(cldConfig);
+                    for (const srcId of sourceIdStrs) {
+                        const seen = new Set<string>();
+
+                        // A: by tag (images uploaded with nicheId get this tag)
+                        try {
+                            const tagged = await cld.api.resources_by_tag(`nicho:${srcId}`, { max_results: 500, context: true });
+                            for (const r of (tagged.resources ?? [])) seen.add(r.public_id as string);
+                        } catch { /* tag search not available on this plan */ }
+
+                        // B: by context scan (images linked via PATCH only have context, no tag)
+                        try {
+                            const all = await cld.api.resources({ type: "upload", prefix: "emi-kdp-assets/", max_results: 500, context: true });
+                            for (const r of (all.resources ?? [])) {
+                                if (r.context?.custom?.nicheId === srcId) seen.add(r.public_id as string);
+                            }
+                        } catch { /* non-critical */ }
+
+                        const publicIds = [...seen];
+                        if (publicIds.length > 0) {
+                            await cld.uploader.add_context(`nicheId=${mergedId}`, publicIds).catch(() => {});
+                            await cld.uploader.add_tag(`nicho:${mergedId}`, publicIds).catch(() => {});
+                            await cld.uploader.remove_tag(`nicho:${srcId}`, publicIds).catch(() => {});
+                        }
+                    }
+                }
+            } catch { /* non-critical — don't fail the whole merge */ }
+
+            // ── 6. HARD-DELETE source niches (everything else already reassigned) ────
+            await Niche.deleteMany({ _id: { $in: sourceIdStrs } });
+
+            const result = await Niche.findById(mergedId).lean();
+            return reply.status(201).send({
+                niche: result,
+                catalogCount: allCatalogIdStrs.length,
+                mergedFrom: sourceIdStrs,
+                debug: { fromNicheArrays, fromCatalogQueryIds, allCatalogIdStrs }
+            });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }
@@ -967,9 +1121,10 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
     app.post("/niches/:id/explode-catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { count = 5, imagesPerCatalog = 5, model } = request.body ?? {};
+            const { count = 5, imagesPerCatalog = 5, model, hints = [] } = request.body ?? {};
             const n = Math.min(Math.max(2, Number(count)), 20);
             const imgsPer = Math.min(Math.max(1, Number(imagesPerCatalog)), 20);
+            const hintList: string[] = Array.isArray(hints) ? hints.map((h: any) => String(h).trim()).filter(Boolean).slice(0, n) : [];
 
             const niche = await Niche.findById(request.params.id).lean() as any;
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
@@ -1031,12 +1186,16 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
                 ? `\n\nAPPROVED VISUAL STYLE (this is the EXACT prompt that generated the accepted sample image — every situation you create MUST produce images that look like this same visual style, same technique, same line art quality):\n"${discoveryPrompt}"\nIMPORTANT: Do NOT reinvent the visual style. Keep the same drawing technique, level of detail, and aesthetic. Only change the SUBJECT or SCENE composition.`
                 : "";
 
+            const hintsBlock = hintList.length > 0
+                ? `\n\nMANDATORY FOCAL POINTS — the user has specified ${hintList.length} specific sub-topic(s) that MUST each appear as the central focus of one prompt. Treat each hint as a deep expert cue: you are a specialist who knows EXACTLY how "${hintList.join('" and "')}" relate to "${visualCoreName}". For each hinted slot, build a rich, specific prompt that puts that sub-topic at the absolute center:\n${hintList.map((h, i) => `  Slot ${i + 1}: "${h}" — write a prompt where this is the undeniable focal subject within the world of ${visualCoreName}`).join("\n")}\n\nThe remaining ${n - hintList.length} prompt(s) must be freely generated but must NOT overlap with the focal points above.`
+                : "";
+
             const user = `You are an expert in "${visualCoreName}" as a visual art niche for coloring books. You know every sub-genre, iconic character type, signature scene, and distinctive motif that defines this niche.
 
 Niche: "${visualCoreName}"
 Full title: "${niche.name}"
 Description: ${niche.description || "(none)"}
-Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${onTopicAnchorBlock}${alreadyUsedBlock}
+Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${onTopicAnchorBlock}${alreadyUsedBlock}${hintsBlock}
 
 YOUR TASK: Generate exactly ${n} image prompts. Each prompt must describe something that lives 100% INSIDE the world of "${visualCoreName}" — not something generic that uses "${visualCoreName}" as a tag or backdrop.
 
@@ -1077,18 +1236,15 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
                 : { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
 
             // 3. Crear un catálogo por situación — el primero arranca, el resto en cola
-            // When the niche has an approved discovery prompt (same one sent to Telegram),
-            // use it verbatim so catalog images match the approved preview exactly.
             const hasActive = await Catalog.exists({ status: { $in: ["queued", "pending", "running"] } });
             const created: any[] = [];
-            const useApprovedPrompt = !!discoveryPrompt && discoveryPrompt.includes("coloring book page");
             for (let i = 0; i < situations.length; i++) {
                 const s = situations[i];
                 const initialStatus = (i === 0 && !hasActive) ? "pending" : "queued";
                 const catalog = await Catalog.create({
                     name: `${niche.name} — ${s.situation}`,
-                    prompt: useApprovedPrompt ? discoveryPrompt : s.prompt.trim(),
-                    rawPrompt: useApprovedPrompt,
+                    prompt: s.prompt.trim(),
+                    rawPrompt: false,
                     productType: niche.productType ?? "coloring-book",
                     creativity: 50,
                     negativePrompt: "",

@@ -172,29 +172,62 @@ async function handleNicheDiscovery(
             } catch { /* non-critical */ }
         }
 
-        // Explosión IA: each catalog gets its own distinct AI-generated prompt
+        // Catálogo 1: prompt exacto de la imagen aprobada en Telegram
+        // Catálogos 2-N: Explosión IA con prompts distintos
         setImmediate(async () => {
             try {
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
                 const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
+                const nicheId = String(tAction.nicheId);
+                const discoveryPrompt = (tAction as any).imagePrompt as string | undefined;
 
-                const explodeRes = await internalFetch(`${base}/niches/${String(tAction.nicheId)}/explode-catalogs`, {
+                // --- Catalog 1: exact discovery prompt ---
+                if (discoveryPrompt) {
+                    const cat1Res = await internalFetch(`${base}/catalogs`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            name: `${tAction.nicheName} — Original`,
+                            prompt: discoveryPrompt,
+                            rawPrompt: true,
+                            productType: "coloring-book",
+                            aiModel: aiModel?.provider && aiModel?.modelId ? aiModel : { provider: "Pollinations", modelId: "flux" },
+                            width: 1024, height: 1024,
+                            totalImages: cfg.imagesPerCatalog,
+                            nicheIds: [nicheId],
+                        }),
+                    });
+                    if (cat1Res.ok) {
+                        const c1 = await cat1Res.json() as any;
+                        await Niche.findByIdAndUpdate(nicheId, {
+                            $addToSet: { catalogIds: String(c1._id) },
+                            $set: { pipelineHasCatalogs: true },
+                        });
+                        _io?.emit("catalogs:updated");
+                    }
+                }
+
+                // --- Catalogs 2-N: Explosion AI ---
+                const explosionCount = cfg.catalogsPerNiche - (discoveryPrompt ? 1 : 0);
+                if (explosionCount < 1) return;
+
+                const explodeRes = await internalFetch(`${base}/niches/${nicheId}/explode-catalogs`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        count: cfg.catalogsPerNiche,
+                        count: explosionCount,
                         imagesPerCatalog: cfg.imagesPerCatalog,
                         ...(aiModel?.provider && aiModel?.modelId ? { model: aiModel } : {}),
                     }),
                 });
                 const explodeData = await explodeRes.json() as any;
-                const created = explodeData?.catalogs?.length ?? 0;
+                const created = (explodeData?.catalogs?.length ?? 0) + (discoveryPrompt ? 1 : 0);
 
                 _io?.emit("niches:updated");
                 _io?.emit("catalogs:updated");
 
-                if (!explodeRes.ok || created === 0) {
+                if (!explodeRes.ok || explodeData?.catalogs?.length === 0) {
                     await TelegramAction.findByIdAndUpdate(tAction._id, {
                         $set: { status: "pending", resolvedAt: null },
                     }).catch(() => {});
@@ -214,6 +247,7 @@ async function handleNicheDiscovery(
                 await sendTelegram(
                     `🏭 <b>${tAction.nicheName}</b>\n` +
                     `🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales\n` +
+                    (discoveryPrompt ? `<i>1 × prompt original + ${situations.length} × Explosión IA</i>\n` : "") +
                     (situationPreview ? `<i>${situationPreview}${situations.length > 4 ? "…" : ""}</i>` : "")
                 ).catch(() => {});
 
@@ -230,7 +264,7 @@ async function handleNicheDiscovery(
             }
         });
 
-        return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos (Explosión IA)`;
+        return `✅ Lanzado — 1 original + ${cfg.catalogsPerNiche - 1} Explosión IA`;
     }
 
     if (decision === "omitir") {
@@ -711,25 +745,57 @@ async function processUpdate(update: any): Promise<void> {
                         `Creando <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>…`
                     );
 
-                    // 2 · Explosión IA — catálogos con prompts distintos generados por IA
+                    // Catálogo 1: prompt exacto de la imagen aprobada · Catálogos 2-N: Explosión IA
                     const nicheId = String((niche as any)._id);
                     const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
+                    const discoveryPromptClone = tAction.imagePrompt as string | undefined;
 
                     setImmediate(async () => {
                         try {
                             const port = process.env.PORT || 3001;
                             const base = `http://localhost:${port}`;
-                            const explodeRes = await internalFetch(`${base}/niches/${nicheId}/explode-catalogs`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                    count: cfg.catalogsPerNiche,
-                                    imagesPerCatalog: cfg.imagesPerCatalog,
-                                    ...(aiModel?.provider && aiModel?.modelId ? { model: aiModel } : {}),
-                                }),
-                            });
-                            const explodeData = await explodeRes.json() as any;
-                            const created = explodeData?.catalogs?.length ?? 0;
+
+                            // --- Catalog 1: exact discovery prompt ---
+                            if (discoveryPromptClone) {
+                                const cat1Res = await internalFetch(`${base}/catalogs`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        name: `${tAction.nicheName} — Original`,
+                                        prompt: discoveryPromptClone,
+                                        rawPrompt: true,
+                                        productType: "coloring-book",
+                                        aiModel: aiModel?.provider && aiModel?.modelId ? aiModel : { provider: "Pollinations", modelId: "flux" },
+                                        width: 1024, height: 1024,
+                                        totalImages: cfg.imagesPerCatalog,
+                                        nicheIds: [nicheId],
+                                    }),
+                                });
+                                if (cat1Res.ok) {
+                                    const c1 = await cat1Res.json() as any;
+                                    await Niche.findByIdAndUpdate(nicheId, {
+                                        $addToSet: { catalogIds: String(c1._id) },
+                                        $set: { pipelineHasCatalogs: true },
+                                    });
+                                    _io?.emit("catalogs:updated");
+                                }
+                            }
+
+                            // --- Catalogs 2-N: Explosion AI ---
+                            const explosionCount = cfg.catalogsPerNiche - (discoveryPromptClone ? 1 : 0);
+                            const explodeData: any = explosionCount > 0
+                                ? await internalFetch(`${base}/niches/${nicheId}/explode-catalogs`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        count: explosionCount,
+                                        imagesPerCatalog: cfg.imagesPerCatalog,
+                                        ...(aiModel?.provider && aiModel?.modelId ? { model: aiModel } : {}),
+                                    }),
+                                }).then(r => r.json())
+                                : { catalogs: [], situations: [] };
+
+                            const created = (explodeData?.catalogs?.length ?? 0) + (discoveryPromptClone ? 1 : 0);
                             _io?.emit("niches:updated");
                             _io?.emit("catalogs:updated");
                             if (created > 0) {
@@ -738,6 +804,7 @@ async function processUpdate(update: any): Promise<void> {
                                 await sendTelegram(
                                     `🏭 <b>${tAction.nicheName}</b>\n` +
                                     `🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales\n` +
+                                    (discoveryPromptClone ? `<i>1 × prompt original + ${situations.length} × Explosión IA</i>\n` : "") +
                                     (situationPreview ? `<i>${situationPreview}${situations.length > 4 ? "…" : ""}</i>` : "")
                                 ).catch(() => {});
                                 try {
@@ -756,7 +823,7 @@ async function processUpdate(update: any): Promise<void> {
                         }
                     });
 
-                    resultText = `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
+                    resultText = `✅ Lanzado — 1 original + ${cfg.catalogsPerNiche - 1} Explosión IA`;
                 } catch (e: any) {
                     resultText = `❌ Error: ${e.message}`;
                 }
