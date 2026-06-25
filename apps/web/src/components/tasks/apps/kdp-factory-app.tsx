@@ -521,6 +521,94 @@ function MergeNichesModal({ selectedNiches, initialName, onClose, onMerged }: {
     );
 }
 
+function AbsorbNichesModal({ selectedNiches, onClose, onAbsorbed }: {
+    selectedNiches: NicheFE[];
+    onClose: () => void;
+    onAbsorbed: (hostNiche: any, catalogCount: number) => void;
+}) {
+    const [hostId, setHostId] = useState(selectedNiches[0]?._id ?? "");
+    const [absorbing, setAbsorbing] = useState(false);
+
+    const host = selectedNiches.find(n => n._id === hostId);
+    const sources = selectedNiches.filter(n => n._id !== hostId);
+
+    const handleAbsorb = async () => {
+        if (!hostId || sources.length === 0 || absorbing) return;
+        setAbsorbing(true);
+        try {
+            const res = await fetch(`${API_URL}/niches/absorb`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hostId, sourceIds: sources.map(n => n._id) }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error al absorber");
+            onAbsorbed(data.niche, data.catalogCount);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al absorber");
+        } finally {
+            setAbsorbing(false);
+        }
+    };
+
+    return (
+        <ModalPortal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => !absorbing && onClose()}>
+                <div className="w-full max-w-sm rounded-3xl bg-[rgba(14,14,18,0.97)] border border-sky-500/25 shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-6 space-y-5" onClick={e => e.stopPropagation()}>
+                    <div className="text-center space-y-1.5">
+                        <div className="w-10 h-10 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center mx-auto mb-3">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="#38bdf8" strokeWidth="1.8"/><path d="M9 5v4l3 2" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round"/><path d="M5 9h4M9 5v4" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round"/><path d="M6 6l6 6M12 6l-6 6" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                        </div>
+                        <p className="text-base font-black text-white">Absorber nichos</p>
+                        <p className="text-xs text-neutral-500">El nicho anfitrión se queda con su nombre.<br/>Los absorbidos se vacían y eliminan.</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">¿Quién absorbe a los demás?</p>
+                        <div className="space-y-1.5">
+                            {selectedNiches.map(n => (
+                                <button key={n._id} onClick={() => setHostId(n._id)}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl border transition-all text-left ${hostId === n._id ? "border-sky-500/40 bg-sky-500/10" : "border-white/8 bg-white/[0.02] hover:bg-white/[0.05]"}`}>
+                                    <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all ${hostId === n._id ? "border-sky-400 bg-sky-400" : "border-white/20"}`}>
+                                        {hostId === n._id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-black text-white truncate">{n.name}</p>
+                                        {hostId === n._id
+                                            ? <p className="text-[10px] text-sky-400">Anfitrión — conserva su nombre</p>
+                                            : <p className="text-[10px] text-neutral-600">Será absorbido y eliminado</p>}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {host && sources.length > 0 && (
+                        <div className="rounded-2xl bg-white/[0.02] border border-white/8 px-3 py-2">
+                            <p className="text-[10px] text-neutral-600">
+                                <span className="text-sky-300 font-black">{host.name}</span> absorberá los catálogos e imágenes de{" "}
+                                <span className="text-white font-black">{sources.map(s => s.name).join(", ")}</span>
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="flex gap-2">
+                        <button onClick={onClose} disabled={absorbing}
+                            className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all disabled:opacity-50">
+                            Cancelar
+                        </button>
+                        <button onClick={() => void handleAbsorb()} disabled={absorbing || sources.length === 0}
+                            className="flex-1 h-11 rounded-2xl bg-sky-500 hover:bg-sky-400 text-black text-sm font-black transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                            {absorbing ? <Loader2 size={14} className="animate-spin" /> : null}
+                            Absorber
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </ModalPortal>
+    );
+}
+
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
@@ -1452,6 +1540,7 @@ export function KdpFactoryApp() {
     const [bulkNicheMode, setBulkNicheMode] = useState(false);
     const [mergeModalOpen, setMergeModalOpen] = useState(false);
     const [mergeInitialName, setMergeInitialName] = useState("");
+    const [absorbModalOpen, setAbsorbModalOpen] = useState(false);
     // Toolbar de catálogos IA
     const [iaCatalogSearch, setIaCatalogSearch] = useState("");
     const [iaCatalogStatusFilter, setIaCatalogStatusFilter] = useState<"all" | "active" | "queued" | "completed" | "failed" | "cancelled">("all");
@@ -14794,8 +14883,8 @@ export function KdpFactoryApp() {
                                         </button>
                                     ))}
                                     <div className="h-4 w-px bg-white/10 mx-1" />
-                                    {/* Fusionar — solo disponible con 2+ seleccionados */}
-                                    {selectedNicheIds.size >= 2 && (
+                                    {/* Fusionar / Absorber — solo disponible con 2+ seleccionados */}
+                                    {selectedNicheIds.size >= 2 && (<>
                                         <button
                                             onClick={() => {
                                                 const first = niches.find(n => selectedNicheIds.has(n._id));
@@ -14806,7 +14895,13 @@ export function KdpFactoryApp() {
                                             <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 2.5h3.5l1 6h3.5M5.5 8.5L8.5 5.5M5.5 8.5L8.5 11.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="1.5" cy="2.5" r="1" fill="currentColor"/><circle cx="9.5" cy="5.5" r="1" fill="currentColor"/></svg>
                                             Fusionar
                                         </button>
-                                    )}
+                                        <button
+                                            onClick={() => setAbsorbModalOpen(true)}
+                                            className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-sky-400 hover:bg-sky-500/15 hover:border-sky-500/30 transition-all flex items-center gap-1">
+                                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.3"/><path d="M5.5 3v2.5l2 1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                                            Absorber
+                                        </button>
+                                    </>)}
                                     {/* Hard delete */}
                                     <button
                                         onClick={() => {
@@ -14831,6 +14926,25 @@ export function KdpFactoryApp() {
                                 </div>
                             </div>
                         </ModalPortal>
+                    )}
+
+                    {/* ── Absorb niches modal ── */}
+                    {absorbModalOpen && (
+                        <AbsorbNichesModal
+                            selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
+                            onClose={() => setAbsorbModalOpen(false)}
+                            onAbsorbed={(hostNiche, catalogCount) => {
+                                setNiches(prev => [hostNiche, ...prev.filter(n => n._id !== hostNiche._id && !selectedNicheIds.has(n._id))]);
+                                setSelectedNicheIds(new Set());
+                                setBulkNicheMode(false);
+                                setAbsorbModalOpen(false);
+                                toast.success(`"${hostNiche.name}" absorbió ${catalogCount} catálogos`);
+                                void fetchNiches();
+                                void fetchCatalogs();
+                                void fetchBookDrafts();
+                                void fetchCloudinaryImages();
+                            }}
+                        />
                     )}
 
                     {/* ── Merge niches modal ── */}

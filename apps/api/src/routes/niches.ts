@@ -401,6 +401,92 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         }
     });
 
+    // ── POST /niches/absorb ───────────────────────────────────────────────────
+    // hostId keeps its name and data; sourceIds get absorbed into it and deleted.
+    app.post("/niches/absorb", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { hostId, sourceIds } = (request.body ?? {}) as { hostId?: string; sourceIds?: string[] };
+            if (!hostId) return reply.status(400).send({ error: "hostId requerido" });
+            if (!Array.isArray(sourceIds) || sourceIds.length < 1) return reply.status(400).send({ error: "sourceIds requerido (mínimo 1)" });
+
+            const host = await Niche.findById(hostId).lean() as any;
+            if (!host) return reply.status(404).send({ error: "Nicho anfitrión no encontrado" });
+
+            const sources = await Niche.find({ _id: { $in: sourceIds } }).lean() as any[];
+            if (sources.length === 0) return reply.status(404).send({ error: "No se encontraron nichos a absorber" });
+
+            const hostIdStr = String(host._id);
+            const sourceIdStrs = sources.map((s: any) => String(s._id));
+
+            // ── 1. FIND ALL CATALOGS from sources ───────────────────────────────────
+            const fromNicheArrays = sources.flatMap((s: any) => (s.catalogIds ?? []) as string[])
+                .map(String).filter(id => id && id !== "undefined" && id !== "null");
+            const fromCatalogQuery = await Catalog.find({ nicheIds: { $in: sourceIdStrs } }).select("_id nicheIds").lean() as any[];
+            const sourceCatalogIds = [...new Set([...fromNicheArrays, ...fromCatalogQuery.map((c: any) => String(c._id))])]
+                .filter(id => id && id !== "undefined" && id !== "null");
+
+            // ── 2. REASSIGN CATALOGS to host ────────────────────────────────────────
+            for (const catId of sourceCatalogIds) {
+                const cat = await Catalog.findById(catId).lean() as any;
+                if (!cat) continue;
+                const existing: string[] = (cat.nicheIds ?? []).map(String);
+                const filtered = existing.filter(id => !sourceIdStrs.includes(id));
+                const newIds = [...new Set([...filtered, hostIdStr])];
+                await Catalog.findByIdAndUpdate(catId, { $set: { nicheIds: newIds } });
+            }
+            // Merge catalogIds into host
+            const hostCurrentCatalogIds = ((host.catalogIds ?? []) as string[]).map(String);
+            const mergedCatalogIds = [...new Set([...hostCurrentCatalogIds, ...sourceCatalogIds])];
+            await Niche.findByIdAndUpdate(hostIdStr, {
+                $set: { catalogIds: mergedCatalogIds, pipelineHasCatalogs: mergedCatalogIds.length > 0 },
+            });
+
+            // ── 3. REASSIGN SeoSnapshots, BookDrafts, TelegramActions ────────────────
+            const { SeoSnapshot } = await import("../models/seo-snapshot.js");
+            for (const srcId of sourceIdStrs) {
+                await SeoSnapshot.updateMany({ nicheId: srcId }, { $set: { nicheId: hostIdStr } }).catch(() => {});
+                await BookDraft.updateMany({ nicheId: srcId }, { $set: { nicheId: hostIdStr } }).catch(() => {});
+                await TelegramAction.updateMany({ nicheId: srcId }, { $set: { nicheId: hostIdStr } }).catch(() => {});
+            }
+
+            // ── 4. REASSIGN Cloudinary loose images ──────────────────────────────────
+            try {
+                const cldConfig = await getCloudinaryConfig();
+                if (cldConfig) {
+                    const cld = await initCloudinary(cldConfig);
+                    for (const srcId of sourceIdStrs) {
+                        const seen = new Set<string>();
+                        try {
+                            const tagged = await cld.api.resources_by_tag(`nicho:${srcId}`, { max_results: 500, context: true });
+                            for (const r of (tagged.resources ?? [])) seen.add(r.public_id as string);
+                        } catch { }
+                        try {
+                            const all = await cld.api.resources({ type: "upload", prefix: "emi-kdp-assets/", max_results: 500, context: true });
+                            for (const r of (all.resources ?? [])) {
+                                if (r.context?.custom?.nicheId === srcId) seen.add(r.public_id as string);
+                            }
+                        } catch { }
+                        const publicIds = [...seen];
+                        if (publicIds.length > 0) {
+                            await cld.uploader.add_context(`nicheId=${hostIdStr}`, publicIds).catch(() => {});
+                            await cld.uploader.add_tag(`nicho:${hostIdStr}`, publicIds).catch(() => {});
+                            await cld.uploader.remove_tag(`nicho:${srcId}`, publicIds).catch(() => {});
+                        }
+                    }
+                }
+            } catch { }
+
+            // ── 5. DELETE source niches (now empty) ──────────────────────────────────
+            await Niche.deleteMany({ _id: { $in: sourceIdStrs } });
+
+            const result = await Niche.findById(hostIdStr).lean();
+            return reply.status(200).send({ niche: result, absorbed: sourceIdStrs.length, catalogCount: sourceCatalogIds.length });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     app.delete("/niches/:id", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
