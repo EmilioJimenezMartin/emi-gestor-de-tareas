@@ -1306,7 +1306,7 @@ ${language === "es" ? `  "Diseños de Graffiti y Arte de Calle · Para Fans del 
 Total: 1200-1800 chars visibles. <strong> en 4-6 keywords estratégicas.
 
 [KEYWORDS BACKEND]
-Exactamente 7 frases long-tail, 2-5 palabras c/u. Máximo 49 chars por frase (Amazon rechaza ≥50 chars silenciosamente). Sin repetir palabras del título/subtítulo. Mezcla: temática + audiencia + ocasión + uso.
+Exactamente 7 frases long-tail, 2-5 palabras c/u. Máximo 49 chars por frase (Amazon rechaza ≥50 chars silenciosamente). Sin repetir palabras del título/subtítulo. REGLA CRÍTICA: ninguna palabra individual puede aparecer en más de una frase — cada frase usa vocabulario único. Mezcla: temática + audiencia + ocasión + uso.
 
 [INPUT DEL USUARIO]
 Producto:`;

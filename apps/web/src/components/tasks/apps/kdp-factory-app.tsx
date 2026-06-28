@@ -100,6 +100,7 @@ import {
     Redo2,
     Dna,
     FlaskConical,
+    Square,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -399,7 +400,7 @@ import { ListingCardFields } from "./kdp/ListingCardFields";
 
 import { GelatoUploadModal } from "./kdp/GelatoUploadModal";
 
-type CloudinaryImage = { publicId: string; url: string; width: number; height: number; bytes: number; nicheId?: string | null; createdAt?: string };
+type CloudinaryImage = { publicId: string; url: string; width: number; height: number; bytes: number; nicheId?: string | null; nicheIds?: string[]; createdAt?: string };
 
 import { MarketScanPanel, LaunchPlaybookPanel } from "./kdp/MarketScanPanel";
 import { LifecyclePanel, type LifecycleStage } from "./kdp/LifecyclePanel";
@@ -445,9 +446,10 @@ function ModalPortal({ children }: { children: React.ReactNode }) {
     return createPortal(children, document.body);
 }
 
-function MergeNichesModal({ selectedNiches, initialName, onClose, onMerged }: {
+function MergeNichesModal({ selectedNiches, initialName, stats, onClose, onMerged }: {
     selectedNiches: NicheFE[];
     initialName: string;
+    stats: Record<string, { cats: number; imgs: number }>;
     onClose: () => void;
     onMerged: (mergedNiche: any, catalogCount: number) => void;
 }) {
@@ -484,14 +486,18 @@ function MergeNichesModal({ selectedNiches, initialName, onClose, onMerged }: {
                         <p className="text-base font-black text-white">Fusionar nichos</p>
                         <p className="text-xs text-neutral-500">Los catálogos e imágenes pasan al nuevo nicho.<br/>Los originales se eliminan definitivamente.</p>
                     </div>
-                    <div className="rounded-2xl bg-white/[0.03] border border-white/8 px-3 py-2.5 space-y-1">
+                    <div className="rounded-2xl bg-white/[0.03] border border-white/8 px-3 py-2.5 space-y-1.5">
                         <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fusionando</p>
-                        {selectedNiches.map(n => (
-                            <div key={n._id} className="flex items-center gap-2">
-                                <div className="w-1 h-1 rounded-full bg-amber-400/60" />
-                                <p className="text-xs text-neutral-400 truncate">{n.name}</p>
-                            </div>
-                        ))}
+                        {selectedNiches.map(n => {
+                            const st = stats[n._id];
+                            return (
+                                <div key={n._id} className="flex items-center gap-2">
+                                    <div className="w-1 h-1 rounded-full bg-amber-400/60 shrink-0" />
+                                    <p className="text-xs text-neutral-400 truncate flex-1">{n.name}</p>
+                                    {st && <span className="text-[10px] text-neutral-600 shrink-0">{st.cats} cat · {st.imgs} img</span>}
+                                </div>
+                            );
+                        })}
                     </div>
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre del nicho fusionado</label>
@@ -521,8 +527,9 @@ function MergeNichesModal({ selectedNiches, initialName, onClose, onMerged }: {
     );
 }
 
-function AbsorbNichesModal({ selectedNiches, onClose, onAbsorbed }: {
+function AbsorbNichesModal({ selectedNiches, stats, onClose, onAbsorbed }: {
     selectedNiches: NicheFE[];
+    stats: Record<string, { cats: number; imgs: number }>;
     onClose: () => void;
     onAbsorbed: (hostNiche: any, catalogCount: number) => void;
 }) {
@@ -566,7 +573,9 @@ function AbsorbNichesModal({ selectedNiches, onClose, onAbsorbed }: {
                     <div className="space-y-1.5">
                         <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">¿Quién absorbe a los demás?</p>
                         <div className="space-y-1.5">
-                            {selectedNiches.map(n => (
+                            {selectedNiches.map(n => {
+                                const st = stats[n._id];
+                                return (
                                 <button key={n._id} onClick={() => setHostId(n._id)}
                                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl border transition-all text-left ${hostId === n._id ? "border-sky-500/40 bg-sky-500/10" : "border-white/8 bg-white/[0.02] hover:bg-white/[0.05]"}`}>
                                     <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all ${hostId === n._id ? "border-sky-400 bg-sky-400" : "border-white/20"}`}>
@@ -574,12 +583,14 @@ function AbsorbNichesModal({ selectedNiches, onClose, onAbsorbed }: {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-black text-white truncate">{n.name}</p>
-                                        {hostId === n._id
-                                            ? <p className="text-[10px] text-sky-400">Anfitrión — conserva su nombre</p>
-                                            : <p className="text-[10px] text-neutral-600">Será absorbido y eliminado</p>}
+                                        <p className={`text-[10px] ${hostId === n._id ? "text-sky-400" : "text-neutral-600"}`}>
+                                            {hostId === n._id ? "Anfitrión — conserva su nombre" : "Será absorbido y eliminado"}
+                                            {st ? ` · ${st.cats} cat · ${st.imgs} img` : ""}
+                                        </p>
                                     </div>
                                 </button>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -700,6 +711,8 @@ export function KdpFactoryApp() {
     const dimPickerRectRef = useRef<DOMRect | null>(null);
     const [cloudinaryImages, setCloudinaryImages] = useState<CloudinaryImage[]>([]);
     const [linkingNicheForCloud, setLinkingNicheForCloud] = useState<string | null>(null); // publicId being linked
+    const [addingExtraNicheFor, setAddingExtraNicheFor] = useState<string | null>(null); // publicId showing extra-niche picker
+    const [extraNicheLoading, setExtraNicheLoading] = useState<string | null>(null); // "publicId:nicheId"
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
     const [cloudinaryUsage, setCloudinaryUsage] = useState<{ usedBytes: number; limitBytes: number; usedPct: number | null; credits?: { used: number; limit: number } } | null>(null);
     const [uploadingToCloud, setUploadingToCloud] = useState<number | null>(null);
@@ -839,6 +852,8 @@ export function KdpFactoryApp() {
     type CompareMode = "single" | "explosion";
     const [compareMode, setCompareMode] = useState<CompareMode>("single");
     const [explosionCount, setExplosionCount] = useState(3);
+    const [explosionImagination, setExplosionImagination] = useState(50);
+    const [explosionVariation, setExplosionVariation] = useState(50);
     type ExplosionSituation = { label: string; prompt: string };
     const [explosionSituations, setExplosionSituations] = useState<ExplosionSituation[]>([]);
     // modelId → situation index → status
@@ -1114,7 +1129,7 @@ export function KdpFactoryApp() {
         setExplosionSituations([]);
         setExplosionResults(new Map());
         try {
-            const res = await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/situations?count=${explosionCount}`);
+            const res = await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/situations?count=${explosionCount}&imagination=${explosionImagination}&variation=${explosionVariation}`);
             if (!res.ok) throw new Error((await res.json()).error);
             const { situations } = await res.json() as { situations: ExplosionSituation[] };
             setExplosionSituations(situations);
@@ -3516,6 +3531,53 @@ export function KdpFactoryApp() {
         }
     };
 
+    const addExtraNicheToImage = async (publicId: string, nicheId: string) => {
+        const key = `${publicId}:${nicheId}`;
+        setExtraNicheLoading(key);
+        try {
+            const res = await fetch(`${API_BASE_URL}/cloudinary/add-extra-niche`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ publicId, nicheId }),
+            });
+            if (!res.ok) throw new Error("Error al añadir");
+            setCloudinaryImages(prev => prev.map(img =>
+                img.publicId === publicId
+                    ? { ...img, nicheIds: [...new Set([...(img.nicheIds ?? []), nicheId])] }
+                    : img
+            ));
+            toast.success("Imagen también asignada a ese nicho");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al añadir");
+        } finally {
+            setExtraNicheLoading(null);
+            setAddingExtraNicheFor(null);
+        }
+    };
+
+    const removeExtraNicheFromImage = async (publicId: string, nicheId: string) => {
+        const key = `${publicId}:${nicheId}`;
+        setExtraNicheLoading(key);
+        try {
+            const res = await fetch(`${API_BASE_URL}/cloudinary/remove-extra-niche`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ publicId, nicheId }),
+            });
+            if (!res.ok) throw new Error("Error al quitar");
+            setCloudinaryImages(prev => prev.map(img =>
+                img.publicId === publicId
+                    ? { ...img, nicheIds: (img.nicheIds ?? []).filter(id => id !== nicheId) }
+                    : img
+            ));
+            toast.success("Imagen quitada de ese nicho");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al quitar");
+        } finally {
+            setExtraNicheLoading(null);
+        }
+    };
+
     const linkOrphanCatalogToNiche = async (catalogId: string, nicheId: string) => {
         setOrphanLinkingCatalog(true);
         try {
@@ -3646,6 +3708,7 @@ export function KdpFactoryApp() {
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
     const [noBlankPages, setNoBlankPages] = useState(false);
+    const [bookGlobalBorder, setBookGlobalBorder] = useState<{ enabled: boolean; width: number; color: string }>({ enabled: false, width: 3, color: "#000000" });
     const [showGelatoUpload, setShowGelatoUpload] = useState(false);
     const [showSplitModal, setShowSplitModal] = useState(false);
     const [showKdpTips, setShowKdpTips] = useState(false);
@@ -3776,7 +3839,52 @@ export function KdpFactoryApp() {
             urgentTm.length > 0 ? `Urgencias Time Machine: ${urgentTm.map(t => `${t.nicheName} (${t.urgency} — publicar ${t.optimalPublishDate})`).join(", ")}` : "",
             lastClone ? `Último Clone Engine: "${lastClone.source.title}" BSR ${lastClone.source.bsr}` : "",
         ].filter(Boolean).join("\n");
-        return `Eres el asistente de Daily Focus del autor KDP Emilio Jimenez. Le ayudas a decidir qué hacer hoy para maximizar ingresos pasivos con libros de colorear en Amazon KDP.\n\nESTADO ACTUAL:\n${lines}\n\nResponde siempre en español. Sé directo, conciso y accionable. Máximo 3-4 oraciones. Prioriza el mayor impacto económico.`;
+        const kdpTips = `
+ESPECIFICACIONES KDP:
+- Tamaño: 8.5×11", interior color estándar, papel blanco, 300 DPI mínimo (600 DPI para line art)
+- ~50 ilustraciones por libro. Precio ideal: $6.99–$9.99
+- Sangrado obligatorio 0.125" si hay fondo
+
+ANTES DE PUBLICAR:
+- Keyword principal en las primeras 3-4 palabras del título
+- Subtítulo: 2-3 long-tail keywords sin repetir las del título
+- 7 frases de keywords, máximo 49 chars cada una
+- Elige 2 categorías con BSR #100 < 50.000
+- A+ Content desde el día 1: 5 módulos de imágenes + texto
+- Precio de lanzamiento: $2.99–$4.99 los primeros 7 días, luego sube
+
+PRIMEROS 7 DÍAS (críticos para el algoritmo de Amazon):
+- Día 1: Activa Amazon Sponsored Products con auto-targeting. Comparte en RRSS. Pide early reviews.
+- Días 2-3: Countdown Deal $0.99 si aplica. Objetivo: 10-20 ventas en 48h.
+- Días 4-5: Si >15 ventas y BSR < 20.000, sube precio a normal. Revisa Search Terms Report.
+- Días 6-7: 30 ventas en 7 días → Hot New Releases. Aumenta presupuesto Ads si ACoS < 40%. Lanza Vol. 2.
+
+POST-LANZAMIENTO:
+- Semanas 2-4: sube precio $0.50 cada semana hasta que caiga la conversión
+- Lanza Vol. 2 antes de las 6 semanas — cross-selling automático entre volúmenes del mismo autor
+- A los 90 días: revisa y cambia categorías si hay menos competidas con BSR < 50.000
+- 4 semanas: desactiva keywords con >10 clicks sin ventas en Ads
+- A los 30 días activa Expanded Distribution si tienes >20 ventas orgánicas
+- Si ventas bajan a los 6+ meses: actualiza portada + refresca keywords + baja precio 48h`.trim();
+
+        const listingsSummary = niches
+            .filter(n => n.listings && n.listings.length > 0)
+            .map(n => {
+                const l = n.listings![0];
+                const kwCount = Array.isArray(l.keywords) ? l.keywords.length : (l.keywords ? String(l.keywords).split(",").filter(Boolean).length : 0);
+                const kwText = Array.isArray(l.keywords) ? l.keywords.slice(0, 7).join(" | ") : String(l.keywords ?? "").slice(0, 200);
+                const titleLen = (l.title ?? "").length;
+                const issues: string[] = [];
+                if (titleLen > 200) issues.push("título muy largo");
+                if (titleLen < 30) issues.push("título muy corto");
+                if (kwCount < 5) issues.push("pocas keywords");
+                if (kwCount > 7) issues.push("demasiadas keyword phrases");
+                return `- "${n.name}": título="${l.title ?? "sin título"}" (${titleLen} chars) | keywords(${kwCount}): ${kwText}${issues.length ? ` | ⚠️ ${issues.join(", ")}` : ""}`;
+            }).join("\n");
+
+        const nichesWithoutListing = niches.filter(n => n.status !== "archived" && (!n.listings || n.listings.length === 0));
+
+        return `Eres el asistente de Daily Focus del autor KDP Emilio Jimenez. Le ayudas a decidir qué hacer hoy para maximizar ingresos pasivos con libros de colorear en Amazon KDP.\n\nESTADO ACTUAL:\n${lines}\n\nLISTINGS ACTUALES:\n${listingsSummary || "Ningún listing generado aún"}\n\nNICHOS SIN LISTING: ${nichesWithoutListing.length > 0 ? nichesWithoutListing.map(n => n.name).join(", ") : "todos tienen listing"}\n\nCONSEJOS Y ESTRATEGIA KDP:\n${kdpTips}\n\nResponde siempre en español. Sé directo, conciso y accionable. Máximo 3-4 oraciones. Prioriza el mayor impacto económico.`;
     }, [niches, iaCatalogs, pubEvents, timeMachineData, cloneHistory, nicheComputedPhases]);
 
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -4049,7 +4157,7 @@ export function KdpFactoryApp() {
 
     const downloadNichePdfDirect = async (niche: NicheFE, linkedCats: typeof iaCatalogs, opts: { owner: boolean; shuffle: boolean }) => {
         const catImages = linkedCats.flatMap(c => c.images);
-        const persistentCloudImgs = cloudinaryImages.filter(img => img.nicheId === niche._id);
+        const persistentCloudImgs = cloudinaryImages.filter(img => img.nicheId === niche._id || (img.nicheIds ?? []).includes(niche._id));
         let allImages: { url: string; label?: string }[] = [
             ...catImages.map(img => ({ url: img.url, label: img.publicId.split("/").pop() ?? "" })),
             ...persistentCloudImgs.map(img => ({ url: img.url, label: img.publicId.split("/").pop() ?? "" })),
@@ -4297,21 +4405,25 @@ export function KdpFactoryApp() {
                 const pdfPage = pdf.addPage([pageWidth, pageHeight]);
                 if (bookPage.image) {
                     const embedded = await embedImage(bookPage.image.url);
-                    drawImageCentered(pdfPage, embedded, bookPage.image.scale ?? 1);
-                    if (bookPage.image.border) {
+                    const imgRect = drawImageCentered(pdfPage, embedded, bookPage.image.scale ?? 1);
+                    const pageBorderSet = bookPage.image.border !== undefined;
+                    const effectiveBorder = pageBorderSet
+                        ? (bookPage.image.border!.width > 0 ? bookPage.image.border : undefined)
+                        : (bookGlobalBorder.enabled ? bookGlobalBorder : undefined);
+                    if (effectiveBorder) {
                         const hexToRgb = (hex: string) => {
                             const r = parseInt(hex.slice(1, 3), 16) / 255;
                             const g = parseInt(hex.slice(3, 5), 16) / 255;
                             const b = parseInt(hex.slice(5, 7), 16) / 255;
                             return rgb(r, g, b);
                         };
-                        const bw = bookPage.image.border.width;
+                        const bw = effectiveBorder.width;
                         pdfPage.drawRectangle({
-                            x: bw / 2,
-                            y: bw / 2,
-                            width: pageWidth - bw,
-                            height: pageHeight - bw,
-                            borderColor: hexToRgb(bookPage.image.border.color),
+                            x: imgRect.x - bw / 2,
+                            y: imgRect.y - bw / 2,
+                            width: imgRect.w + bw,
+                            height: imgRect.h + bw,
+                            borderColor: hexToRgb(effectiveBorder.color),
                             borderWidth: bw,
                         });
                     }
@@ -4964,7 +5076,7 @@ export function KdpFactoryApp() {
                 .filter(c => pending.catalogIds.includes(c._id))
                 .flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
             const cloudImgs = cloudinaryImages
-                .filter(img => img.nicheId === nicheId)
+                .filter(img => img.nicheId === nicheId || (img.nicheIds ?? []).includes(nicheId))
                 .map(img => ({ url: img.url, publicId: img.publicId }));
             const allImgs = [...catImgs, ...cloudImgs];
             if (allImgs.length === 0) continue;
@@ -10716,6 +10828,26 @@ export function KdpFactoryApp() {
                         >
                             {isLoadingCloudinary ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                         </button>
+                        <button
+                            onClick={async () => {
+                                try {
+                                    const res = await fetch(`${API_BASE_URL}/cloudinary/restore-niche-context`, { method: "POST" });
+                                    const data = await res.json();
+                                    if (res.ok) {
+                                        toast.success(`Restaurados: ${data.restored} · Ya vinculados: ${data.alreadyLinked}`);
+                                        void fetchCloudinaryImages();
+                                    } else {
+                                        toast.error(data.error ?? "Error restaurando vínculos");
+                                    }
+                                } catch {
+                                    toast.error("Error de conexión");
+                                }
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 text-[10px] font-bold transition-all"
+                            title="Restaurar vínculos de nicho desde tags"
+                        >
+                            Restaurar vínculos
+                        </button>
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                     </div>
 
@@ -10842,37 +10974,85 @@ export function KdpFactoryApp() {
                                             </button>
                                         )}
 
-                                        {/* Niche badge (bottom, always visible if linked) */}
-                                        {linkedNiche && (
-                                            <div className="absolute bottom-0 left-0 right-0 px-2 py-2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
-                                                <span className="text-[10px] font-bold text-cyan-300 truncate block leading-tight">{nd(linkedNiche)}</span>
-                                            </div>
-                                        )}
-
-                                        {/* Link to niche dropdown (hover, top-right) */}
+                                        {/* Niche selector — always visible at bottom */}
                                         {!isCloudSelectMode && (
-                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all" onClick={e => e.stopPropagation()}>
+                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8 pb-2 px-2 space-y-1" onClick={e => e.stopPropagation()}>
                                                 {isLinking ? (
-                                                    <div className="p-1.5 rounded-xl bg-black/60 backdrop-blur-sm">
-                                                        <Loader2 size={11} className="animate-spin text-cyan-400" />
+                                                    <div className="flex items-center gap-1.5 px-2 py-1">
+                                                        <Loader2 size={10} className="animate-spin text-cyan-400" />
+                                                        <span className="text-[9px] text-cyan-400">Vinculando…</span>
                                                     </div>
                                                 ) : (
                                                     <select
                                                         value={img.nicheId ?? ""}
+                                                        disabled={niches.length === 0}
                                                         onChange={e => {
                                                             const val = e.target.value;
+                                                            if (val === img.nicheId) return;
                                                             void linkCloudImageToNiche(img.publicId, val || null);
                                                         }}
-                                                        className="h-7 bg-black/70 backdrop-blur-sm border border-white/20 rounded-xl px-2 text-[10px] text-white focus:outline-none focus:border-cyan-500/40 cursor-pointer max-w-[110px]"
-                                                        title="Vincular a nicho"
+                                                        className="w-full h-7 bg-black/70 backdrop-blur-sm border border-white/20 rounded-xl px-2 text-[10px] text-white focus:outline-none focus:border-cyan-500/60 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                                                        title="Vincular a nicho principal"
                                                     >
-                                                        <option value="">— Vincular nicho</option>
+                                                        <option value="">— Sin nicho</option>
                                                         {niches.filter(n => n.status !== "archived").map(n => (
                                                             <option key={n._id} value={n._id}>{nd(n)}</option>
                                                         ))}
-                                                        {img.nicheId && <option value="">✕ Desvincular</option>}
+                                                        {img.nicheId && !niches.find(n => n._id === img.nicheId && n.status !== "archived") && linkedNiche && (
+                                                            <option key={linkedNiche._id} value={linkedNiche._id}>{nd(linkedNiche)} (archivado)</option>
+                                                        )}
                                                     </select>
                                                 )}
+                                                {/* Extra niches row */}
+                                                {(() => {
+                                                    const extras = (img.nicheIds ?? []).filter(id => id !== img.nicheId);
+                                                    const isAddingThis = addingExtraNicheFor === img.publicId;
+                                                    const availableNiches = niches.filter(n => n.status !== "archived" && n._id !== img.nicheId && !extras.includes(n._id));
+                                                    return (
+                                                        <div className="flex items-center gap-1 flex-wrap">
+                                                            {extras.map(id => {
+                                                                const n = niches.find(n => n._id === id);
+                                                                const isRemoving = extraNicheLoading === `${img.publicId}:${id}`;
+                                                                return (
+                                                                    <span key={id} className="flex items-center gap-0.5 bg-violet-500/20 border border-violet-500/30 rounded-full px-1.5 py-0.5 text-[8px] text-violet-300 max-w-[80px]">
+                                                                        <span className="truncate">{n ? nd(n) : id.slice(-4)}</span>
+                                                                        {isRemoving ? (
+                                                                            <Loader2 size={7} className="animate-spin shrink-0" />
+                                                                        ) : (
+                                                                            <button onClick={() => void removeExtraNicheFromImage(img.publicId, id)} className="shrink-0 hover:text-rose-400 ml-0.5">×</button>
+                                                                        )}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                            {isAddingThis ? (
+                                                                availableNiches.length > 0 ? (
+                                                                    <select
+                                                                        autoFocus
+                                                                        defaultValue=""
+                                                                        onBlur={() => setAddingExtraNicheFor(null)}
+                                                                        onChange={e => { if (e.target.value) void addExtraNicheToImage(img.publicId, e.target.value); }}
+                                                                        className="h-5 bg-black/80 border border-violet-500/40 rounded-lg px-1 text-[8px] text-white focus:outline-none cursor-pointer max-w-[90px]"
+                                                                    >
+                                                                        <option value="">Elegir…</option>
+                                                                        {availableNiches.map(n => (
+                                                                            <option key={n._id} value={n._id}>{nd(n)}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <span className="text-[8px] text-neutral-600">Sin más nichos</span>
+                                                                )
+                                                            ) : (
+                                                                availableNiches.length > 0 && (
+                                                                    <button
+                                                                        onClick={() => setAddingExtraNicheFor(img.publicId)}
+                                                                        className="w-5 h-5 rounded-full bg-white/10 border border-white/20 text-neutral-400 hover:text-white hover:bg-violet-500/20 hover:border-violet-500/40 transition-all text-[10px] flex items-center justify-center shrink-0"
+                                                                        title="Añadir a otro nicho"
+                                                                    >+</button>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                         )}
                                     </div>
@@ -14102,7 +14282,8 @@ export function KdpFactoryApp() {
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {pagedNiches.map((niche, cardIndex) => {
                                     const linkedCats = catsForNiche(niche);
-                                    const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                    const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0)
+                                        + cloudinaryImages.filter(img => img.nicheId === niche._id || (img.nicheIds ?? []).includes(niche._id)).length;
                                     const cardPhase = (niche.phase === "pdf" ? "seo" : niche.phase) ?? "niche";
                                     const phaseGradient: Record<string, string> = { niche: "from-sky-500 via-sky-400 to-cyan-400", catalog: "from-blue-500 via-blue-400 to-sky-400", libro: "from-indigo-500 via-indigo-400 to-blue-400", seo: "from-violet-500 via-violet-400 to-indigo-400", cover: "from-fuchsia-500 via-fuchsia-400 to-violet-400", published: "from-emerald-500 via-emerald-400 to-cyan-400" };
                                     const phaseHoverBorder: Record<string, string> = { niche: "hover:border-sky-500/25", catalog: "hover:border-blue-500/25", libro: "hover:border-indigo-500/25", seo: "hover:border-violet-500/25", cover: "hover:border-fuchsia-500/25", published: "hover:border-emerald-500/25" };
@@ -14127,7 +14308,7 @@ export function KdpFactoryApp() {
                                         niche.coverUrl,
                                         niche.sampleImageUrl !== niche.coverUrl ? niche.sampleImageUrl : undefined,
                                         ...linkedCats.flatMap(c => c.images.map(i => i.url)),
-                                        ...cloudinaryImages.filter(ci => ci.nicheId === niche._id).map(ci => ci.url),
+                                        ...cloudinaryImages.filter(ci => ci.nicheId === niche._id || (ci.nicheIds ?? []).includes(niche._id)).map(ci => ci.url),
                                     ].filter((u): u is string => Boolean(u))
                                         .filter((u, i, arr) => arr.indexOf(u) === i);
                                     const isSelected = selectedNicheIds.has(niche._id);
@@ -14932,6 +15113,10 @@ export function KdpFactoryApp() {
                     {absorbModalOpen && (
                         <AbsorbNichesModal
                             selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
+                            stats={Object.fromEntries([...selectedNicheIds].map(id => {
+                                const cats = catsForNiche(niches.find(n => n._id === id)!);
+                                return [id, { cats: cats.length, imgs: cats.reduce((s, c) => s + c.images.length, 0) + cloudinaryImages.filter(img => img.nicheId === id || (img.nicheIds ?? []).includes(id)).length }];
+                            }))}
                             onClose={() => setAbsorbModalOpen(false)}
                             onAbsorbed={(hostNiche, catalogCount) => {
                                 setNiches(prev => [hostNiche, ...prev.filter(n => n._id !== hostNiche._id && !selectedNicheIds.has(n._id))]);
@@ -14952,6 +15137,10 @@ export function KdpFactoryApp() {
                         <MergeNichesModal
                             selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
                             initialName={mergeInitialName}
+                            stats={Object.fromEntries([...selectedNicheIds].map(id => {
+                                const cats = catsForNiche(niches.find(n => n._id === id)!);
+                                return [id, { cats: cats.length, imgs: cats.reduce((s, c) => s + c.images.length, 0) + cloudinaryImages.filter(img => img.nicheId === id || (img.nicheIds ?? []).includes(id)).length }];
+                            }))}
                             onClose={() => setMergeModalOpen(false)}
                             onMerged={(mergedNiche, catalogCount) => {
                                 setNiches(prev => [mergedNiche, ...prev.filter(n => !selectedNicheIds.has(n._id))]);
@@ -15002,7 +15191,8 @@ export function KdpFactoryApp() {
                                     <tbody>
                                         {tableNiches.map((niche, idx) => {
                                             const linkedCats = catsForNiche(niche);
-                                            const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                            const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0)
+                                                + cloudinaryImages.filter(img => img.nicheId === niche._id || (img.nicheIds ?? []).includes(niche._id)).length;
                                             const cardPhase = nicheComputedPhases.get(niche._id) ?? "niche";
                                             const firstCatThumbT = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
                                             const thumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumbT;
@@ -18071,6 +18261,14 @@ export function KdpFactoryApp() {
                                 >
                                     <BookOpen size={14} />
                                 </button>
+                                {/* Global border toggle */}
+                                <button
+                                    onClick={() => setBookGlobalBorder(v => ({ ...v, enabled: !v.enabled }))}
+                                    title={bookGlobalBorder.enabled ? `Borde global activo: ${bookGlobalBorder.width}px` : "Añadir borde a todas las páginas"}
+                                    className={`w-9 h-9 rounded-xl border shrink-0 flex items-center justify-center transition-all text-sm ${bookGlobalBorder.enabled ? "bg-violet-500/15 border-violet-500/30 text-violet-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
+                                >
+                                    <Square size={14} />
+                                </button>
                                 {/* Subir a Gelato */}
                                 <button onClick={() => setShowGelatoUpload(true)} disabled={bookPages.length === 0}
                                     className="h-9 px-3 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 text-sm font-black uppercase"
@@ -18105,6 +18303,36 @@ export function KdpFactoryApp() {
                                     placeholder="Nombre del libro..." />
                                 <span className="text-sm font-mono text-neutral-600 shrink-0">{bookPages.length}p</span>
                             </div>
+                            {/* Global border controls — inline bar, always visible once interacted */}
+                            {(bookGlobalBorder.enabled || bookGlobalBorder.width > 0) && (
+                                <div className="px-3 pb-2.5 flex items-center gap-3 border-t border-white/[0.06] pt-2">
+                                    <button
+                                        onClick={() => setBookGlobalBorder(v => ({ ...v, enabled: !v.enabled }))}
+                                        className={`relative w-8 h-4 rounded-full transition-all shrink-0 ${bookGlobalBorder.enabled ? "bg-violet-500" : "bg-white/10"}`}
+                                        title={bookGlobalBorder.enabled ? "Desactivar borde" : "Activar borde"}
+                                    >
+                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${bookGlobalBorder.enabled ? "left-4" : "left-0.5"}`} />
+                                    </button>
+                                    <Square size={11} className={bookGlobalBorder.enabled ? "text-violet-400 shrink-0" : "text-neutral-600 shrink-0"} />
+                                    <span className={`text-xs font-black uppercase tracking-widest shrink-0 ${bookGlobalBorder.enabled ? "text-violet-400" : "text-neutral-600"}`}>Borde</span>
+                                    <input
+                                        type="range" min={1} max={20} step={1}
+                                        value={bookGlobalBorder.width}
+                                        onChange={e => setBookGlobalBorder(v => ({ ...v, width: Number(e.target.value) }))}
+                                        disabled={!bookGlobalBorder.enabled}
+                                        className="flex-1 accent-violet-500 h-1 disabled:opacity-30"
+                                    />
+                                    <span className={`text-xs font-mono w-8 text-right shrink-0 ${bookGlobalBorder.enabled ? "text-violet-400" : "text-neutral-600"}`}>{bookGlobalBorder.width}px</span>
+                                    <input
+                                        type="color"
+                                        value={bookGlobalBorder.color}
+                                        onChange={e => setBookGlobalBorder(v => ({ ...v, color: e.target.value }))}
+                                        disabled={!bookGlobalBorder.enabled}
+                                        className="w-7 h-7 rounded-lg border border-white/10 bg-transparent cursor-pointer p-0 overflow-hidden shrink-0 disabled:opacity-30"
+                                        title="Color del borde"
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Tabs */}
@@ -18331,17 +18559,20 @@ export function KdpFactoryApp() {
                                                             const zoom = selectedPage.image.scale ?? 1;
                                                             const hPct = Math.min(35, (previewMargin / Math.max(zoom, 0.1) / previewW) * 100);
                                                             const vPct = Math.min(35, (previewMargin / Math.max(zoom, 0.1) / previewH) * 100);
-                                                            const brd = selectedPage.image.border;
+                                                            const brd = selectedPage.image.border !== undefined
+                                                                ? (selectedPage.image.border.width > 0 ? selectedPage.image.border : undefined)
+                                                                : (bookGlobalBorder.enabled ? bookGlobalBorder : undefined);
                                                             return (
                                                                 <div
                                                                     className="relative w-full rounded-xl overflow-hidden border border-white/15 shadow-lg bg-white"
-                                                                    style={{
-                                                                        aspectRatio: `${previewW}/${previewH}`,
-                                                                        ...(brd ? { boxShadow: `inset 0 0 0 ${brd.width}px ${brd.color}` } : {}),
-                                                                    }}
+                                                                    style={{ aspectRatio: `${previewW}/${previewH}` }}
                                                                 >
-                                                                    <div className="absolute" style={{ left: `${hPct}%`, right: `${hPct}%`, top: `${vPct}%`, bottom: `${vPct}%` }}>
-                                                                        <img src={selectedPage.image.url} alt="" className="w-full h-full object-contain" />
+                                                                    <div className="absolute flex items-center justify-center" style={{ left: `${hPct}%`, right: `${hPct}%`, top: `${vPct}%`, bottom: `${vPct}%` }}>
+                                                                        <img
+                                                                            src={selectedPage.image.url} alt=""
+                                                                            className="max-w-full max-h-full block"
+                                                                            style={brd ? { border: `${brd.width}px solid ${brd.color}` } : {}}
+                                                                        />
                                                                     </div>
                                                                 </div>
                                                             );
@@ -18357,41 +18588,88 @@ export function KdpFactoryApp() {
                                                                     <span className="text-sm font-mono text-amber-400 shrink-0 w-9 text-right">{Math.round(selectedPage.image.scale * 100)}%</span>
                                                                 </div>
                                                                 {/* Border / Marco */}
-                                                                <div className="flex flex-col gap-2">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <span className="text-sm font-black uppercase text-neutral-600 shrink-0 w-10">Marco</span>
-                                                                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                                                                            <div className="relative">
-                                                                                <input type="checkbox"
-                                                                                    checked={!!selectedPage.image.border}
-                                                                                    onChange={e => updatePageImageBorder(selectedPage.id, e.target.checked ? { width: 3, color: "#000000" } : undefined)}
-                                                                                    className="sr-only peer" />
-                                                                                <div className="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-amber-500/80 transition-colors border border-white/10 peer-checked:border-amber-500/50" />
-                                                                                <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white/60 peer-checked:translate-x-4 peer-checked:bg-white transition-transform" />
-                                                                            </div>
-                                                                            <span className="text-sm font-bold text-neutral-500">{selectedPage.image.border ? "Activo" : "Sin marco"}</span>
-                                                                        </label>
-                                                                        {selectedPage.image.border && (
-                                                                            <label className="ml-auto flex items-center gap-1.5 cursor-pointer" title="Color del marco">
-                                                                                <span className="text-sm text-neutral-600 font-bold">Color</span>
-                                                                                <span className="w-6 h-6 rounded-lg border border-white/20 shadow-inner" style={{ background: selectedPage.image.border.color }} />
-                                                                                <input type="color" value={selectedPage.image.border.color}
-                                                                                    onChange={e => updatePageImageBorder(selectedPage.id, { ...selectedPage.image!.border!, color: e.target.value })}
-                                                                                    className="sr-only" />
-                                                                            </label>
-                                                                        )}
-                                                                    </div>
-                                                                    {selectedPage.image.border && (
-                                                                        <div className="flex items-center gap-3">
-                                                                            <span className="text-sm font-black uppercase text-neutral-600 shrink-0 w-10">Grosor</span>
-                                                                            <input type="range" min={1} max={20} step={1}
-                                                                                value={selectedPage.image.border.width}
-                                                                                onChange={e => updatePageImageBorder(selectedPage.id, { ...selectedPage.image!.border!, width: Number(e.target.value) })}
-                                                                                className="flex-1 accent-amber-500 h-1.5" />
-                                                                            <span className="text-sm font-mono text-amber-400 shrink-0 w-6 text-right">{selectedPage.image.border.width}px</span>
+                                                                {(() => {
+                                                                    const pageBrd = selectedPage.image!.border;
+                                                                    const isExcluded = pageBrd !== undefined && pageBrd.width === 0;
+                                                                    const hasCustom = pageBrd !== undefined && pageBrd.width > 0;
+                                                                    const globalOn = bookGlobalBorder.enabled;
+
+                                                                    return (
+                                                                        <div className="flex flex-col gap-2">
+                                                                            <span className="text-sm font-black uppercase text-neutral-600">Marco</span>
+
+                                                                            {/* When global is ON: show state + controls */}
+                                                                            {globalOn && (
+                                                                                <div className="flex flex-col gap-1.5">
+                                                                                    {/* Status badge */}
+                                                                                    <div className="flex items-center gap-2 text-xs">
+                                                                                        {isExcluded
+                                                                                            ? <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 font-bold">Sin borde (excluida)</span>
+                                                                                            : hasCustom
+                                                                                                ? <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-bold">Borde propio</span>
+                                                                                                : <span className="px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 font-bold">Borde global ({bookGlobalBorder.width}px)</span>
+                                                                                        }
+                                                                                    </div>
+                                                                                    {/* Action buttons */}
+                                                                                    <div className="flex gap-2 flex-wrap">
+                                                                                        <button
+                                                                                            onClick={() => updatePageImageBorder(selectedPage.id, isExcluded ? undefined : { width: 0, color: "#000000" })}
+                                                                                            className={`flex-1 h-7 rounded-lg border text-xs font-bold transition-all ${isExcluded ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-white/10 text-neutral-500 hover:text-rose-400 hover:border-rose-500/30"}`}
+                                                                                        >
+                                                                                            {isExcluded ? "Restaurar global" : "Excluir esta página"}
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={() => updatePageImageBorder(selectedPage.id, hasCustom ? undefined : { width: bookGlobalBorder.width, color: bookGlobalBorder.color })}
+                                                                                            className={`flex-1 h-7 rounded-lg border text-xs font-bold transition-all ${hasCustom ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/10 text-neutral-500 hover:text-amber-400 hover:border-amber-500/30"}`}
+                                                                                        >
+                                                                                            {hasCustom ? "Quitar personalización" : "Personalizar esta página"}
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+
+                                                                            {/* When global is OFF: simple toggle */}
+                                                                            {!globalOn && (
+                                                                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                                                                    <div className="relative">
+                                                                                        <input type="checkbox"
+                                                                                            checked={hasCustom}
+                                                                                            onChange={e => updatePageImageBorder(selectedPage.id, e.target.checked ? { width: 3, color: "#000000" } : undefined)}
+                                                                                            className="sr-only peer" />
+                                                                                        <div className="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-amber-500/80 transition-colors border border-white/10 peer-checked:border-amber-500/50" />
+                                                                                        <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white/60 peer-checked:translate-x-4 peer-checked:bg-white transition-transform" />
+                                                                                    </div>
+                                                                                    <span className="text-sm font-bold text-neutral-500">{hasCustom ? "Activo" : "Sin marco"}</span>
+                                                                                    {hasCustom && (
+                                                                                        <label className="ml-auto flex items-center gap-1.5 cursor-pointer" title="Color del marco">
+                                                                                            <span className="w-5 h-5 rounded-lg border border-white/20" style={{ background: pageBrd!.color }} />
+                                                                                            <input type="color" value={pageBrd!.color}
+                                                                                                onChange={e => updatePageImageBorder(selectedPage.id, { ...pageBrd!, color: e.target.value })}
+                                                                                                className="sr-only" />
+                                                                                        </label>
+                                                                                    )}
+                                                                                </label>
+                                                                            )}
+
+                                                                            {/* Custom border controls (shown when page has its own border, regardless of global) */}
+                                                                            {hasCustom && (
+                                                                                <div className="flex items-center gap-3">
+                                                                                    <input type="range" min={1} max={20} step={1}
+                                                                                        value={pageBrd!.width}
+                                                                                        onChange={e => updatePageImageBorder(selectedPage.id, { ...pageBrd!, width: Number(e.target.value) })}
+                                                                                        className="flex-1 accent-amber-500 h-1.5" />
+                                                                                    <span className="text-sm font-mono text-amber-400 shrink-0 w-6 text-right">{pageBrd!.width}px</span>
+                                                                                    <label className="cursor-pointer" title="Color">
+                                                                                        <span className="w-6 h-6 rounded-lg border border-white/20 block" style={{ background: pageBrd!.color }} />
+                                                                                        <input type="color" value={pageBrd!.color}
+                                                                                            onChange={e => updatePageImageBorder(selectedPage.id, { ...pageBrd!, color: e.target.value })}
+                                                                                            className="sr-only" />
+                                                                                    </label>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
-                                                                    )}
-                                                                </div>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         )}
 
@@ -18601,15 +18879,16 @@ export function KdpFactoryApp() {
                                 /* Match drawImageCentered: effectiveMargin/zoom pts on selected page size */
                                 const mH = (previewMargin / Math.max(zoom, 0.1) / previewW) * 100;
                                 const mV = (previewMargin / Math.max(zoom, 0.1) / previewH) * 100;
-                                const brd = page.image?.border;
+                                const brd = page.image
+                                    ? (page.image.border !== undefined
+                                        ? (page.image.border.width > 0 ? page.image.border : undefined)
+                                        : (bookGlobalBorder.enabled ? bookGlobalBorder : undefined))
+                                    : undefined;
                                 const isEmpty = !page.image && !page.text.content.trim();
                                 const textFontPx = Math.max(4, page.text.fontSize * scale * 0.42);
                                 const cssFf = page.text.fontFamily === "times" ? "Georgia,serif" : page.text.fontFamily === "courier" ? "'Courier New',monospace" : "Helvetica,sans-serif";
                                 return (
-                                    <div
-                                        className="absolute inset-0 bg-white"
-                                        style={brd ? { boxShadow: `inset 0 0 0 ${brd.width}px ${brd.color}` } : {}}
-                                    >
+                                    <div className="absolute inset-0 bg-white">
                                         {isEmpty && (
                                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-300/50">
                                                 <FileText size={24} strokeWidth={1} />
@@ -18617,8 +18896,12 @@ export function KdpFactoryApp() {
                                             </div>
                                         )}
                                         {page.image && (
-                                            <div className="absolute" style={{ left: `${mH}%`, right: `${mH}%`, top: `${mV}%`, bottom: `${mV}%` }}>
-                                                <img src={page.image.url} alt="" className="w-full h-full object-contain" />
+                                            <div className="absolute flex items-center justify-center" style={{ left: `${mH}%`, right: `${mH}%`, top: `${mV}%`, bottom: `${mV}%` }}>
+                                                <img
+                                                    src={page.image.url} alt=""
+                                                    className="max-w-full max-h-full block"
+                                                    style={brd ? { border: `${brd.width}px solid ${brd.color}` } : {}}
+                                                />
                                             </div>
                                         )}
                                         {(page.type === "text" || page.type === "both") && page.text.content.trim() && (() => {
@@ -19966,6 +20249,43 @@ export function KdpFactoryApp() {
                                     <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${noBlankPages ? "left-4" : "left-0.5"}`} />
                                 </div>
                             </button>
+                            {/* Global border toggle */}
+                            <div className={`rounded-xl border transition-all overflow-hidden ${bookGlobalBorder.enabled ? "border-violet-500/40 bg-violet-500/[0.07]" : "border-white/8 bg-white/[0.02]"}`}>
+                                <button
+                                    onClick={() => setBookGlobalBorder(v => ({ ...v, enabled: !v.enabled }))}
+                                    className="w-full flex items-center justify-between gap-3 px-4 py-2.5 transition-all hover:bg-white/[0.02]"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <Square size={13} className={bookGlobalBorder.enabled ? "text-violet-400" : "text-neutral-600"} />
+                                        <div className="text-left">
+                                            <p className={`text-sm font-black ${bookGlobalBorder.enabled ? "text-violet-300" : "text-neutral-400"}`}>Borde en todas las páginas</p>
+                                            <p className="text-sm text-neutral-600">Marco alrededor de cada imagen al exportar PDF</p>
+                                        </div>
+                                    </div>
+                                    <div className={`w-8 h-4 rounded-full transition-all relative shrink-0 ${bookGlobalBorder.enabled ? "bg-violet-500" : "bg-white/10"}`}>
+                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${bookGlobalBorder.enabled ? "left-4" : "left-0.5"}`} />
+                                    </div>
+                                </button>
+                                {bookGlobalBorder.enabled && (
+                                    <div className="px-4 pb-3 flex items-center gap-3" onClick={e => e.stopPropagation()}>
+                                        <span className="text-xs text-neutral-500 shrink-0">Grosor</span>
+                                        <input
+                                            type="range" min={1} max={20} step={1}
+                                            value={bookGlobalBorder.width}
+                                            onChange={e => setBookGlobalBorder(v => ({ ...v, width: Number(e.target.value) }))}
+                                            className="flex-1 accent-violet-500 h-1"
+                                        />
+                                        <span className="text-xs font-mono text-violet-400 w-8 text-right">{bookGlobalBorder.width}px</span>
+                                        <input
+                                            type="color"
+                                            value={bookGlobalBorder.color}
+                                            onChange={e => setBookGlobalBorder(v => ({ ...v, color: e.target.value }))}
+                                            className="w-7 h-7 rounded-lg border border-white/10 bg-transparent cursor-pointer p-0 overflow-hidden"
+                                            title="Color del borde"
+                                        />
+                                    </div>
+                                )}
+                            </div>
                             {/* Summary */}
                             {(() => {
                                 const vaultCount = kdpTemplateVaultSel.size;
@@ -20296,6 +20616,56 @@ export function KdpFactoryApp() {
                                                 className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${explosionCount === n ? "bg-violet-500/20 text-violet-300" : "text-neutral-600 hover:text-white"}`}
                                             >{n}</button>
                                         ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-black text-neutral-500 uppercase tracking-wider">Imaginación</label>
+                                            <span className="text-[11px] font-bold text-violet-300">
+                                                {explosionImagination <= 25 ? "🎯 Típico" : explosionImagination <= 50 ? "🖼 Equilibrado" : explosionImagination <= 75 ? "✨ Creativo" : "🌀 Surrealista"}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] text-neutral-700">Convencional</span>
+                                            <input
+                                                type="range" min={0} max={100} step={5}
+                                                value={explosionImagination}
+                                                onChange={e => setExplosionImagination(Number(e.target.value))}
+                                                className="flex-1 accent-violet-500 h-1 cursor-pointer"
+                                            />
+                                            <span className="text-[9px] text-neutral-700">Experimental</span>
+                                        </div>
+                                    </div>
+                                    <div className="h-px bg-white/[0.06]" />
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-black text-neutral-500 uppercase tracking-wider">Variación respecto al prompt</label>
+                                            <span className="text-[11px] font-bold text-violet-300">
+                                                {explosionVariation <= 20 ? "✏️ Mínima" : explosionVariation <= 45 ? "🔄 Leve" : explosionVariation <= 70 ? "🔀 Moderada" : explosionVariation <= 85 ? "🌊 Alta" : "💥 Total"}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] text-neutral-700">Cambiar poco</span>
+                                            <input
+                                                type="range" min={0} max={100} step={5}
+                                                value={explosionVariation}
+                                                onChange={e => setExplosionVariation(Number(e.target.value))}
+                                                className="flex-1 accent-violet-500 h-1 cursor-pointer"
+                                            />
+                                            <span className="text-[9px] text-neutral-700">Prompts nuevos</span>
+                                        </div>
+                                        <p className="text-[9px] text-neutral-700">
+                                            {explosionVariation <= 20
+                                                ? "Solo cambia 1-2 palabras clave del prompt original"
+                                                : explosionVariation <= 45
+                                                ? "Misma escena base, ligeras variaciones de sujeto o detalle"
+                                                : explosionVariation <= 70
+                                                ? "Sujetos distintos del mismo nicho, estilo conservado"
+                                                : explosionVariation <= 85
+                                                ? "Situaciones muy distintas, libre dentro del nicho"
+                                                : "Prompts completamente nuevos, máxima diversidad"}
+                                        </p>
                                     </div>
                                 </div>
                                 <button
@@ -20752,7 +21122,7 @@ export function KdpFactoryApp() {
                 const detailNiche = niches.find(n => n._id === nicheDetailId);
                 if (!detailNiche) return null;
                 const linkedCats = iaCatalogs.filter(c => c.nicheIds?.includes(nicheDetailId));
-                const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId);
+                const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId || (img.nicheIds ?? []).includes(nicheDetailId ?? ""));
                 const allImgs: { publicId: string; url: string; width?: number; height?: number; catalogId?: string }[] = [
                     ...linkedCats.flatMap(c => c.images.map(img => ({ ...img, catalogId: c._id }))),
                     ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
@@ -20975,6 +21345,166 @@ export function KdpFactoryApp() {
                                                 <p className="text-[9px] text-amber-400/70">Se aplicará en la próxima generación</p>
                                             )}
                                         </div>
+                                        {/* ── SEO Audit panel ── */}
+                                        {(detailNiche.listings?.length ?? 0) > 0 && (() => {
+                                            const l = detailNiche.listings![0];
+                                            const title = l.title ?? "";
+                                            const subtitle = l.subtitle ?? "";
+                                            const description = l.description ?? "";
+                                            const kwRaw = Array.isArray(l.keywords) ? l.keywords : String(l.keywords ?? "").split(/[,\n]/).map((k: string) => k.trim()).filter(Boolean);
+                                            const kwPhrases = kwRaw.slice(0, 7);
+
+                                            const checks = [
+                                                {
+                                                    label: "Título",
+                                                    ok: title.length >= 30 && title.length <= 200,
+                                                    warn: title.length > 0 && (title.length < 30 || title.length > 200),
+                                                    detail: title.length === 0 ? "Falta" : `${title.length} chars ${title.length < 30 ? "— muy corto" : title.length > 200 ? "— demasiado largo" : "✓"}`,
+                                                },
+                                                {
+                                                    label: "Keyword al inicio",
+                                                    ok: title.length > 0 && !/^(el|la|los|las|un|una|a|an|the)\s/i.test(title),
+                                                    warn: false,
+                                                    detail: title.length > 0 ? `"${title.split(/[\s:–-]/)[0]}"` : "—",
+                                                },
+                                                {
+                                                    label: "Subtítulo",
+                                                    ok: subtitle.length > 0,
+                                                    warn: false,
+                                                    detail: subtitle.length > 0 ? `${subtitle.length} chars` : "Falta",
+                                                },
+                                                {
+                                                    label: "Keywords (7 frases)",
+                                                    ok: kwPhrases.length === 7,
+                                                    warn: kwPhrases.length > 0 && kwPhrases.length !== 7,
+                                                    detail: `${kwPhrases.length}/7 frases`,
+                                                },
+                                                {
+                                                    label: "Long. keywords ≤49",
+                                                    ok: kwPhrases.every(k => k.length <= 49),
+                                                    warn: kwPhrases.some(k => k.length > 49),
+                                                    detail: (() => {
+                                                        const over = kwPhrases.filter(k => k.length > 49);
+                                                        return over.length > 0 ? `${over.length} frase${over.length > 1 ? "s" : ""} larga${over.length > 1 ? "s" : ""}` : "Todas ≤49 ✓";
+                                                    })(),
+                                                },
+                                                {
+                                                    label: "Sin duplicados",
+                                                    ok: (() => {
+                                                        const seen = new Map<string, number>();
+                                                        kwPhrases.forEach((phrase, i) => {
+                                                            String(phrase).toLowerCase().split(/\s+/).filter(w => w.length > 2).forEach(w => {
+                                                                if (!seen.has(w)) seen.set(w, i);
+                                                            });
+                                                        });
+                                                        const dups = new Set<string>();
+                                                        kwPhrases.forEach((phrase, i) => {
+                                                            String(phrase).toLowerCase().split(/\s+/).filter(w => w.length > 2).forEach(w => {
+                                                                if (seen.get(w) !== i) dups.add(w);
+                                                            });
+                                                        });
+                                                        return dups.size === 0;
+                                                    })(),
+                                                    warn: false,
+                                                    detail: (() => {
+                                                        const seen = new Map<string, number>();
+                                                        kwPhrases.forEach((phrase, i) => {
+                                                            String(phrase).toLowerCase().split(/\s+/).filter(w => w.length > 2).forEach(w => {
+                                                                if (!seen.has(w)) seen.set(w, i);
+                                                            });
+                                                        });
+                                                        const dups = new Set<string>();
+                                                        kwPhrases.forEach((phrase, i) => {
+                                                            String(phrase).toLowerCase().split(/\s+/).filter(w => w.length > 2).forEach(w => {
+                                                                if (seen.get(w) !== i) dups.add(w);
+                                                            });
+                                                        });
+                                                        return dups.size === 0 ? "Sin repeticiones ✓" : `Repetidas: ${[...dups].join(", ")}`;
+                                                    })(),
+                                                },
+                                                {
+                                                    label: "Descripción",
+                                                    ok: description.length >= 100,
+                                                    warn: description.length > 0 && description.length < 100,
+                                                    detail: description.length === 0 ? "Falta" : `${description.length} chars`,
+                                                },
+                                            ];
+
+                                            const score = Math.round((checks.filter(c => c.ok).length / checks.length) * 100);
+                                            const scoreColor = score >= 80 ? "text-emerald-400" : score >= 50 ? "text-amber-400" : "text-rose-400";
+                                            const scoreBg = score >= 80 ? "border-emerald-500/25 bg-emerald-500/[0.05]" : score >= 50 ? "border-amber-500/25 bg-amber-500/[0.05]" : "border-rose-500/25 bg-rose-500/[0.05]";
+
+                                            const auditFixes = checks
+                                                .filter(c => !c.ok)
+                                                .map(c => {
+                                                    if (c.label === "Título") return title.length < 30 ? "el título es muy corto (menos de 30 chars), hazlo más largo y descriptivo" : "el título supera 200 chars, acórtalo";
+                                                    if (c.label === "Keyword al inicio") return "pon la keyword principal (no artículo) en las primeras palabras del título";
+                                                    if (c.label === "Subtítulo") return "falta subtítulo: añade una cadena de keywords secundarias · audiencia · beneficio emocional";
+                                                    if (c.label === "Keywords (7 frases)") return kwPhrases.length < 7 ? `solo hay ${kwPhrases.length} frases de keywords, genera exactamente 7` : `hay ${kwPhrases.length} frases, reduce a exactamente 7`;
+                                                    if (c.label === "Long. keywords ≤49") { const over = kwPhrases.filter(k => k.length > 49); return `acorta estas keywords que superan 49 chars: ${over.map(k => `"${k}" (${k.length})`).join(", ")}`; }
+                                                    if (c.label === "Sin duplicados") {
+                                                        const seen = new Map<string, number>();
+                                                        kwPhrases.forEach((phrase, i) => String(phrase).toLowerCase().split(/\s+/).filter(w => w.length > 2).forEach(w => { if (!seen.has(w)) seen.set(w, i); }));
+                                                        const dups = new Set<string>();
+                                                        kwPhrases.forEach((phrase, i) => String(phrase).toLowerCase().split(/\s+/).filter(w => w.length > 2).forEach(w => { if (seen.get(w) !== i) dups.add(w); }));
+                                                        return `elimina palabras repetidas entre frases de keywords: ${[...dups].join(", ")} — Amazon ignora duplicados y desperdicias slots`;
+                                                    }
+                                                    if (c.label === "Descripción") return "falta descripción HTML, genera una con hook emocional + beneficios + CTA";
+                                                    return c.label;
+                                                });
+
+                                            return (
+                                                <div className={`rounded-xl border p-3 space-y-2 ${scoreBg}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
+                                                            <Sparkles size={9} /> Auditoría SEO
+                                                        </span>
+                                                        <span className={`text-sm font-black ${scoreColor}`}>{score}%</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-1.5">
+                                                        {checks.map(c => (
+                                                            <div key={c.label} className="flex items-start gap-1.5">
+                                                                <span className={`text-[10px] mt-0.5 shrink-0 ${c.ok ? "text-emerald-400" : c.warn ? "text-amber-400" : "text-rose-400"}`}>
+                                                                    {c.ok ? "✓" : c.warn ? "⚠" : "✗"}
+                                                                </span>
+                                                                <div>
+                                                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{c.label}</p>
+                                                                    <p className={`text-[10px] ${c.ok ? "text-neutral-400" : c.warn ? "text-amber-300/80" : "text-rose-300/80"}`}>{c.detail}</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {kwPhrases.length > 0 && (
+                                                        <div className="pt-1 space-y-1">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Frases de keywords</p>
+                                                            {kwPhrases.map((k, i) => (
+                                                                <div key={i} className={`flex items-center justify-between px-2 py-1 rounded-lg text-[10px] ${k.length > 49 ? "bg-rose-500/10 border border-rose-500/20 text-rose-300" : "bg-white/[0.02] border border-white/[0.05] text-neutral-400"}`}>
+                                                                    <span className="truncate flex-1">{k}</span>
+                                                                    <span className={`ml-2 shrink-0 font-mono ${k.length > 49 ? "text-rose-400" : "text-neutral-600"}`}>{k.length}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {auditFixes.length > 0 && (
+                                                        <button
+                                                            onClick={() => {
+                                                                const fixNote = `CORRECCIONES OBLIGATORIAS según auditoría SEO: ${auditFixes.join("; ")}.`;
+                                                                void launchPipelineSeo(detailNiche._id, fixNote);
+                                                            }}
+                                                            disabled={!!pipelineSeoLoading[detailNiche._id]}
+                                                            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300 text-[11px] font-black hover:bg-rose-500/20 transition-all disabled:opacity-50"
+                                                        >
+                                                            {pipelineSeoLoading[detailNiche._id] ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                                                            Regenerar corrigiendo {auditFixes.length} problema{auditFixes.length > 1 ? "s" : ""}
+                                                        </button>
+                                                    )}
+                                                    {score === 100 && (
+                                                        <p className="text-[10px] text-emerald-400/70 text-center font-bold">✓ Listing optimizado al 100%</p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+
                                         {(detailNiche.listings?.length ?? 0) === 0 ? (
                                             <div className="flex flex-col items-center justify-center py-10 gap-4">
                                                 <FileText size={32} strokeWidth={1} className="text-neutral-600 opacity-30" />
@@ -21559,7 +22089,7 @@ export function KdpFactoryApp() {
             {nichePdfDialog && (() => {
                 const { niche: dlNiche, linkedCats: dlCats } = nichePdfDialog;
                 const catImgCount = dlCats.flatMap(c => c.images).length;
-                const cloudImgCount = cloudinaryImages.filter(img => img.nicheId === dlNiche._id).length;
+                const cloudImgCount = cloudinaryImages.filter(img => img.nicheId === dlNiche._id || (img.nicheIds ?? []).includes(dlNiche._id)).length;
                 const totalImgs = catImgCount + cloudImgCount;
                 return (
                     <ModalPortal>

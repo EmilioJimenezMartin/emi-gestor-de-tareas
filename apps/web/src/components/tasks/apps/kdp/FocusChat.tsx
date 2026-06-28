@@ -96,11 +96,20 @@ function renderContent(text: string): React.ReactNode {
 
 const SUGGESTION_MAP: { keywords: string[]; label: string; question: string }[] = [
     { keywords: ["nicho", "producir", "idea"], label: "🏷️ ¿Qué nicho priorizar?", question: "¿Qué nicho debería priorizar ahora mismo?" },
-    { keywords: ["seo", "listing", "keyword", "descripci"], label: "📝 Optimizar SEO", question: "¿Cómo optimizo el SEO de mis libros?" },
+    { keywords: ["seo", "listing", "keyword", "descripci"], label: "📝 Auditar keywords", question: "Audita todos mis listings actuales: ¿cuáles tienen problemas de keywords según las reglas de KDP? Dame una lista priorizada de qué arreglar primero." },
     { keywords: ["temporad", "calendario", "fecha", "semana"], label: "📅 Plan semanal", question: "¿Qué debería publicar esta semana?" },
     { keywords: ["imagen", "catálogo", "generar"], label: "🖼 Más imágenes", question: "¿Cuántas imágenes necesito generar hoy?" },
     { keywords: ["publicar", "amazon", "kdp", "venta"], label: "🚀 Maximizar ventas", question: "¿Cómo maximizo mis ventas en Amazon?" },
     { keywords: ["clone", "competencia", "bestseller", "bsr"], label: "🔍 Analizar competencia", question: "¿Qué puedo aprender de la competencia?" },
+    { keywords: ["titulo", "título", "optimiz", "mejorar"], label: "✏️ Mejorar títulos", question: "Revisa los títulos de mis listings y dime cuáles no tienen la keyword principal en las primeras palabras. Sugiere mejoras concretas." },
+    { keywords: ["falta", "sin listing", "generar listing", "sin seo"], label: "⚡ Nichos sin listing", question: "¿Qué nichos no tienen listing todavía? ¿Cuál debería completar primero para maximizar ingresos?" },
+];
+
+const SEO_QUICK_ACTIONS: { label: string; question: string }[] = [
+    { label: "🔍 Auditar todos los listings", question: "Audita todos mis listings actuales uno por uno. Para cada uno dime: ¿el título tiene la keyword principal al inicio? ¿cuántas keyword phrases tiene? ¿hay algún problema según las reglas KDP de máximo 49 chars por frase? Dame recomendaciones concretas." },
+    { label: "⚠️ Detectar problemas", question: "Analiza mis listings y detecta todos los problemas: títulos demasiado cortos o largos, keywords insuficientes, posibles solapamientos entre nichos. Lista los 3 más urgentes." },
+    { label: "📝 Nichos sin listing", question: "¿Qué nichos activos no tienen listing SEO todavía? Dame un orden de prioridad para completarlos basándote en qué nichos tienen más imágenes y catálogos listos." },
+    { label: "✏️ Mejorar un título", question: "Elige el listing con el título más débil según las reglas KDP (keyword al inicio, claridad, longitud) y proponme 3 alternativas mejoradas." },
 ];
 
 function getSuggestions(text: string): { label: string; question: string }[] {
@@ -197,8 +206,6 @@ export function FocusChat({ systemContext, apiBase }: Props) {
         const t = (text ?? input).trim();
         if (!t || isLoading) return;
         setInput("");
-        // Optimistically add user message — socket will add the real one with _id
-        setMessages(prev => [...prev, { role: "user", text: t, source: "ui" }]);
         void chat(t);
     };
 
@@ -342,6 +349,22 @@ export function FocusChat({ systemContext, apiBase }: Props) {
                             </div>
                         )}
                         <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* ── SEO quick actions ── */}
+                    <div className="px-3 pt-2 pb-1 border-t border-white/8 shrink-0 overflow-x-auto no-scrollbar">
+                        <div className="flex gap-1.5">
+                            {SEO_QUICK_ACTIONS.map((a, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => send(a.question)}
+                                    disabled={isLoading}
+                                    className="shrink-0 px-2.5 py-1.5 rounded-full text-[9px] font-black border border-indigo-500/20 bg-indigo-500/[0.06] text-indigo-300/80 hover:bg-indigo-500/15 hover:text-indigo-200 hover:border-indigo-500/30 transition-all disabled:opacity-30 whitespace-nowrap"
+                                >
+                                    {a.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* ── Input ── */}

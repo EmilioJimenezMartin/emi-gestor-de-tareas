@@ -65,6 +65,8 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
     const [count, setCount] = useState(5);
     const [imagesPer, setImagesPer] = useState(5);
     const [modelId, setModelId] = useState<string>("default");
+    const [imagination, setImagination] = useState(50);
+    const [variation, setVariation] = useState(50);
     const [launching, setLaunching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [hints, setHints] = useState<string[]>([]);
@@ -105,7 +107,7 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
             const res = await fetch(`${API}/niches/${niche._id}/explode-catalogs`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ count, imagesPerCatalog: imagesPer, ...(model ? { model } : {}), ...(validHints.length > 0 ? { hints: validHints } : {}) }),
+                body: JSON.stringify({ count, imagesPerCatalog: imagesPer, imagination, variation, ...(model ? { model } : {}), ...(validHints.length > 0 ? { hints: validHints } : {}) }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Error al lanzar la explosión");
@@ -194,6 +196,52 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
                                 )}
                             </div>
                         )}
+                    </div>
+
+                    {/* Imaginación + Variación */}
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-4">
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Imaginación</label>
+                                <span className="text-[11px] font-bold text-violet-400">
+                                    {imagination <= 25 ? "🎯 Típico" : imagination <= 50 ? "🖼 Equilibrado" : imagination <= 75 ? "✨ Creativo" : "🌀 Surrealista"}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-neutral-700 shrink-0">Convencional</span>
+                                <input type="range" min={0} max={100} step={5} value={imagination}
+                                    onChange={e => setImagination(Number(e.target.value))}
+                                    className="flex-1 accent-violet-500 h-1 cursor-pointer" />
+                                <span className="text-[9px] text-neutral-700 shrink-0">Experimental</span>
+                            </div>
+                        </div>
+                        <div className="h-px bg-white/[0.06]" />
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Variación respecto al prompt</label>
+                                <span className="text-[11px] font-bold text-violet-400">
+                                    {variation <= 20 ? "✏️ Mínima" : variation <= 45 ? "🔄 Leve" : variation <= 70 ? "🔀 Moderada" : variation <= 85 ? "🌊 Alta" : "💥 Total"}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-neutral-700 shrink-0">Cambiar poco</span>
+                                <input type="range" min={0} max={100} step={5} value={variation}
+                                    onChange={e => setVariation(Number(e.target.value))}
+                                    className="flex-1 accent-violet-500 h-1 cursor-pointer" />
+                                <span className="text-[9px] text-neutral-700 shrink-0">Prompts nuevos</span>
+                            </div>
+                            <p className="text-[9px] text-neutral-700">
+                                {variation <= 20
+                                    ? "Solo cambia 1-2 palabras clave del prompt original"
+                                    : variation <= 45
+                                    ? "Misma base, ligeras variaciones de sujeto o detalle"
+                                    : variation <= 70
+                                    ? "Sujetos distintos del mismo nicho, estilo conservado"
+                                    : variation <= 85
+                                    ? "Situaciones muy distintas, libre dentro del nicho"
+                                    : "Prompts completamente nuevos, máxima diversidad"}
+                            </p>
+                        </div>
                     </div>
 
                     {/* Imágenes por catálogo */}

@@ -59,6 +59,7 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
                     const tagResult = await cld.api.resources_by_tag(`nicho:${filterNicheId}`, {
                         max_results: 500,
                         context: true,
+                        tags: true,
                     });
                     resources = tagResult.resources ?? [];
                 } catch {
@@ -69,6 +70,7 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
                         max_results: 500,
                         direction: "desc",
                         context: true,
+                        tags: true,
                     });
                     resources = (allResult.resources ?? []).filter(
                         (r: any) => r.context?.custom?.nicheId === filterNicheId
@@ -81,20 +83,28 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
                     max_results: 200,
                     direction: "desc",
                     context: true,
+                    tags: true,
                 });
                 resources = result.resources ?? [];
             }
 
-            const images = (resources as any[]).map((r) => ({
-                publicId: r.public_id,
-                url: r.secure_url,
-                width: r.width,
-                height: r.height,
-                createdAt: r.created_at,
-                format: r.format,
-                bytes: r.bytes,
-                nicheId: (r.context?.custom?.nicheId as string | undefined) ?? null,
-            }));
+            const images = (resources as any[]).map((r) => {
+                const nicheId = (r.context?.custom?.nicheId as string | undefined) ?? null;
+                const nicheIds: string[] = (r.tags ?? [])
+                    .filter((t: string) => t.startsWith("nicho:"))
+                    .map((t: string) => t.slice(6));
+                return {
+                    publicId: r.public_id,
+                    url: r.secure_url,
+                    width: r.width,
+                    height: r.height,
+                    createdAt: r.created_at,
+                    format: r.format,
+                    bytes: r.bytes,
+                    nicheId,
+                    nicheIds,
+                };
+            });
 
             return reply.send({ images });
         } catch (error: any) {
@@ -288,6 +298,36 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /cloudinary/add-extra-niche — add an additional niche tag to an image (multiNiche)
+    app.post("/cloudinary/add-extra-niche", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+            const { publicId, nicheId } = request.body || {};
+            if (!publicId || !nicheId) return reply.status(400).send({ error: "publicId y nicheId requeridos" });
+            const cld = await initCloudinary(config);
+            await cld.uploader.add_tag(`nicho:${nicheId}`, [publicId]);
+            return reply.send({ ok: true });
+        } catch (error: any) {
+            return reply.status(500).send({ error: "Error añadiendo niche", message: error.message });
+        }
+    });
+
+    // POST /cloudinary/remove-extra-niche — remove a niche tag from an image (multiNiche)
+    app.post("/cloudinary/remove-extra-niche", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+            const { publicId, nicheId } = request.body || {};
+            if (!publicId || !nicheId) return reply.status(400).send({ error: "publicId y nicheId requeridos" });
+            const cld = await initCloudinary(config);
+            await cld.uploader.remove_tag(`nicho:${nicheId}`, [publicId]);
+            return reply.send({ ok: true });
+        } catch (error: any) {
+            return reply.status(500).send({ error: "Error quitando niche", message: error.message });
+        }
+    });
+
     // POST /cloudinary/delete — delete by publicId (POST avoids URL encoding issues with slashes)
     app.post("/cloudinary/delete", async (request: any, reply) => {
         try {
@@ -308,6 +348,50 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
         } catch (error: any) {
             app.log.error(error);
             return reply.status(500).send({ error: "Error eliminando imagen", message: error.message });
+        }
+    });
+
+    // POST /cloudinary/restore-niche-context — recover nicheId context from tags
+    // Scans all images; for each that has tag "nicho:X" but no context nicheId, restores context
+    app.post("/cloudinary/restore-niche-context", async (_req, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+            const cld = await initCloudinary(config);
+
+            const all = await cld.api.resources({
+                type: "upload",
+                prefix: `${FOLDER}/`,
+                max_results: 500,
+                context: true,
+                tags: true,
+            });
+
+            let restored = 0;
+            const alreadyLinked: string[] = [];
+            const errors: string[] = [];
+
+            for (const r of all.resources ?? []) {
+                const contextNicheId: string | undefined = r.context?.custom?.nicheId;
+                const nicheTag = (r.tags ?? []).find((t: string) => t.startsWith("nicho:"));
+                const tagNicheId = nicheTag ? nicheTag.replace("nicho:", "") : undefined;
+
+                if (tagNicheId && !contextNicheId) {
+                    try {
+                        await cld.uploader.add_context(`nicheId=${tagNicheId}`, [r.public_id]);
+                        restored++;
+                    } catch {
+                        errors.push(r.public_id as string);
+                    }
+                } else if (contextNicheId) {
+                    alreadyLinked.push(r.public_id as string);
+                }
+            }
+
+            return reply.send({ ok: true, restored, alreadyLinked: alreadyLinked.length, errors });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error restaurando contexto", message: error.message });
         }
     });
 }

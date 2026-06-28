@@ -667,7 +667,7 @@ SUBTÍTULO (80-120 chars): Cadena de keywords secundarias — NO es una descripc
 ❌ Malos: "Inspirado en el estilo KAWS, con diseños únicos y emocionales para fans del arte urbano" (es descripción, no subtítulo)
 
 DESCRIPCIÓN: HTML para KDP. (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <p> qué hace único este libro, (3) <ul><li> 5-6 beneficios concretos, (4) <p> para quién + ocasiones regalo, (5) <p> CTA. 800-1200 chars visibles.
-KEYWORDS: EXACTAMENTE 7 frases long-tail, máx 49 chars c/u. PROHIBIDO: best/new/free/top/premium/book/amazon/kindle + palabras del título/subtítulo.
+KEYWORDS: EXACTAMENTE 7 frases long-tail, máx 49 chars c/u. PROHIBIDO: best/new/free/top/premium/book/amazon/kindle + palabras del título/subtítulo. REGLA CRÍTICA: ninguna palabra individual puede repetirse entre las 7 frases — cada frase debe aportar vocabulario único. Revisa todas las frases al final y elimina duplicados.
 CATEGORIES: 3 rutas completas y específicas (ej: "Crafts, Hobbies & Home > Coloring Books for Adults").
 Responde SOLO con JSON: { "title": string, "subtitle": string, "description": string, "keywords": string[7], "categories": string[3] }`;
 
@@ -1207,7 +1207,7 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
     app.post("/niches/:id/explode-catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { count = 5, imagesPerCatalog = 5, model, hints = [] } = request.body ?? {};
+            const { count = 5, imagesPerCatalog = 5, model, hints = [], imagination = 50, variation = 50 } = request.body ?? {};
             const n = Math.min(Math.max(2, Number(count)), 20);
             const imgsPer = Math.min(Math.max(1, Number(imagesPerCatalog)), 20);
             const hintList: string[] = Array.isArray(hints) ? hints.map((h: any) => String(h).trim()).filter(Boolean).slice(0, n) : [];
@@ -1301,6 +1301,28 @@ RIGHT (niche is the actual subject):
 
 VARIATION: The ${n} situations must be visually distinct. Vary the specific sub-type, iconic character/motif, or signature scenario WITHIN "${visualCoreName}". Do NOT vary by external settings or unrelated genres.${usedPrompts.length > 0 ? "\n\nALREADY USED — produce entirely different sub-themes, do not repeat:\n" + usedPrompts.slice(0, 20).map((p, i) => `${i + 1}. ${p}`).join("\n") : ""}${discoveryPrompt ? "\n\nSTYLE RULE: Each prompt MUST preserve the visual technique from the approved style anchor above. Change the subject, not the drawing style." : ""}
 
+${Number(imagination) <= 25
+    ? `CREATIVITY LEVEL: CONVENTIONAL (${imagination}/100). Choose the most iconic, recognisable, bestselling subjects of this niche — the scenes that immediately define what the niche IS. Safe, proven, high-demand images.`
+    : Number(imagination) <= 50
+    ? `CREATIVITY LEVEL: BALANCED (${imagination}/100). Mix recognisable bestselling subjects with some fresh angles. Mostly proven concepts, one or two less-obvious variations.`
+    : Number(imagination) <= 75
+    ? `CREATIVITY LEVEL: CREATIVE (${imagination}/100). Explore unexpected sub-genres, unusual character archetypes, or non-standard compositions that still belong 100% within the niche. Surprise without losing niche identity.`
+    : `CREATIVITY LEVEL: EXPERIMENTAL (${imagination}/100). Be bold and unconventional — unusual moods, unexpected style fusions within the niche, avant-garde interpretations. Each prompt should feel fresh while keeping the niche unmistakable.`
+}
+
+${discoveryPrompt
+    ? Number(variation) <= 20
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — MINIMAL): Original: "${discoveryPrompt}". Stay as close as possible — ONLY change 1-2 nouns or adjectives. Same subject, composition, mood. Think micro-variations: a different species, a slightly different pose, one replaced keyword.`
+        : Number(variation) <= 45
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — SLIGHT): Original: "${discoveryPrompt}". Keep the same general scene structure and mood but vary the specific subject or one key element. Different but recognizably related.`
+        : Number(variation) <= 70
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — MODERATE): Original: "${discoveryPrompt}" — style and tone reference only. Create distinct subjects sharing the same visual language but clearly different scenes.`
+        : Number(variation) <= 85
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — HIGH): Original: "${discoveryPrompt}" — loose inspiration only. Each situation should be a fresh, independent subject within the niche.`
+        : `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — TOTAL): Ignore the original prompt entirely. Generate fully independent prompts — maximum diversity within the niche.`
+    : ""
+}
+
 Write each prompt in English, 25-55 words. No style keywords (added automatically).
 
 Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
@@ -1365,11 +1387,13 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
         }
     });
 
-    // GET /niches/:id/situations?count=N — generate N situation prompts without creating catalogs
+    // GET /niches/:id/situations?count=N&imagination=0-100&variation=0-100 — generate N situation prompts without creating catalogs
     app.get("/niches/:id/situations", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
             const n = Math.min(Math.max(2, Number(request.query?.count ?? 4)), 10);
+            const imagination = Math.min(100, Math.max(0, Number(request.query?.imagination ?? 50)));
+            const variation = Math.min(100, Math.max(0, Number(request.query?.variation ?? 50)));
             const niche = await Niche.findById(request.params.id).lean() as any;
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
@@ -1436,6 +1460,28 @@ RIGHT approach (niche as the actual subject):
 - Niche "Mandalas" → "an intricate lotus mandala with nested geometric petals and sacred geometry in concentric rings" ✓
 
 VARIATION RULE: The ${n} situations must be visually distinct — vary the specific sub-type, iconic character/motif, or signature scenario WITHIN "${visualCoreName}". Do NOT vary by external settings or unrelated genres.${discoveryPrompt ? "\n\nSTYLE RULE: Each prompt MUST preserve the visual technique from the approved style anchor above. Change the subject, not the drawing style." : ""}
+
+${imagination <= 25
+    ? `CREATIVITY LEVEL: CONVENTIONAL (${imagination}/100). Choose the most iconic, recognisable, bestselling subjects of this niche. Think top-sellers on Amazon KDP — the scenes that immediately define what this niche IS. Safe, proven, high-demand images.`
+    : imagination <= 50
+    ? `CREATIVITY LEVEL: BALANCED (${imagination}/100). Mix recognisable bestselling subjects with some fresh angles. Mostly proven concepts, one or two less-obvious variations.`
+    : imagination <= 75
+    ? `CREATIVITY LEVEL: CREATIVE (${imagination}/100). Go beyond the obvious. Explore unexpected sub-genres, unusual character archetypes, or non-standard compositions that still belong 100% within "${visualCoreName}". Surprise without losing the niche identity.`
+    : `CREATIVITY LEVEL: EXPERIMENTAL (${imagination}/100). Be bold and unconventional. Unusual moods, unexpected fusion of styles within the niche, surreal or avant-garde interpretations. Each prompt should feel fresh and unexpected while keeping "${visualCoreName}" as the unmistakable core.`
+}
+
+${discoveryPrompt
+    ? variation <= 20
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — MINIMAL): The original prompt is: "${discoveryPrompt}". Each new prompt must stay as close as possible to this. ONLY change 1-2 nouns or adjectives. Keep the same subject, composition, and mood. Think micro-variations — a different animal species, a slightly different pose, one replaced keyword.`
+        : variation <= 45
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — SLIGHT): The original prompt is: "${discoveryPrompt}". Use it as the base. Keep the same general scene structure and mood but vary the specific subject or one key element. Different but recognizably related.`
+        : variation <= 70
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — MODERATE): The original prompt is: "${discoveryPrompt}" — use it as a style and tone reference only. Create distinct subjects and compositions that share the same visual language but are clearly different scenes.`
+        : variation <= 85
+        ? `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — HIGH): The original prompt is: "${discoveryPrompt}" — treat it as loose inspiration only. Each situation should be a fresh, independent subject within the niche.`
+        : `VARIATION FROM ORIGINAL PROMPT (${variation}/100 — TOTAL): Ignore the original prompt entirely. Generate fully independent prompts — maximum diversity within the niche.`
+    : ""
+}
 
 Write each prompt in English, 25-55 words, describing only the scene/subject — no style keywords (added automatically).
 
