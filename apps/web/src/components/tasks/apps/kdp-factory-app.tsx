@@ -741,6 +741,9 @@ export function KdpFactoryApp() {
     const [bulkDeleteCatalogId, setBulkDeleteCatalogId] = useState<string | null>(null);
     const [bulkDeleteSelection, setBulkDeleteSelection] = useState<Set<string>>(new Set());
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+    const [nicheDetailSelectMode, setNicheDetailSelectMode] = useState(false);
+    const [nicheDetailSelectedPids, setNicheDetailSelectedPids] = useState<Set<string>>(new Set());
+    const [isDeletingNicheImages, setIsDeletingNicheImages] = useState(false);
     const stableEmptySet = useRef(new Set<string>()).current;
     const [bookPages, setBookPages] = useState<BookPage[]>([]);
     const [directPdfCatalogId, setDirectPdfCatalogId] = useState<string | null>(null);
@@ -3015,6 +3018,42 @@ export function KdpFactoryApp() {
         }
     };
 
+    const bulkDeleteNicheImages = async (allImgs: Array<{ publicId: string; catalogId?: string | null }>) => {
+        if (nicheDetailSelectedPids.size === 0) return;
+        setIsDeletingNicheImages(true);
+        const pids = [...nicheDetailSelectedPids];
+        try {
+            await Promise.all(pids.map(pid => {
+                const img = allImgs.find(i => i.publicId === pid);
+                if (img?.catalogId) {
+                    return fetch(`${API_BASE_URL}/catalogs/${img.catalogId}/delete-image`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ publicId: pid }),
+                    });
+                } else {
+                    return fetch(`${API_BASE_URL}/cloudinary/delete`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ publicId: pid }),
+                    });
+                }
+            }));
+            setIaCatalogs(prev => prev.map(c => ({
+                ...c,
+                images: c.images.filter(img => !nicheDetailSelectedPids.has(img.publicId)),
+            })));
+            setCloudinaryImages(prev => prev.filter(img => !nicheDetailSelectedPids.has(img.publicId)));
+            toast.success(`${pids.length} imagen${pids.length !== 1 ? "es" : ""} eliminada${pids.length !== 1 ? "s" : ""}`);
+            setNicheDetailSelectedPids(new Set());
+            setNicheDetailSelectMode(false);
+        } catch {
+            toast.error("Error al eliminar imágenes");
+        } finally {
+            setIsDeletingNicheImages(false);
+        }
+    };
+
     const addImageFileToVault = (file: File) => {
         if (!file.type.startsWith("image/")) { toast.error("Solo se aceptan imágenes"); return; }
         const url = URL.createObjectURL(file);
@@ -3724,44 +3763,78 @@ export function KdpFactoryApp() {
         visible: boolean;
     };
     const COVER_FONTS: { label: string; value: string; group: string }[] = [
-        { label: "Sans (default)", value: "sans-serif",               group: "General" },
-        { label: "Serif",          value: "serif",                    group: "General" },
-        { label: "Monospace",      value: "monospace",                group: "General" },
-        // Elegante / Literaria
-        { label: "Playfair Display",       value: "'Playfair Display', serif",        group: "Elegante" },
-        { label: "Merriweather",           value: "'Merriweather', serif",             group: "Elegante" },
-        { label: "Cinzel",                 value: "'Cinzel', serif",                   group: "Elegante" },
-        { label: "Cinzel Decorative",      value: "'Cinzel Decorative', serif",        group: "Elegante" },
-        { label: "EB Garamond",            value: "'EB Garamond', serif",              group: "Elegante" },
-        { label: "Cormorant Garamond",     value: "'Cormorant Garamond', serif",       group: "Elegante" },
-        { label: "IM Fell English",        value: "'IM Fell English', serif",          group: "Elegante" },
-        // Moderna / Display
-        { label: "Oswald",         value: "'Oswald', sans-serif",     group: "Moderna" },
-        { label: "Bebas Neue",     value: "'Bebas Neue', cursive",    group: "Moderna" },
-        { label: "Raleway",        value: "'Raleway', sans-serif",    group: "Moderna" },
-        { label: "Anton",          value: "'Anton', sans-serif",      group: "Moderna" },
-        { label: "Teko",           value: "'Teko', sans-serif",       group: "Moderna" },
-        // Manuscrita / Decorativa
-        { label: "Dancing Script", value: "'Dancing Script', cursive", group: "Manuscrita" },
-        { label: "Lobster",        value: "'Lobster', cursive",        group: "Manuscrita" },
-        { label: "Permanent Marker", value: "'Permanent Marker', cursive", group: "Manuscrita" },
-        { label: "Pacifico",       value: "'Pacifico', cursive",      group: "Manuscrita" },
-        // Anime / Manga
-        { label: "Bangers",        value: "'Bangers', cursive",       group: "Anime / Manga" },
-        { label: "Boogaloo",       value: "'Boogaloo', cursive",      group: "Anime / Manga" },
-        { label: "Black Ops One",  value: "'Black Ops One', cursive", group: "Anime / Manga" },
-        // Fantasía / Medieval
-        { label: "Uncial Antiqua", value: "'Uncial Antiqua', cursive", group: "Fantasía" },
-        { label: "Almendra",       value: "'Almendra', serif",         group: "Fantasía" },
-        { label: "MedievalSharp",  value: "'MedievalSharp', cursive",  group: "Fantasía" },
-        // Sci-Fi / Futurista
-        { label: "Orbitron",       value: "'Orbitron', sans-serif",   group: "Sci-Fi" },
-        { label: "Exo 2",          value: "'Exo 2', sans-serif",      group: "Sci-Fi" },
-        { label: "Audiowide",      value: "'Audiowide', sans-serif",  group: "Sci-Fi" },
-        { label: "Rajdhani",       value: "'Rajdhani', sans-serif",   group: "Sci-Fi" },
-        { label: "Share Tech Mono", value: "'Share Tech Mono', monospace", group: "Sci-Fi" },
-        // Horror / Thriller
-        { label: "Creepster",      value: "'Creepster', cursive",     group: "Horror / Thriller" },
+        // ── Editorial Bold ──
+        { label: "Abril Fatface",        value: "'Abril Fatface', serif",           group: "Editorial Bold" },
+        { label: "Bodoni Moda",          value: "'Bodoni Moda', serif",             group: "Editorial Bold" },
+        { label: "DM Serif Display",     value: "'DM Serif Display', serif",        group: "Editorial Bold" },
+        { label: "Marcellus",            value: "'Marcellus', serif",               group: "Editorial Bold" },
+        { label: "Playfair Display",     value: "'Playfair Display', serif",        group: "Editorial Bold" },
+        { label: "Cinzel",               value: "'Cinzel', serif",                  group: "Editorial Bold" },
+        { label: "Cinzel Decorative",    value: "'Cinzel Decorative', serif",       group: "Editorial Bold" },
+        { label: "Cormorant Garamond",   value: "'Cormorant Garamond', serif",      group: "Editorial Bold" },
+        { label: "Spectral",             value: "'Spectral', serif",                group: "Editorial Bold" },
+        { label: "Lora",                 value: "'Lora', serif",                    group: "Editorial Bold" },
+        { label: "EB Garamond",          value: "'EB Garamond', serif",             group: "Editorial Bold" },
+        { label: "Merriweather",         value: "'Merriweather', serif",            group: "Editorial Bold" },
+        { label: "IM Fell English",      value: "'IM Fell English', serif",         group: "Editorial Bold" },
+        // ── Impacto / Display ──
+        { label: "Bebas Neue",           value: "'Bebas Neue', sans-serif",         group: "Impacto" },
+        { label: "Anton",                value: "'Anton', sans-serif",              group: "Impacto" },
+        { label: "Oswald",               value: "'Oswald', sans-serif",             group: "Impacto" },
+        { label: "Fjalla One",           value: "'Fjalla One', sans-serif",         group: "Impacto" },
+        { label: "Passion One",          value: "'Passion One', sans-serif",        group: "Impacto" },
+        { label: "Russo One",            value: "'Russo One', sans-serif",          group: "Impacto" },
+        { label: "Titan One",            value: "'Titan One', cursive",             group: "Impacto" },
+        { label: "Black Han Sans",       value: "'Black Han Sans', sans-serif",     group: "Impacto" },
+        { label: "Teko",                 value: "'Teko', sans-serif",               group: "Impacto" },
+        // ── Moderna Premium ──
+        { label: "Montserrat",           value: "'Montserrat', sans-serif",         group: "Moderna" },
+        { label: "Poppins",              value: "'Poppins', sans-serif",            group: "Moderna" },
+        { label: "Raleway",              value: "'Raleway', sans-serif",            group: "Moderna" },
+        { label: "Josefin Sans",         value: "'Josefin Sans', sans-serif",       group: "Moderna" },
+        { label: "Space Grotesk",        value: "'Space Grotesk', sans-serif",      group: "Moderna" },
+        { label: "DM Sans",              value: "'DM Sans', sans-serif",            group: "Moderna" },
+        // ── Script Elegante ──
+        { label: "Great Vibes",          value: "'Great Vibes', cursive",           group: "Script" },
+        { label: "Pinyon Script",        value: "'Pinyon Script', cursive",         group: "Script" },
+        { label: "Sacramento",           value: "'Sacramento', cursive",            group: "Script" },
+        { label: "Yellowtail",           value: "'Yellowtail', cursive",            group: "Script" },
+        { label: "Dancing Script",       value: "'Dancing Script', cursive",        group: "Script" },
+        { label: "Pacifico",             value: "'Pacifico', cursive",              group: "Script" },
+        { label: "Lobster",              value: "'Lobster', cursive",               group: "Script" },
+        { label: "Permanent Marker",     value: "'Permanent Marker', cursive",      group: "Script" },
+        // ── Retro / Vintage ──
+        { label: "Bungee",               value: "'Bungee', sans-serif",             group: "Retro" },
+        { label: "Bungee Shade",         value: "'Bungee Shade', cursive",          group: "Retro" },
+        { label: "Righteous",            value: "'Righteous', cursive",             group: "Retro" },
+        { label: "Rye",                  value: "'Rye', cursive",                   group: "Retro" },
+        { label: "Alfa Slab One",        value: "'Alfa Slab One', cursive",         group: "Retro" },
+        { label: "Josefin Slab",         value: "'Josefin Slab', serif",            group: "Retro" },
+        { label: "Special Elite",        value: "'Special Elite', cursive",         group: "Retro" },
+        // ── Fantasía / Medieval ──
+        { label: "Uncial Antiqua",       value: "'Uncial Antiqua', cursive",        group: "Fantasía" },
+        { label: "Almendra",             value: "'Almendra', serif",                group: "Fantasía" },
+        { label: "Fondamento",           value: "'Fondamento', cursive",            group: "Fantasía" },
+        { label: "Metamorphous",         value: "'Metamorphous', cursive",          group: "Fantasía" },
+        { label: "Pirata One",           value: "'Pirata One', cursive",            group: "Fantasía" },
+        { label: "MedievalSharp",        value: "'MedievalSharp', cursive",         group: "Fantasía" },
+        // ── Anime / Cómic ──
+        { label: "Bangers",              value: "'Bangers', cursive",               group: "Cómic" },
+        { label: "Boogaloo",             value: "'Boogaloo', cursive",              group: "Cómic" },
+        { label: "Black Ops One",        value: "'Black Ops One', cursive",         group: "Cómic" },
+        { label: "Fredoka One",          value: "'Fredoka One', cursive",           group: "Cómic" },
+        // ── Sci-Fi / Futurista ──
+        { label: "Orbitron",             value: "'Orbitron', sans-serif",           group: "Sci-Fi" },
+        { label: "Exo 2",               value: "'Exo 2', sans-serif",              group: "Sci-Fi" },
+        { label: "Audiowide",            value: "'Audiowide', sans-serif",          group: "Sci-Fi" },
+        { label: "Rajdhani",             value: "'Rajdhani', sans-serif",           group: "Sci-Fi" },
+        { label: "Share Tech Mono",      value: "'Share Tech Mono', monospace",     group: "Sci-Fi" },
+        { label: "Press Start 2P",       value: "'Press Start 2P', monospace",      group: "Sci-Fi" },
+        // ── Horror / Thriller ──
+        { label: "Creepster",            value: "'Creepster', cursive",             group: "Horror" },
+        { label: "Butcherman",           value: "'Butcherman', cursive",            group: "Horror" },
+        { label: "Nosifer",              value: "'Nosifer', cursive",               group: "Horror" },
+        { label: "Henny Penny",          value: "'Henny Penny', cursive",           group: "Horror" },
     ];
     const defaultLayer = (overrides: Partial<TextLayer> & Pick<TextLayer, "id" | "text">): TextLayer => ({
         x: 50, y: 80, fontSize: 24, color: "#ffffff", fontFamily: "sans-serif",
@@ -4660,7 +4733,79 @@ POST-LANZAMIENTO:
         const link = document.createElement("link");
         link.id = id;
         link.rel = "stylesheet";
-        link.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;700&family=Bebas+Neue&family=Cinzel:wght@400;700&family=Cinzel+Decorative:wght@400;700&family=Dancing+Script:wght@400;700&family=Raleway:wght@300;400;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Lobster&family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=IM+Fell+English:ital@0;1&family=Anton&family=Teko:wght@400;600;700&family=Permanent+Marker&family=Pacifico&family=Bangers&family=Boogaloo&family=Black+Ops+One&family=Uncial+Antiqua&family=Almendra:wght@400;700&family=Orbitron:wght@400;700&family=Exo+2:wght@400;700&family=Audiowide&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Creepster&display=swap";
+        link.href = [
+            // Editorial Bold
+            "family=Abril+Fatface",
+            "family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,700;1,6..96,400",
+            "family=DM+Serif+Display:ital@0;1",
+            "family=Marcellus",
+            "family=Playfair+Display:ital,wght@0,400;0,700;1,400",
+            "family=Cinzel:wght@400;700",
+            "family=Cinzel+Decorative:wght@400;700",
+            "family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400",
+            "family=Spectral:ital,wght@0,400;0,700;1,400",
+            "family=Lora:ital,wght@0,400;0,700;1,400",
+            "family=EB+Garamond:ital,wght@0,400;0,700;1,400",
+            "family=Merriweather:ital,wght@0,400;0,700;1,400",
+            "family=IM+Fell+English:ital@0;1",
+            // Impacto
+            "family=Bebas+Neue",
+            "family=Anton",
+            "family=Oswald:wght@400;700",
+            "family=Fjalla+One",
+            "family=Passion+One:wght@400;700;900",
+            "family=Russo+One",
+            "family=Titan+One",
+            "family=Black+Han+Sans",
+            "family=Teko:wght@400;600;700",
+            // Moderna
+            "family=Montserrat:wght@400;700;900",
+            "family=Poppins:wght@400;700;900",
+            "family=Raleway:wght@300;400;700",
+            "family=Josefin+Sans:wght@400;700",
+            "family=Space+Grotesk:wght@400;700",
+            "family=DM+Sans:wght@400;700",
+            // Script
+            "family=Great+Vibes",
+            "family=Pinyon+Script",
+            "family=Sacramento",
+            "family=Yellowtail",
+            "family=Dancing+Script:wght@400;700",
+            "family=Pacifico",
+            "family=Lobster",
+            "family=Permanent+Marker",
+            // Retro
+            "family=Bungee",
+            "family=Bungee+Shade",
+            "family=Righteous",
+            "family=Rye",
+            "family=Alfa+Slab+One",
+            "family=Josefin+Slab:wght@400;700",
+            "family=Special+Elite",
+            // Fantasía
+            "family=Uncial+Antiqua",
+            "family=Almendra:wght@400;700",
+            "family=Fondamento:ital@0;1",
+            "family=Metamorphous",
+            "family=Pirata+One",
+            // Cómic
+            "family=Bangers",
+            "family=Boogaloo",
+            "family=Black+Ops+One",
+            "family=Fredoka+One",
+            // Sci-Fi
+            "family=Orbitron:wght@400;700",
+            "family=Exo+2:wght@400;700",
+            "family=Audiowide",
+            "family=Rajdhani:wght@400;600;700",
+            "family=Share+Tech+Mono",
+            "family=Press+Start+2P",
+            // Horror
+            "family=Creepster",
+            "family=Butcherman",
+            "family=Nosifer",
+            "family=Henny+Penny",
+        ].join("&").replace(/^/, "https://fonts.googleapis.com/css2?") + "&display=swap";
         document.head.appendChild(link);
     }, [showCoverEditor]);
 
@@ -4736,7 +4881,7 @@ POST-LANZAMIENTO:
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
     useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); void fetchAutoCloneQueue(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-    useEffect(() => { setPreviewSpreadIdx(0); setSeoAnnotation(""); }, [nicheDetailId]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { setPreviewSpreadIdx(0); setSeoAnnotation(""); setNicheDetailSelectMode(false); setNicheDetailSelectedPids(new Set()); }, [nicheDetailId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync calendar events from MongoDB on mount (backend may have them from another session)
     useEffect(() => {
@@ -5078,7 +5223,8 @@ POST-LANZAMIENTO:
             const cloudImgs = cloudinaryImages
                 .filter(img => img.nicheId === nicheId || (img.nicheIds ?? []).includes(nicheId))
                 .map(img => ({ url: img.url, publicId: img.publicId }));
-            const allImgs = [...catImgs, ...cloudImgs];
+            const seenPids = new Set<string>();
+            const allImgs = [...catImgs, ...cloudImgs].filter(img => { if (seenPids.has(img.publicId)) return false; seenPids.add(img.publicId); return true; });
             if (allImgs.length === 0) continue;
             const shuffled = [...allImgs].sort(() => Math.random() - 0.5);
             const ts = Date.now();
@@ -21123,10 +21269,13 @@ POST-LANZAMIENTO:
                 if (!detailNiche) return null;
                 const linkedCats = iaCatalogs.filter(c => c.nicheIds?.includes(nicheDetailId));
                 const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId || (img.nicheIds ?? []).includes(nicheDetailId ?? ""));
-                const allImgs: { publicId: string; url: string; width?: number; height?: number; catalogId?: string }[] = [
-                    ...linkedCats.flatMap(c => c.images.map(img => ({ ...img, catalogId: c._id }))),
-                    ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
-                ];
+                const allImgs: { publicId: string; url: string; width?: number; height?: number; catalogId?: string }[] = (() => {
+                    const seen = new Set<string>();
+                    return [
+                        ...linkedCats.flatMap(c => c.images.map(img => ({ ...img, catalogId: c._id }))),
+                        ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
+                    ].filter(img => { if (seen.has(img.publicId)) return false; seen.add(img.publicId); return true; });
+                })();
                 const pipelineDraft = bookDrafts.find(d => d.id.startsWith(`pipeline-${nicheDetailId}`) || d.nicheId === nicheDetailId);
                 const TABS = [
                     { id: "images" as const, label: "Imágenes", icon: <ImageIcon size={11} />, count: allImgs.length },
@@ -21212,6 +21361,12 @@ POST-LANZAMIENTO:
                                                                 {cloudCount} cloud
                                                             </span>
                                                         )}
+                                                        <button
+                                                            onClick={() => { setNicheDetailSelectMode(m => !m); setNicheDetailSelectedPids(new Set()); }}
+                                                            className={`text-[10px] font-black px-2.5 py-1 rounded-full border transition-all ${nicheDetailSelectMode ? "text-rose-300 bg-rose-500/15 border-rose-500/30" : "text-neutral-400 bg-white/5 border-white/10 hover:text-white hover:bg-white/10"}`}
+                                                        >
+                                                            {nicheDetailSelectMode ? "Cancelar" : "Seleccionar"}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             );
@@ -21226,80 +21381,131 @@ POST-LANZAMIENTO:
                                                 size="md"
                                             />
                                         ) : (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                {allImgs.map((img, idx) => {
-                                                    const catName = img.catalogId
-                                                        ? linkedCats.find(c => c._id === img.catalogId)?.name ?? null
-                                                        : null;
-                                                    const isCloud = !img.catalogId;
-                                                    return (
-                                                        <div
-                                                            key={img.publicId || idx}
-                                                            className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:z-10"
-                                                            style={{
-                                                                boxShadow: "0 0 0 1px rgba(255,255,255,0.07)",
-                                                            }}
-                                                        >
-                                                            <img
-                                                                src={img.url}
-                                                                alt=""
-                                                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                                            />
+                                            <div className="relative">
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                    {allImgs.map((img, idx) => {
+                                                        const catName = img.catalogId
+                                                            ? linkedCats.find(c => c._id === img.catalogId)?.name ?? null
+                                                            : null;
+                                                        const isCloud = !img.catalogId;
+                                                        const isSelected = nicheDetailSelectedPids.has(img.publicId);
+                                                        return (
+                                                            <div
+                                                                key={img.publicId || idx}
+                                                                onClick={() => {
+                                                                    if (nicheDetailSelectMode) {
+                                                                        setNicheDetailSelectedPids(prev => {
+                                                                            const next = new Set(prev);
+                                                                            next.has(img.publicId) ? next.delete(img.publicId) : next.add(img.publicId);
+                                                                            return next;
+                                                                        });
+                                                                    }
+                                                                }}
+                                                                className={`group relative aspect-square rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 ${nicheDetailSelectMode ? "hover:scale-[1.02]" : "hover:scale-[1.02] hover:z-10"} ${isSelected ? "ring-2 ring-rose-400 ring-offset-2 ring-offset-neutral-950" : ""}`}
+                                                                style={{
+                                                                    boxShadow: "0 0 0 1px rgba(255,255,255,0.07)",
+                                                                }}
+                                                            >
+                                                                <img
+                                                                    src={img.url}
+                                                                    alt=""
+                                                                    className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ${isSelected ? "brightness-75" : ""}`}
+                                                                />
 
-                                                            {/* Always-visible bottom fade */}
-                                                            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
+                                                                {/* Always-visible bottom fade */}
+                                                                <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
 
-                                                            {/* Hover overlay */}
-                                                            <div className="absolute inset-0 bg-gradient-to-t from-violet-900/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                                                                {/* Hover overlay */}
+                                                                {!nicheDetailSelectMode && <div className="absolute inset-0 bg-gradient-to-t from-violet-900/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />}
 
-                                                            {/* Source badge — always visible */}
-                                                            <div className="absolute bottom-2 left-2 pointer-events-none">
-                                                                {catName ? (
-                                                                    <span className="text-[9px] font-bold text-white/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-violet-400/20 truncate block max-w-[120px]">
-                                                                        {catName}
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-[9px] font-bold text-cyan-300/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-cyan-500/25">
-                                                                        Cloud
-                                                                    </span>
+                                                                {/* Selection overlay */}
+                                                                {nicheDetailSelectMode && (
+                                                                    <div className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${isSelected ? "bg-rose-500/20" : "bg-black/0 group-hover:bg-black/20"}`}>
+                                                                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? "bg-rose-500 border-rose-400" : "bg-black/50 border-white/40 group-hover:border-white/70"}`}>
+                                                                            {isSelected && <Check size={13} className="text-white" strokeWidth={3} />}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Source badge — always visible */}
+                                                                <div className="absolute bottom-2 left-2 pointer-events-none">
+                                                                    {catName ? (
+                                                                        <span className="text-[9px] font-bold text-white/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-violet-400/20 truncate block max-w-[120px]">
+                                                                            {catName}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[9px] font-bold text-cyan-300/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-cyan-500/25">
+                                                                            Cloud
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Action buttons — slide in on hover (hidden in select mode) */}
+                                                                {!nicheDetailSelectMode && (
+                                                                    <div className="absolute top-2 right-2 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 -translate-y-1 group-hover:translate-y-0">
+                                                                        <button
+                                                                            onClick={e => { e.stopPropagation(); setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId, urls: allImgs.map(i => i.url), meta: allImgs.map(i => ({ catalogId: i.catalogId, publicId: i.publicId })), index: idx }); }}
+                                                                            className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 text-white hover:bg-white/20 hover:border-white/30 hover:scale-110 transition-all"
+                                                                            title="Ampliar"
+                                                                        >
+                                                                            <ZoomIn size={11} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={e => {
+                                                                                e.stopPropagation();
+                                                                                img.catalogId
+                                                                                    ? setConfirmDeleteImageInfo({ catalogId: img.catalogId, publicId: img.publicId })
+                                                                                    : void deleteFromCloudinary(img.publicId);
+                                                                            }}
+                                                                            className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-rose-500/30 text-rose-400 hover:bg-rose-500/30 hover:border-rose-400/50 hover:scale-110 transition-all"
+                                                                            title="Eliminar"
+                                                                        >
+                                                                            <Trash2 size={11} />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Glow border on hover */}
+                                                                {!nicheDetailSelectMode && <div className={`absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isCloud ? "ring-1 ring-cyan-400/30" : "ring-1 ring-violet-400/30"}`} />}
+
+                                                                {/* Click capture for lightbox (only when not in select mode) */}
+                                                                {!nicheDetailSelectMode && (
+                                                                    <button
+                                                                        onClick={() => setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId, urls: allImgs.map(i => i.url), meta: allImgs.map(i => ({ catalogId: i.catalogId, publicId: i.publicId })), index: idx })}
+                                                                        className="absolute inset-0"
+                                                                        aria-label="Ver imagen"
+                                                                    />
                                                                 )}
                                                             </div>
+                                                        );
+                                                    })}
+                                                </div>
 
-                                                            {/* Action buttons — slide in on hover */}
-                                                            <div className="absolute top-2 right-2 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 -translate-y-1 group-hover:translate-y-0">
-                                                                <button
-                                                                    onClick={e => { e.stopPropagation(); setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId, urls: allImgs.map(i => i.url), meta: allImgs.map(i => ({ catalogId: i.catalogId, publicId: i.publicId })), index: idx }); }}
-                                                                    className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 text-white hover:bg-white/20 hover:border-white/30 hover:scale-110 transition-all"
-                                                                    title="Ampliar"
-                                                                >
-                                                                    <ZoomIn size={11} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={e => {
-                                                                        e.stopPropagation();
-                                                                        img.catalogId
-                                                                            ? setConfirmDeleteImageInfo({ catalogId: img.catalogId, publicId: img.publicId })
-                                                                            : void deleteFromCloudinary(img.publicId);
-                                                                    }}
-                                                                    className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-rose-500/30 text-rose-400 hover:bg-rose-500/30 hover:border-rose-400/50 hover:scale-110 transition-all"
-                                                                    title="Eliminar"
-                                                                >
-                                                                    <Trash2 size={11} />
-                                                                </button>
-                                                            </div>
-
-                                                            {/* Glow border on hover */}
-                                                            <div className={`absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isCloud ? "ring-1 ring-cyan-400/30" : "ring-1 ring-violet-400/30"}`} />
-
-                                                            {/* Click capture for lightbox */}
-                                                            <button
-                                                                onClick={() => setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId, urls: allImgs.map(i => i.url), meta: allImgs.map(i => ({ catalogId: i.catalogId, publicId: i.publicId })), index: idx })}
-                                                                className="absolute inset-0"
-                                                                aria-label="Ver imagen"
-                                                            />
+                                                {/* Sticky bulk action bar */}
+                                                {nicheDetailSelectMode && nicheDetailSelectedPids.size > 0 && (
+                                                    <div className="sticky bottom-4 mt-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-rose-500/30 bg-neutral-950/90 backdrop-blur-xl shadow-xl shadow-rose-900/20">
+                                                        <div className="flex items-center gap-2 text-sm">
+                                                            <span className="font-black text-rose-300">{nicheDetailSelectedPids.size}</span>
+                                                            <span className="text-neutral-400">imagen{nicheDetailSelectedPids.size !== 1 ? "es" : ""} seleccionada{nicheDetailSelectedPids.size !== 1 ? "s" : ""}</span>
                                                         </div>
-                                                    );
-                                                })}
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => setNicheDetailSelectedPids(new Set(allImgs.map(i => i.publicId)))}
+                                                                className="text-xs font-black text-neutral-400 hover:text-white px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"
+                                                            >
+                                                                Todas
+                                                            </button>
+                                                            <button
+                                                                onClick={() => void bulkDeleteNicheImages(allImgs)}
+                                                                disabled={isDeletingNicheImages}
+                                                                className="flex items-center gap-1.5 text-xs font-black text-white bg-rose-500 hover:bg-rose-400 disabled:opacity-50 px-4 py-1.5 rounded-xl transition-all"
+                                                            >
+                                                                {isDeletingNicheImages ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                                                Eliminar {nicheDetailSelectedPids.size}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
