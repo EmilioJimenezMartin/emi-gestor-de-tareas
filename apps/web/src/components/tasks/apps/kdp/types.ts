@@ -165,3 +165,43 @@ export interface BookPage {
     image?: { url: string; scale: number; label?: string; border?: { width: number; color: string } };
     text: PageTextStyle;
 }
+
+export interface KdpSaleFE {
+    _id: string;
+    period: string;
+    asin: string;
+    nicheId: string | null;
+    title: string;
+    marketplace: string;
+    unitsSold: number;
+    royaltiesUsd: number;
+}
+
+export interface BookDraft {
+    id: string;
+    fileName: string;
+    pages: BookPage[];
+    savedAt: string;
+    nicheId?: string;
+}
+
+export type PublishEventStatus = "planned" | "inprogress" | "published" | "idea";
+
+export interface PublishEvent {
+    id: string;
+    title: string;
+    date: string;
+    nicheId?: string;
+    status: PublishEventStatus;
+    color: string;
+}
+
+export interface TimePrediction {
+    nicheName: string;
+    season: string;
+    peakWeek: string;
+    optimalPublishDate: string;
+    weeksUntilPublish: number;
+    urgency: "critical" | "soon" | "ok" | "evergreen";
+    tip: string;
+}

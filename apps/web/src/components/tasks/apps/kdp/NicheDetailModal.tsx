@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { NicheFE, IACatalogFE, CatalogImageFE, CloudinaryImage, BookPage, PageTextStyle } from "./types";
+import type { NicheFE, IACatalogFE, CatalogImageFE, CloudinaryImage, BookPage, BookDraft, PageTextStyle } from "./types";
 import { ListingCardFields } from "./ListingCardFields";
 
 type LightboxUrl = {
@@ -23,7 +23,6 @@ type LightboxUrl = {
     index?: number;
 } | null;
 
-type BookDraft = { id: string; fileName: string; pages: BookPage[]; savedAt: string; nicheId?: string };
 type AllImg = { publicId: string; url: string; width?: number; height?: number; catalogId?: string | null };
 
 interface NicheDetailModalProps {

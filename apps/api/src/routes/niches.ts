@@ -1338,10 +1338,10 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             situations = situations.filter(s => s?.situation && s?.prompt).slice(0, n);
             if (situations.length === 0) return reply.status(502).send({ error: "La IA no detectó situaciones" });
 
-            // 2. Modelo: el elegido o el por defecto (Pollinations flux)
-            const aiModel = model?.provider && model?.modelId
+            // 2. Modelo: el elegido o el configurado en Ajustes
+            const aiModel = (model?.provider && model?.modelId)
                 ? model
-                : { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
+                : await getAutopilotImageModel();
 
             // 3. Crear un catálogo por situación — el primero arranca, el resto en cola
             const hasActive = await Catalog.exists({ status: { $in: ["queued", "pending", "running"] } });
