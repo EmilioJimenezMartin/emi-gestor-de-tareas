@@ -97,6 +97,57 @@ export interface NicheFE {
     updatedAt?: string;
 }
 
+export interface CatalogImageFE {
+    publicId: string;
+    url: string;
+    width: number;
+    height: number;
+    bytes: number;
+    createdAt: string;
+}
+
+export interface FavoriteImage {
+    url: string;
+    label: string;
+    source: "vault" | "catalog" | "cloudinary" | "generated";
+    savedAt: string;
+    catalogId?: string;
+}
+
+export interface IACatalogFE {
+    _id: string;
+    name: string;
+    prompt: string;
+    promptParts?: { theme: string; specs: string; details: string; particulars: string };
+    productType?: "coloring-book" | "printable-poster" | "seamless-pattern" | "other";
+    creativity?: number;
+    negativePrompt?: string;
+    aiModel: { id: string; name: string; provider: string; modelId: string };
+    width: number;
+    height: number;
+    totalImages: number;
+    images: CatalogImageFE[];
+    status: "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
+    lastError?: string;
+    skippedImages?: number;
+    nicheIds?: string[];
+    currentPrompt?: string;
+    createdAt: string;
+    imageStartedAt?: number;
+    rawPrompt?: boolean;
+}
+
+export type CloudinaryImage = {
+    publicId: string;
+    url: string;
+    width: number;
+    height: number;
+    bytes: number;
+    nicheId?: string | null;
+    nicheIds?: string[];
+    createdAt?: string;
+};
+
 export interface PageTextStyle {
     content: string;
     bold: boolean;

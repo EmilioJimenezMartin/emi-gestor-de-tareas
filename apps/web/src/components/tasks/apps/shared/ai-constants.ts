@@ -166,3 +166,4 @@ export async function generateImageBlobUrl(
     const blob = await res.blob();
     return URL.createObjectURL(blob);
 }
+
