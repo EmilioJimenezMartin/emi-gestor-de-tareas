@@ -11242,6 +11242,48 @@ POST-LANZAMIENTO:
         img.src = url;
     });
 
+    const buildCoverPrompt = async (nicheId: string | undefined, colorTheme: string, coloringStyle: string, nicheName: string, productType: string, style: string): Promise<{ prompt: string; prompts: string[] }> => {
+        // Half-colored styles need a specific split-screen prompt — no LLM needed
+        if (coloringStyle === "half-left" || coloringStyle === "half-right") {
+            const isLeft = coloringStyle === "half-left";
+            const p = `KDP coloring book cover. ${isLeft ? "LEFT" : "RIGHT"} HALF: breathtaking fully-colored illustration of ${nicheName}${style ? `, ${style} style` : ""}${colorTheme ? `, ${colorTheme} palette` : ""}, rich vibrant colors, professional digital art. ${isLeft ? "RIGHT" : "LEFT"} HALF: the exact same scene as clean black-and-white line art ready to color, crisp outlines, no fill. Sharp vertical split down the center. No text, no letters.`;
+            return { prompt: p, prompts: [p] };
+        }
+        // AI-generated prompts for standard covers
+        if (nicheId) {
+            try {
+                const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/cover-prompts`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ colorTheme: colorTheme || undefined }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data.prompts) && data.prompts.length > 0) {
+                        return { prompt: data.prompts[0], prompts: data.prompts };
+                    }
+                }
+            } catch { /* fall through */ }
+        }
+        // Fallback: improved deterministic prompt
+        const styleHints: Record<string, string> = {
+            anime: "anime art style, cel-shaded illustration, vibrant saturated colors, clean professional lines",
+            children: "cute colorful children's book illustration, friendly rounded shapes, bright cheerful colors",
+            realistic: "photorealistic digital painting, rich vibrant colors, cinematic lighting, highly detailed",
+            watercolor: "expressive watercolor illustration, soft washes of color, delicate artistic brushwork",
+            abstract: "bold abstract composition, vibrant geometric shapes, dynamic color contrasts",
+            "wall-art": "premium decorative wall art, elegant illustration, sophisticated rich color palette",
+            botanical: "detailed botanical illustration, lush vibrant plants, elegant naturalistic style",
+            geometric: "intricate colorful geometric mandala, perfect symmetry, jewel-tone colors",
+            celestial: "mystical cosmic illustration, deep jewel tones, luminous celestial elements",
+            retro: "retro vintage poster illustration, warm bold saturated palette, graphic shapes",
+        };
+        const visualLang = styleHints[style] ?? "colorful professional illustration, vibrant rich colors";
+        const productLabel = productType === "coloring-book" ? "coloring book cover artwork" : "printable poster cover";
+        const p = `${nicheName} ${productLabel}, ${visualLang}${colorTheme ? `, ${colorTheme} palette` : ""}, single dominant subject centered filling 70% of frame, high contrast against clean background, simple bold color palette, thumbnail-optimized, no text, no letters, no watermarks, portrait orientation`;
+        return { prompt: p, prompts: [p] };
+    };
+
     const generateCover = async () => {
         if (!coverTitle.trim()) { toast.error("Escribe el título del libro"); return; }
         setIsBuildingCover(true);
@@ -11249,26 +11291,15 @@ POST-LANZAMIENTO:
         try {
             const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
             const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
-            const nicheContext = selectedNiche
-                ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
-                : coverTitle;
             const productType = selectedNiche?.productType ?? "coloring-book";
-            const isColoringBook = productType === "coloring-book";
-            const styleStr = coverStyle ? `Visual style: ${coverStyle}.` : "";
-            const paletteStr = coverColorTheme ? `Color palette: ${coverColorTheme}.` : "";
-            let prompt: string;
-            if (isColoringBook) {
-                const baseSubject = `${nicheContext}. ${styleStr} ${paletteStr}`;
-                if (coverColoringStyle === "half-left") {
-                    prompt = `KDP coloring book cover artwork. LEFT HALF: breathtaking fully-colored illustration of ${baseSubject}, rich vibrant colors, stunning detail, professional digital art. RIGHT HALF: the exact same scene as clean black-and-white line art ready to color, crisp outlines, no fill. Sharp vertical split down the center. Spectacular composition, no text, no letters.`;
-                } else if (coverColoringStyle === "half-right") {
-                    prompt = `KDP coloring book cover artwork. LEFT HALF: clean black-and-white line art of ${baseSubject}, crisp outlines, no fill, ready to color. RIGHT HALF: the exact same scene fully colored, breathtaking vibrant colors, rich detail, professional digital art. Sharp vertical split down the center. Spectacular composition, no text, no letters.`;
-                } else {
-                    prompt = `Stunning KDP coloring book cover illustration: ${baseSubject}. Breathtaking fully-colored artwork, hyper-detailed intricate patterns, vibrant rich colors, professional digital painting, masterpiece composition filling the entire frame, cinematic lighting, eye-catching thumbnail, award-winning illustration, no text, no letters, purely illustrative.`;
-                }
-            } else {
-                prompt = `KDP printable poster cover: ${nicheContext}. ${styleStr} ${paletteStr} Premium wall art illustration, beautiful decorative composition, professional quality, centered focal artwork, no text, no letters, no words`;
-            }
+            const { prompt } = await buildCoverPrompt(
+                selectedCoverNicheId || undefined,
+                coverColorTheme,
+                coverColoringStyle,
+                selectedNiche?.name ?? coverTitle,
+                productType,
+                coverStyle || selectedNiche?.styleCategory || "generic",
+            );
             const [dimW, dimH] = coverImgDims.split("x").map(Number);
             const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
                 method: "POST",
@@ -11291,33 +11322,23 @@ POST-LANZAMIENTO:
         setVariantProgress(0);
         const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
         const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
-        const nicheContext = selectedNiche
-            ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
-            : coverTitle;
         const productType = selectedNiche?.productType ?? "coloring-book";
-        const isColoringBook = productType === "coloring-book";
-        const styleStr = coverStyle ? `Visual style: ${coverStyle}.` : "";
-        const paletteStr = coverColorTheme ? `Color palette: ${coverColorTheme}.` : "";
         const [dimW, dimH] = coverImgDims.split("x").map(Number);
         const newUrls: string[] = [];
+
+        // Fetch all strategy prompts once, then use one per variant
+        const { prompts: strategyPrompts } = await buildCoverPrompt(
+            selectedCoverNicheId,
+            coverColorTheme,
+            coverColoringStyle,
+            selectedNiche?.name ?? coverTitle,
+            productType,
+            coverStyle || selectedNiche?.styleCategory || "generic",
+        );
+
         for (let i = 0; i < count; i++) {
             try {
-                // Vary the seed keyword so each generation is distinct
-                const variationSeeds = ["vibrant", "dramatic lighting", "ethereal", "bold composition", "painterly"];
-                const seedHint = variationSeeds[i % variationSeeds.length];
-                let prompt: string;
-                if (isColoringBook) {
-                    const baseSubject = `${nicheContext}. ${styleStr} ${paletteStr} ${seedHint}`;
-                    if (coverColoringStyle === "half-left") {
-                        prompt = `KDP coloring book cover artwork. LEFT HALF: breathtaking fully-colored illustration of ${baseSubject}, rich vibrant colors, stunning detail, professional digital art. RIGHT HALF: the exact same scene as clean black-and-white line art ready to color, crisp outlines, no fill. Sharp vertical split down the center. Spectacular composition, no text, no letters.`;
-                    } else if (coverColoringStyle === "half-right") {
-                        prompt = `KDP coloring book cover artwork. LEFT HALF: clean black-and-white line art of ${baseSubject}, crisp outlines, no fill, ready to color. RIGHT HALF: the exact same scene fully colored, breathtaking vibrant colors, rich detail, professional digital art. Sharp vertical split down the center. Spectacular composition, no text, no letters.`;
-                    } else {
-                        prompt = `Stunning KDP coloring book cover illustration: ${baseSubject}. Breathtaking fully-colored artwork, hyper-detailed intricate patterns, vibrant rich colors, professional digital painting, masterpiece composition filling the entire frame, cinematic lighting, eye-catching thumbnail, award-winning illustration, no text, no letters, purely illustrative.`;
-                    }
-                } else {
-                    prompt = `KDP printable poster cover: ${nicheContext}. ${styleStr} ${paletteStr} ${seedHint}. Premium wall art illustration, beautiful decorative composition, professional quality, centered focal artwork, no text, no letters, no words`;
-                }
+                const prompt = strategyPrompts[i % strategyPrompts.length];
                 const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

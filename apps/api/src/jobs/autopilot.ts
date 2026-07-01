@@ -1119,7 +1119,17 @@ async function runPipeline(
                     ? listing.title.replace(/coloring book|coloring pages?/gi, "").trim()
                     : niche.name;
 
-                const coverPrompt = buildCoverPrompt(coverSubject, style, niche.productType ?? "coloring-book");
+                const { generateAICoverPrompt, COVER_COMPOSITION_STRATEGIES } = await import("../lib/cover-prompt.js");
+                const coverCtx = {
+                    nicheName: coverSubject,
+                    productType: niche.productType ?? "coloring-book",
+                    style,
+                    audience: (niche as any).targetAudience as string | undefined,
+                };
+                // Pre-generate one prompt per composition strategy (parallel, non-blocking)
+                const coverPrompts = await Promise.all(
+                    [...COVER_COMPOSITION_STRATEGIES].map(s => generateAICoverPrompt(coverCtx, s))
+                );
                 const model = style === "anime" ? "flux-anime"
                     : ["realistic", "wall-art", "affirmation", "geometric", "celestial"].includes(style) ? "flux-realism"
                     : "flux";
@@ -1204,13 +1214,14 @@ async function runPipeline(
                 io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🤖 Generando ${aiVariantsNeeded} variante${aiVariantsNeeded > 1 ? "s" : ""} con ${coverAiModel.name}…` });
 
                 for (let variant = 0; variant < aiVariantsNeeded; variant++) {
+                    const variantPrompt = coverPrompts[variant % coverPrompts.length];
                     let imgBuf: Buffer | null = null;
                     try {
                         // 1st: selected model via AI proxy
                         const coverRes = await internalFetch(`${base}/ai/generate-image`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ prompt: coverPrompt, provider: coverAiModel.provider, modelId: coverAiModel.modelId, width: 768, height: 1024 }),
+                            body: JSON.stringify({ prompt: variantPrompt, provider: coverAiModel.provider, modelId: coverAiModel.modelId, width: 768, height: 1024 }),
                             signal: AbortSignal.timeout(90_000),
                         });
                         const coverCt = coverRes.headers.get("content-type") ?? "";
@@ -1225,7 +1236,7 @@ async function runPipeline(
                     if (!imgBuf) {
                         try {
                             imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, () =>
-                                generateImage(coverPrompt, { width: 768, height: 1024, model }),
+                                generateImage(variantPrompt, { width: 768, height: 1024, model }),
                                 nicheScore
                             );
                         } catch (fbErr: any) {

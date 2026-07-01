@@ -1278,6 +1278,34 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
         }
     });
 
+    // POST /niches/:id/cover-prompts — generate AI-optimized cover prompts (one per composition strategy)
+    app.post("/niches/:id/cover-prompts", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const niche = await Niche.findById(request.params.id).lean() as any;
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            const { colorTheme } = request.body ?? {};
+            const { generateAICoverPrompt, COVER_COMPOSITION_STRATEGIES } = await import("../lib/cover-prompt.js");
+
+            const ctx = {
+                nicheName: niche.name as string,
+                productType: (niche.productType ?? "coloring-book") as string,
+                style: (niche.styleCategory ?? "generic") as string,
+                audience: niche.targetAudience as string | undefined,
+                colorTheme: colorTheme?.trim() || undefined,
+            };
+
+            const prompts = await Promise.all(
+                [...COVER_COMPOSITION_STRATEGIES].map(strategy => generateAICoverPrompt(ctx, strategy))
+            );
+
+            return reply.send({ prompts, strategies: [...COVER_COMPOSITION_STRATEGIES] });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /niches/:id/explode-catalogs — la IA detecta N situaciones visuales
     // distintas del nicho y lanza un catálogo por cada una (encolados en serie).
     app.post("/niches/:id/explode-catalogs", async (request: any, reply) => {
