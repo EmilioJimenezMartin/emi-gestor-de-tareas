@@ -243,7 +243,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agen
             const { analyzePageForRadar } = await import("../lib/ai.js");
             const systemPrompt = `Eres un experto en Amazon KDP. Analiza estos resultados de búsqueda de Amazon y extrae los productos de libros para colorear que aparecen. Para cada producto extrae título, número de reseñas (total_reseñas), si es bestseller y precio. Responde ÚNICAMENTE con JSON válido:\n{"nichos_detectados":[{"titulo_producto":"string","precio":"string","bestseller":true/false,"personas_carrito":0,"total_reseñas":number,"sub_nicho_estimado":"string"}]}`;
 
-            const raw = await analyzePageForRadar(pageText, systemPrompt, { mode: "amazon-niches" });
+            const raw = await analyzePageForRadar(pageText, systemPrompt);
             const products: any[] = Array.isArray(raw?.nichos_detectados) ? raw.nichos_detectados : [];
 
             if (products.length === 0) {
