@@ -602,7 +602,11 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 const [kdpIntel, etsyIntel, competitorListings] = await Promise.all([
                     isEtsyFirst ? Promise.resolve(null) : gatherKeywordIntel((niche as any).name, pt),
                     gatherEtsyIntel((niche as any).name, pt),
-                    scrapeTopCompetitorTitles((niche as any).name, pt),
+                    // Competitor scraping has a hard time cap — if Jina is slow or blocked, skip gracefully
+                    Promise.race([
+                        scrapeTopCompetitorTitles((niche as any).name, pt),
+                        new Promise<[]>(resolve => setTimeout(() => resolve([]), 12_000)),
+                    ]),
                 ]);
 
                 const kdpTerms = kdpIntel

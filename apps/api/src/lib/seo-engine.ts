@@ -285,8 +285,8 @@ export async function scrapeTopCompetitorTitles(nicheName: string, productType: 
         const jinaUrl = `https://r.jina.ai/${amazonUrl}`;
 
         const res = await fetch(jinaUrl, {
-            headers: { Accept: "text/plain", "X-Timeout": "18", "X-Return-Format": "text" },
-            signal: AbortSignal.timeout(22_000),
+            headers: { Accept: "text/plain", "X-Timeout": "8", "X-Return-Format": "text" },
+            signal: AbortSignal.timeout(10_000),
         });
         if (!res.ok) return [];
 
