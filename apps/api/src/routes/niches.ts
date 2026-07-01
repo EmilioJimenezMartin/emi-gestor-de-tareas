@@ -587,7 +587,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
                 const { generateTextWithLLM } = await import("../lib/ai.js");
-                const { gatherKeywordIntel, gatherEtsyIntel, validateKdpKeywords, validateEtsyTags, checkTitleReadability, checkDescriptionKeywordCoverage } = await import("../lib/seo-engine.js");
+                const { gatherKeywordIntel, gatherEtsyIntel, validateKdpKeywords, validateEtsyTags, checkTitleReadability, checkDescriptionKeywordCoverage, scrapeTopCompetitorTitles } = await import("../lib/seo-engine.js");
 
                 const pt = (niche as any).productType ?? "coloring-book";
 
@@ -599,9 +599,10 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                     ...(marketScan?.demand?.esSuggestions ?? []),
                 ];
 
-                const [kdpIntel, etsyIntel] = await Promise.all([
+                const [kdpIntel, etsyIntel, competitorListings] = await Promise.all([
                     isEtsyFirst ? Promise.resolve(null) : gatherKeywordIntel((niche as any).name, pt),
                     gatherEtsyIntel((niche as any).name, pt),
+                    scrapeTopCompetitorTitles((niche as any).name, pt),
                 ]);
 
                 const kdpTerms = kdpIntel
@@ -654,44 +655,108 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                     : "MARCAS REGISTRADAS: Si el nicho incluye una marca registrada (Disney, Marvel, KAWS, Funko, Pokemon, Nintendo, CrossFit, etc.), DEBES mencionarla en el título o subtítulo — esos fans la buscan así. Usa SIEMPRE un calificador legal: '[Marca]-Inspired', 'Estilo [Marca]', 'Inspiración [Marca]', 'Arte [Marca]'. NUNCA la marca sola sin calificador.";
 
                 // ── KDP Prompt (A9/A10 algorithm — keyword-first, backend slots) ─────────
-                const KDP_SYSTEM = `Eres experto en copywriting y SEO para Amazon KDP. Genera metadatos que VENDAN: títulos que la gente quiera clickar, subtítulos con keywords reales, descripciones que conviertan.
+                const KDP_SYSTEM = `Eres un experto en copywriting y SEO para Amazon KDP con acceso a datos reales de competidores.
 ${listingLangRule}
 ${trademarkRule}
 
-TÍTULO (35-60 chars): Debe sonar como un bestseller de Amazon — concreto, potente, directo. Fórmula: [Keyword alta demanda] + [Tipo de producto] + [Para quién / Beneficio]. Si hay marca registrada, usa el GÉNERO/ESTILO en su lugar (ej: "Arte Urbano Moderno" en lugar de "KAWS").
-✅ Buenos: "Mandalas Antiestres: Libro de Colorear para Adultos" / "Arte Urbano: Colorear Street Art para Adultos"
-❌ Malos: "inspirado en arte urbano para colorear" / "colorear y relajarse con diseños únicos"
+━━━ PROCESO (sigue este orden) ━━━
+1. Lee los títulos de los competidores que se te proporcionan. Identifica: longitud media, estructura (keyword + tipo + audiencia vs emoción + keyword), hooks emocionales, nivel de especificidad.
+2. Evalúa qué tienen en común los que más reseñas tienen. Eso es lo que FUNCIONA en este nicho.
+3. Genera un título que encaje en ese mercado (reconocible) pero con un ángulo ligeramente diferente (para no ser idéntico).
+4. Genera el resto de campos.
 
-SUBTÍTULO (80-120 chars): Cadena de keywords secundarias — NO es una descripción en prosa. Fórmula: [Keywords secundarias] · [Audiencia] · [Beneficio emocional].
-✅ Buenos: "Diseños de Graffiti y Arte de Calle · Para Fans del Arte Moderno · Creatividad y Relajación"
-❌ Malos: "Inspirado en el estilo KAWS, con diseños únicos y emocionales para fans del arte urbano" (es descripción, no subtítulo)
+━━━ TÍTULO PRINCIPAL (50-80 chars) ━━━
+- PRIORIDAD 1 — CLICK. Si el buyer ve 10 libros iguales, ¿por qué clickará el tuyo?
+- Fórmula ganadora: [Keyword de alta demanda] + [Especificidad del contenido] + [Para quién / Ocasión].
+- La keyword más buscada va PRIMERO (Amazon rankea las primeras palabras con más peso).
+- NUNCA empieces con "Un", "El", "The", "A", artículos. Empieza con la keyword.
+✅ "Mandala Meditation Coloring Book for Adults: 60 Stress-Relief Designs"
+✅ "Celtic Knotwork: Intricate Patterns Coloring Book for Adults — Mindfulness & Relaxation"
+❌ "Colorear y relajarse con diseños únicos de mandalas para adultos"
+❌ "Inspirado en el arte celta — libro de colorear"
 
-DESCRIPCIÓN: HTML para KDP. (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <p> qué hace único este libro, (3) <ul><li> 5-6 beneficios concretos, (4) <p> para quién + ocasiones regalo, (5) <p> CTA. 800-1200 chars visibles.
-KEYWORDS: EXACTAMENTE 7 frases long-tail, máx 49 chars c/u. PROHIBIDO: best/new/free/top/premium/book/amazon/kindle + palabras del título/subtítulo. REGLA CRÍTICA: ninguna palabra individual puede repetirse entre las 7 frases — cada frase debe aportar vocabulario único. Revisa todas las frases al final y elimina duplicados.
-CATEGORIES: 3 rutas completas y específicas (ej: "Crafts, Hobbies & Home > Coloring Books for Adults").
-Responde SOLO con JSON: { "title": string, "subtitle": string, "description": string, "keywords": string[7], "categories": string[3] }`;
+━━━ VARIANTES DE TÍTULO — titleVariants: 2 alternativas ━━━
+Genera 2 títulos alternativos con ESTRATEGIAS DISTINTAS:
+- Variante A: enfoca en la OCASIÓN DE REGALO ("Perfect Gift for...", "Ideal para regalar a...")
+- Variante B: enfoca en el BENEFICIO EMOCIONAL ("Stress Relief", "Mindfulness", "Relax & Unwind")
+
+━━━ SUBTÍTULO (90-130 chars) ━━━
+Es una cadena densa de keywords secundarias — NO prosa. Cada segmento separado por "·" o "|" aporta una keyword nueva que NO repite el título.
+✅ "50 Intricate Designs · Adult Relaxation Activity · Mindfulness Gift for Women · Anti-Stress Art"
+❌ "Un libro hermoso lleno de diseños únicos para relajarte y disfrutar coloreando" (descripción, no keywords)
+
+━━━ DESCRIPCIÓN (HTML para KDP, 900-1300 chars visibles) ━━━
+(1) <p><strong>[Keyword principal]</strong> — hook emocional: qué sentirá el lector al abrir el libro.
+(2) <p> Lo que hace ÚNICO este libro vs los 100 similares en Amazon. Sé específico: nº de diseños, nivel de dificultad, tamaño de página, si es para principiantes o expertos.
+(3) <ul><li> 5-6 beneficios MUY CONCRETOS (no "relajación" sino "Diseños a página completa para máxima inmersión").
+(4) <p> Para quién es PERFECTO + 3-4 ocasiones de regalo específicas (cumpleaños, navidad, día de la madre, regalo para profesores...).
+(5) <p> CTA fuerte: "Haz click en 'Añadir al carrito' y empieza tu viaje de relajación hoy."
+
+━━━ KEYWORDS BACKEND (7 frases, máx 49 chars c/u) ━━━
+REGLAS DURAS:
+- PROHIBIDO: best/new/free/top/premium/book/books/amazon/kindle/great/beautiful/amazing
+- Ninguna palabra del título ni subtítulo (Amazon ya las indexa — repetirlas desperdicia el slot)
+- Ninguna palabra individual se repite entre las 7 frases
+- Long-tail real: lo que la gente TECLEA ("coloring pages for adults stress relief", "mandala coloring gift for mom")
+- Las últimas 2-3 frases: cubrir audiencias alternativas o plataformas (Etsy, Amazon UK...)
+
+━━━ CATEGORÍAS ━━━
+3 rutas ESPECÍFICAS Y REALES de Amazon (no inventes rutas). Ej: "Crafts, Hobbies & Home > Coloring Books for Adults > Mandalas".
+
+Responde SOLO con JSON válido:
+{ "title": string, "titleVariants": string[2], "subtitle": string, "description": string, "keywords": string[7], "categories": string[3] }`;
 
                 // ── Etsy Prompt (emotion-first, occasion/mood, lifestyle) ────────────────
-                const ETSY_SYSTEM = `Eres especialista en SEO para Etsy. Tu trabajo: metadatos que conviertan en Etsy donde el comprador busca EXPERIENCIAS y REGALOS.
+                const ETSY_SYSTEM = `Eres especialista en SEO y conversión para Etsy. El comprador de Etsy NO busca el producto — busca un REGALO, una EXPERIENCIA, un MOMENTO.
 ${listingLangRule}
 ${trademarkRule}
 
-PRINCIPIOS ETSY:
-- El título debe despertar EMOCIÓN primero. El comprador busca "gift for mom who loves coloring", no "mandala coloring book".
-- Las 13 etiquetas (tags) son por FRASE (2-3 palabras). El matching de Etsy es por frase completa, no por palabra suelta.
-- Cubre siempre: ocasión de regalo (birthday, mothers day, christmas), estado de ánimo (mindfulness, stress relief, self care), audiencia, formato del producto.
-- La descripción cuenta una HISTORIA: quién lo usa, en qué momento del día, cómo se siente. El comprador debe verse en la imagen.
-- El comprador en Etsy busca: "gifts for her", "self care gift ideas", "mindfulness activity for adults", "unique birthday gift".
+━━━ CÓMO PIENSA EL COMPRADOR DE ETSY ━━━
+- Busca: "gift for mom who loves coloring", "mindfulness activity for her", "birthday gift for artist"
+- NO busca: "mandala coloring book", "adult coloring book stress relief" (eso es Amazon)
+- La decisión de compra es EMOCIONAL: ¿se verá bien como regalo? ¿lo recibiría yo con alegría?
+- Precio NO es el factor 1 — la historia y la foto lo son.
 
-REGLAS DURAS:
-- title: 100-140 chars. Empieza por la emoción/ocasión más fuerte. Incluye el tipo de producto y 2-3 atributos clave (para quién, qué hace).
-- description: HTML para Etsy. (1) <p> historia visual: quién es el comprador ideal y cómo usará el producto, (2) <ul><li> 4-5 puntos: qué incluye, para quién es perfecto, cuándo regalarlo, formato/specs, (3) <p> "Perfect for:" con 3-4 personas o momentos específicos. 500-700 chars.
-- tags: EXACTAMENTE 13 tags, máx 20 chars c/u, frases de 2-3 palabras. Distribuye: 4 de ocasión/regalo, 4 de estado de ánimo/lifestyle, 3 de audiencia/para quién, 2 de tipo de producto.
-- categories: 3 rutas Etsy ESPECÍFICAS (ej: "Books, Films & Music > Books > Activity Books").
-Responde SOLO con JSON: { "title": string, "description": string, "tags": string[13], "categories": string[3] }`;
+━━━ TÍTULO (110-140 chars) ━━━
+Estructura: [Emoción/Ocasión] + [Tipo de producto] + [Para quién] + [Beneficio/Hook]
+- Empieza SIEMPRE por la ocasión más fuerte ("Mindfulness Gift for Her", "Unique Birthday Gift")
+- La keyword del producto va en el medio, no al inicio
+- Termina con el diferenciador ("Instant Download", "Printable", "60 Designs")
+✅ "Mindfulness Gift for Her — Mandala Coloring Book for Adults | Stress Relief Activity | Birthday Gift for Women"
+❌ "Mandala Coloring Book for Adults Stress Relief Mindfulness Gift Birthday"
+
+━━━ DESCRIPCIÓN (HTML, 600-900 chars visibles) ━━━
+(1) <p> Historia en 2ª persona: "Picture this: you give your mom a gift that..." o "Finally, a moment just for you..."
+(2) <ul><li> 5 puntos: QUÉ incluye (nº de diseños, formato), PARA QUIÉN es perfecto, CUÁNDO regalarlo (3 ocasiones específicas), CÓMO se usa (inmediatamente / descarga instant / libro físico), POR QUÉ es especial vs algo genérico de Amazon.
+(3) <p> "Perfect for:" + 4-5 personas o momentos muy específicos (no "adultos" sino "the mom who needs a break", "the artist in your friend group").
+
+━━━ TAGS (EXACTAMENTE 13, máx 20 chars c/u) ━━━
+Distribución OBLIGATORIA:
+- 4 tags de OCASIÓN: "birthday gift her", "mothers day gift", "christmas coloring", "gift for women"
+- 3 tags de MOOD/LIFESTYLE: "stress relief gift", "mindfulness activity", "self care gift"
+- 3 tags de AUDIENCIA: "gift for artist", "coloring for adults", "creative gift idea"
+- 2 tags de PRODUCTO: "adult coloring book", "coloring pages"
+- 1 tag de DIFERENCIADOR del nicho específico
+
+━━━ CATEGORÍAS ━━━
+3 rutas Etsy REALES. Ej: "Books, Films & Music > Books > Activity Books".
+
+Responde SOLO con JSON válido:
+{ "title": string, "description": string, "tags": string[13], "categories": string[3] }`;
+
+                // Format competitor intel for the prompt
+                const competitorContext = competitorListings.length > 0
+                    ? `COMPETIDORES QUE ESTÁN VENDIENDO AHORA (analiza sus títulos — aprende qué funciona):
+${competitorListings.map((c, i) =>
+    `${i + 1}. "${c.title}"${c.reviews > 0 ? ` (${c.reviews.toLocaleString()} reseñas${c.bestseller ? ", Bestseller" : ""})` : ""}`
+).join("\n")}
+
+INSTRUCCIÓN CRÍTICA: Estudia estos títulos. Identifica la estructura que comparten los de más reseñas (longitud, dónde va la keyword, hooks emocionales, nivel de especificidad). Tu título debe sentirse como parte de este mercado — reconocible como categoría — pero con un ángulo que los diferencie.`
+                    : "";
 
                 const kdpContext = [
                     sharedContext,
+                    competitorContext,
                     kdpTerms.length > 0 ? `TÉRMINOS REALES AMAZON (úsalos como base para keywords):\n${kdpTerms.map(t => `- ${t}`).join("\n")}` : "",
                 ].filter(Boolean).join("\n\n");
 
@@ -715,6 +780,11 @@ Responde SOLO con JSON: { "title": string, "description": string, "tags": string
                 // Parse Etsy listing
                 const etsyMatch = etsyText.match(/\{[\s\S]*\}/);
                 const etsyParsed = etsyMatch ? JSON.parse(etsyMatch[0]) : {};
+
+                // Extract title variants if AI generated them
+                const kdpTitleVariants: string[] = Array.isArray(kdpParsed.titleVariants)
+                    ? kdpParsed.titleVariants.filter((v: any) => typeof v === "string" && v.length > 10).slice(0, 2)
+                    : [];
 
                 // Validate KDP keywords with hard rules
                 const kdpTitle = kdpParsed.title ?? (niche as any).name;
@@ -748,7 +818,9 @@ Responde SOLO con JSON: { "title": string, "description": string, "tags": string
                     etsyTags,
                     categories: primaryCategories.map((c: string) => c.trim()).filter(Boolean),
                     seoNotes: [
-                        `KDP: ${kdpTerms.length} términos Amazon · Etsy: ${etsyTerms.length} señales ocasión/mood`,
+                        `KDP: ${kdpTerms.length} términos Amazon · Etsy: ${etsyTerms.length} señales ocasión/mood · Competidores analizados: ${competitorListings.length}`,
+                        kdpTitleVariants.length > 0 ? `VARIANTE A: "${kdpTitleVariants[0]}"` : "",
+                        kdpTitleVariants.length > 1 ? `VARIANTE B: "${kdpTitleVariants[1]}"` : "",
                         kwResult.fixed.length > 0 ? `Validador KDP: ${kwResult.fixed.join(" · ")}` : "",
                         readabilityWarnings.length > 0 ? `⚠ Legibilidad: ${readabilityWarnings.join(" · ")}` : "",
                         densityWarnings.length > 0 ? `⚠ Densidad: ${densityWarnings.join(" · ")}` : "",

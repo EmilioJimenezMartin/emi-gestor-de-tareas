@@ -257,6 +257,86 @@ export function checkDescriptionKeywordCoverage(
     return warnings;
 }
 
+// ── Competitor title scraping ─────────────────────────────────────────────────
+
+export interface CompetitorListing {
+    title: string;
+    reviews: number;
+    bestseller: boolean;
+}
+
+/**
+ * Scrapes the top Amazon search results for the niche keyword via Jina Reader.
+ * Extracts product titles + review counts using regex — no extra LLM call.
+ * Returns an empty array on failure (non-blocking).
+ */
+export async function scrapeTopCompetitorTitles(nicheName: string, productType: string): Promise<CompetitorListing[]> {
+    try {
+        const productTerm =
+            productType === "printable-poster" ? "printable art" :
+            productType === "seamless-pattern" ? "seamless pattern" :
+            "coloring book";
+
+        const words = nicheName.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(w => w.length > 2);
+        const shortName = words.slice(-3).join(" ");
+        const keyword = `${shortName} ${productTerm}`;
+
+        const amazonUrl = `https://www.amazon.com/s?k=${encodeURIComponent(keyword)}&i=stripbooks`;
+        const jinaUrl = `https://r.jina.ai/${amazonUrl}`;
+
+        const res = await fetch(jinaUrl, {
+            headers: { Accept: "text/plain", "X-Timeout": "18", "X-Return-Format": "text" },
+            signal: AbortSignal.timeout(22_000),
+        });
+        if (!res.ok) return [];
+
+        const text = await res.text();
+
+        // Jina renders Amazon search results as markdown. Product titles appear as:
+        //   [Title text](https://www.amazon.com/...)
+        // or as bold text near review counts.
+        const listings: CompetitorListing[] = [];
+        const seen = new Set<string>();
+
+        // Pattern 1: markdown links to amazon.com product pages
+        const linkRe = /\[([^\]]{30,200})\]\(https:\/\/www\.amazon\.com[^\)]+\)/g;
+        let m: RegExpExecArray | null;
+        while ((m = linkRe.exec(text)) !== null) {
+            const title = m[1].replace(/\*\*/g, "").trim();
+            if (!seen.has(title)) { seen.add(title); listings.push({ title, reviews: 0, bestseller: false }); }
+        }
+
+        // Pattern 2: lines that look like product titles (long lines near "4.X out of 5" review text)
+        if (listings.length < 4) {
+            const lines = text.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].replace(/\*\*|\[|\]\([^\)]+\)/g, "").trim();
+                if (line.length >= 30 && line.length <= 200 && !line.startsWith("http") && !line.startsWith("#")) {
+                    const lower = line.toLowerCase();
+                    if (lower.includes("color") || lower.includes("pattern") || lower.includes("mandala") || lower.includes("adult") || lower.includes("book")) {
+                        if (!seen.has(line)) { seen.add(line); listings.push({ title: line, reviews: 0, bestseller: false }); }
+                    }
+                }
+            }
+        }
+
+        // Enrich with review counts: look for "X,XXX ratings" or "X ratings" after each listing block
+        const reviewRe = /(\d[\d,]+)\s*(?:ratings?|reseñas?|reviews?)/gi;
+        const reviewMatches = [...text.matchAll(reviewRe)].map(r => parseInt(r[1].replace(/,/g, ""), 10));
+        const bestsellerPositions = [...text.matchAll(/bestseller/gi)].length;
+
+        // Assign review counts to listings in order (approximate but useful)
+        listings.forEach((l, i) => {
+            l.reviews = reviewMatches[i] ?? 0;
+            l.bestseller = i < bestsellerPositions;
+        });
+
+        return listings.slice(0, 8);
+    } catch {
+        return [];
+    }
+}
+
 // ── Etsy Intel: ocasión + estado de ánimo ────────────────────────────────────
 
 export interface EtsyKeywordIntel extends KeywordIntel {
