@@ -771,19 +771,33 @@ INSTRUCCIÓN CRÍTICA: Estudia estos títulos. Identifica la estructura que comp
                     etsyIntel.moodTerms.length > 0 ? `Señales de estado de ánimo: ${etsyIntel.moodTerms.slice(0, 5).join(", ")}` : "",
                 ].filter(Boolean).join("\n\n");
 
-                // Generate both listings in parallel
+                // Generate both listings in parallel — individual errors don't kill the other
+                const safeGenerate = async (system: string, context: string): Promise<string> => {
+                    try { return await generateTextWithLLM(system, context); }
+                    catch (e: any) { console.error("[listings] generateTextWithLLM failed:", e.message); return "{}"; }
+                };
+
                 const [kdpText, etsyText] = await Promise.all([
-                    isEtsyFirst ? Promise.resolve("{}") : generateTextWithLLM(KDP_SYSTEM, kdpContext),
-                    generateTextWithLLM(ETSY_SYSTEM, etsyContext),
+                    isEtsyFirst ? Promise.resolve("{}") : safeGenerate(KDP_SYSTEM, kdpContext),
+                    safeGenerate(ETSY_SYSTEM, etsyContext),
                 ]);
 
-                // Parse KDP listing
-                const kdpMatch = kdpText.match(/\{[\s\S]*\}/);
-                const kdpParsed = kdpMatch ? JSON.parse(kdpMatch[0]) : {};
+                console.log("[listings] KDP raw:", kdpText.slice(0, 300));
+                console.log("[listings] Etsy raw:", etsyText.slice(0, 200));
 
-                // Parse Etsy listing
-                const etsyMatch = etsyText.match(/\{[\s\S]*\}/);
-                const etsyParsed = etsyMatch ? JSON.parse(etsyMatch[0]) : {};
+                // Parse KDP listing — defensive, never throws
+                const parseJson = (text: string): Record<string, any> => {
+                    try {
+                        const m = text.match(/\{[\s\S]*\}/);
+                        return m ? JSON.parse(m[0]) : {};
+                    } catch (e: any) {
+                        console.error("[listings] JSON parse failed:", e.message, "| raw:", text.slice(0, 200));
+                        return {};
+                    }
+                };
+
+                const kdpParsed = parseJson(kdpText);
+                const etsyParsed = parseJson(etsyText);
 
                 // Extract title variants if AI generated them
                 const kdpTitleVariants: string[] = Array.isArray(kdpParsed.titleVariants)
@@ -813,6 +827,11 @@ INSTRUCCIÓN CRÍTICA: Estudia estos títulos. Identifica la estructura que comp
                 // Calidad editorial: ¿el título suena humano? ¿la descripción cubre las keywords?
                 const readabilityWarnings = checkTitleReadability(primaryTitle);
                 const densityWarnings = checkDescriptionKeywordCoverage(primaryDescription, primaryTitle, primaryKeywords);
+
+                // If AI returned nothing useful, bail early with a clear error
+                if (!primaryTitle || primaryTitle === (niche as any).name && !primaryDescription) {
+                    return reply.status(502).send({ error: "La IA no generó un listing válido. Inténtalo de nuevo." });
+                }
 
                 listingData = {
                     title: primaryTitle,
