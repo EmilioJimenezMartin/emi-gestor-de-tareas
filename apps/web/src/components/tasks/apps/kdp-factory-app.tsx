@@ -404,6 +404,7 @@ import { CoverFactoryPanel } from "./kdp/CoverFactoryPanel";
 import { GelatoPanel } from "./kdp/GelatoPanel";
 import { ContenidoPanel } from "./kdp/ContenidoPanel";
 import { CalendarPanel } from "./kdp/CalendarPanel";
+import { PinterestPanel } from "./kdp/PinterestPanel";
 
 /** Modal a pantalla completa con comportamiento consistente en todos los editores grandes. */
 function FullModal({ open, onClose, zIndex = 110, maxWidth = "max-w-4xl", children }: {
@@ -800,9 +801,9 @@ export function KdpFactoryApp() {
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban" | "table">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
     const [kanbanStyleFilter, setKanbanStyleFilter] = useState<string>("all");
-    const [studioSubTab, setStudioSubTab] = useState<"niches" | "intelligence" | "calendar">(() => {
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "intelligence" | "calendar" | "pinterest">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
-        return (saved === "niches" || saved === "intelligence" || saved === "calendar") ? saved as "niches" | "intelligence" | "calendar" : "niches";
+        return (saved === "niches" || saved === "intelligence" || saved === "calendar" || saved === "pinterest") ? saved as "niches" | "intelligence" | "calendar" | "pinterest" : "niches";
     });
     const [intelliMode, setIntelliMode] = useState<"detector" | "insights" | "dna">("detector");
 
@@ -1685,7 +1686,7 @@ export function KdpFactoryApp() {
     const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "columns">(() =>
         (typeof window !== "undefined" && (localStorage.getItem("kdp-pipeline-view") as "list" | "columns")) || "list"
     );
-    const studioSubTabRef = useRef<"niches" | "intelligence" | "calendar">("niches");
+    const studioSubTabRef = useRef<"niches" | "intelligence" | "calendar" | "pinterest">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
     // --- Ventas / KDP Sales state ---
@@ -12145,12 +12146,13 @@ POST-LANZAMIENTO:
         };
 
     const renderStudio = () => {
-        const STUDIO_TABS: KdpTabDef<"niches" | "intelligence" | "calendar">[] = [
+        const STUDIO_TABS: KdpTabDef<"niches" | "intelligence" | "calendar" | "pinterest">[] = [
             { id: "niches",       label: "Nichos",       icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"          },
             { id: "intelligence", label: "Intelligence", icon: <Zap size={13} />,          color: "text-violet-400", activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
             { id: "calendar",     label: "Calendario",   icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
+            { id: "pinterest",    label: "Pinterest",    icon: <span className="text-[11px]">𝙋</span>, color: "text-rose-400", activeBg: "bg-rose-500/10 border-rose-500/25 text-rose-300" },
         ];
-        const switchStudioTab = (t: "niches" | "intelligence" | "calendar") => {
+        const switchStudioTab = (t: "niches" | "intelligence" | "calendar" | "pinterest") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
             if (t === "intelligence") { void fetchAutoCloneQueue(); void fetchViralNiches(); }
@@ -14136,6 +14138,18 @@ POST-LANZAMIENTO:
                 addAllAiSuggestions={addAllAiSuggestions}
                 apiBaseUrl={API_BASE_URL}
             />}
+
+            {/* ══ PINTEREST QUEUE ══ */}
+            {studioSubTab === "pinterest" && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-rose-500/80 via-pink-400/40 to-transparent" />
+                        <div className="p-6">
+                            <PinterestPanel />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ══ INTELLIGENCE HUB ══ */}
             {studioSubTab === "intelligence" && (
