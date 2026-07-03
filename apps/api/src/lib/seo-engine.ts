@@ -337,6 +337,274 @@ export async function scrapeTopCompetitorTitles(nicheName: string, productType: 
     }
 }
 
+// ── Deep Competitor SEO Analysis ─────────────────────────────────────────────
+
+export interface CompetitorBook {
+    rank: number;
+    title: string;
+    subtitle: string;
+    asin: string;
+    reviews: number;
+    rating: number;
+    price: string;
+    bsr: number | null;
+    categories: string[];
+    bullets: string[];
+    bestseller: boolean;
+}
+
+export interface KeywordFrequency {
+    word: string;
+    count: number;
+    pct: number;
+}
+
+export interface CompetitorSEOIntelligence {
+    keyword: string;
+    totalFound: number;
+    topBooks: CompetitorBook[];
+    topKeywords: KeywordFrequency[];
+    audienceTerms: string[];
+    benefitTerms: string[];
+    titlePatterns: string[];
+    subtitlePatterns: string[];
+    categories: string[];
+    avgReviews: number;
+    priceRange: { min: string; max: string };
+    scrapedAt: string;
+}
+
+const COMP_STOPWORDS = new Set(["the","a","an","and","or","for","of","in","to","with","by","at","on","is","are","was","be","this","that","it","its","as","from","your","my","our","all","more","most","very","also","can","will","has","have","had","not","but","their","them","they","these","those","just","only","even","about","into","than","other","such","out","up","so","no"]);
+const AUDIENCE  = ["adults","women","men","seniors","kids","teens","beginners","girls","boys","mothers","grandma","grandpa","couples","friends","family"];
+const BENEFITS  = ["stress relief","stress-relief","relaxation","mindfulness","meditation","anxiety relief","calming","calming","therapeutic","self-care","self care","creative","fun","peaceful","tranquil","soothing","anti-stress"];
+
+function extractAsin(url: string): string {
+    const m = url.match(/\/dp\/([A-Z0-9]{10})/);
+    return m?.[1] ?? "";
+}
+
+function splitTitleSubtitle(full: string): { title: string; subtitle: string } {
+    const sep = full.search(/[:–—](?!\s*\d)/);
+    if (sep > 10 && sep < full.length - 5) {
+        return { title: full.slice(0, sep).trim(), subtitle: full.slice(sep + 1).trim() };
+    }
+    return { title: full.trim(), subtitle: "" };
+}
+
+function analyzeFrequency(titles: string[]): KeywordFrequency[] {
+    const freq = new Map<string, number>();
+    for (const title of titles) {
+        const words = title.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(w => w.length > 2 && !COMP_STOPWORDS.has(w));
+        const seen = new Set<string>();
+        // Unigrams
+        for (const w of words) { if (!seen.has(w)) { freq.set(w, (freq.get(w) ?? 0) + 1); seen.add(w); } }
+        // Bigrams
+        for (let i = 0; i < words.length - 1; i++) {
+            const bg = `${words[i]} ${words[i+1]}`;
+            if (!seen.has(bg)) { freq.set(bg, (freq.get(bg) ?? 0) + 1); seen.add(bg); }
+        }
+    }
+    const n = titles.length || 1;
+    return [...freq.entries()]
+        .map(([word, count]) => ({ word, count, pct: Math.round(count / n * 100) }))
+        .filter(k => k.pct >= 15 && k.count >= 2)
+        .sort((a, b) => b.pct - a.pct)
+        .slice(0, 25);
+}
+
+async function jinaFetch(url: string): Promise<string> {
+    const jinaKey = process.env.JINA_API_KEY;
+    try {
+        const res = await fetch(`https://r.jina.ai/${url}`, {
+            headers: {
+                "Accept": "text/plain",
+                "X-Return-Format": "text",
+                "X-No-Cache": "true",
+                "X-Timeout": "12",
+                ...(jinaKey ? { Authorization: `Bearer ${jinaKey}` } : {}),
+            },
+            signal: AbortSignal.timeout(15_000),
+        });
+        return res.ok ? await res.text() : "";
+    } catch { return ""; }
+}
+
+async function scrapeProductPage(asin: string): Promise<{ title: string; categories: string[]; bullets: string[]; bsr: number | null; rating: number; reviews: number; price: string; bestseller: boolean }> {
+    const empty = { title: "", categories: [], bullets: [], bsr: null, rating: 0, reviews: 0, price: "", bestseller: false };
+    try {
+        const text = await jinaFetch(`https://www.amazon.com/dp/${asin}`);
+        if (!text || text.length < 200) return empty;
+
+        // Title: first meaningful line that looks like a product title (not Amazon UI)
+        const PAGE_UI = /^(Skip|About this|Buying options|Videos|Reviews|Keyboard|Amazon|Best Sellers|Under \$|Health|Home|Add to|See more|Report|Delivering|Update location|All Departments|Alexa|Audible|Automotive|To move between|shift|alt|Cart|Orders|Product summary|Show\/Hide|EN |Hello)/i;
+        const titleLines = text.split("\n").map(l => l.trim()).filter(l =>
+            l.length > 30 && l.length < 300 &&
+            /[A-Za-z]/.test(l[0]) &&
+            !PAGE_UI.test(l) &&
+            /[a-z]{5}/.test(l) &&
+            (l.includes("Coloring") || l.includes("Book") || l.includes("Mandala") || l.includes("Pattern") || l.includes("Design") || l.includes("Art"))
+        );
+        const title = titleLines[0] ?? "";
+
+        // BSR — "#7,367 in Arts, Crafts & Sewing"
+        const bsrM = text.match(/#([\d,]+)\s+in\s+(?:Books|Arts|Crafts)/i);
+        const bsr = bsrM ? parseInt(bsrM[1].replace(/,/g, ""), 10) : null;
+
+        // Rating
+        const ratingM = text.match(/(\d\.\d)\s+out of\s+5/i);
+        const rating = ratingM ? parseFloat(ratingM[1]) : 0;
+
+        // Reviews — "614 global ratings"
+        const reviewM = text.match(/([\d,]+)\s+global ratings?/i);
+        const reviews = reviewM ? parseInt(reviewM[1].replace(/,/g, ""), 10) : 0;
+
+        // Price
+        const priceM = text.match(/\$([\d]+\.\d{2})/);
+        const price = priceM ? `$${priceM[1]}` : "";
+
+        // Categories from BSR table: "#7,367 in Arts, Crafts & Sewing\n#109 in Sketchbooks"
+        const categories: string[] = [];
+        const catRe = /#[\d,]+\s+in\s+([A-Za-z ,&']+?)(?:\n|\(|$)/g;
+        let cm: RegExpExecArray | null;
+        while ((cm = catRe.exec(text)) !== null) {
+            const cat = cm[1].trim();
+            if (cat.length > 3 && cat.length < 70 && !categories.includes(cat)) categories.push(cat);
+            if (categories.length >= 5) break;
+        }
+
+        // Bullets — second "About this item" block contains real product bullets
+        const bullets: string[] = [];
+        const firstAbout = text.indexOf("About this item");
+        const secondAbout = firstAbout !== -1 ? text.indexOf("About this item", firstAbout + 20) : -1;
+        const bulletSection = text.slice(secondAbout !== -1 ? secondAbout : firstAbout, (secondAbout !== -1 ? secondAbout : firstAbout) + 4000);
+        const NAV_SKIP = /^(About this item|Buying options|Videos|Reviews|Keyboard|Skip|Best Sellers|Under \$|Health|Home|Amazon|Books|#\d|Add to|\$|See more|Report an issue|alt|shift|\+|Cart|Search|Orders|Product summary|Show\/Hide)/i;
+        const lineRe2 = /^(.{30,300})$/gm;
+        let bm: RegExpExecArray | null;
+        while ((bm = lineRe2.exec(bulletSection)) !== null) {
+            const line = bm[1].trim();
+            if (line.length > 30 && !NAV_SKIP.test(line) && /[a-z]{4}/.test(line)) {
+                bullets.push(line);
+                if (bullets.length >= 5) break;
+            }
+        }
+
+        const bestseller = /Best\s*Seller/i.test(text);
+        return { title, categories, bullets, bsr, rating, reviews, price, bestseller };
+    } catch {
+        return empty;
+    }
+}
+
+export async function analyzeCompetitorSEO(keyword: string, productType = "coloring-book"): Promise<CompetitorSEOIntelligence> {
+    const productTerm = productType === "printable-poster" ? "printable art" : productType === "seamless-pattern" ? "seamless pattern" : "coloring book";
+    const searchKeyword = keyword.toLowerCase().includes(productTerm) ? keyword : `${keyword} ${productTerm}`;
+
+    // Step 1: Search via DuckDuckGo (Amazon blocks Jina; DDG indexes Amazon and is scrappeable)
+    const ddgUrl = `https://html.duckduckgo.com/html/?q=site:amazon.com+${encodeURIComponent(searchKeyword)}`;
+    const ddgText = await jinaFetch(ddgUrl);
+
+    // Extract Amazon product URLs with ASINs and titles from DDG results
+    // DDG format:
+    //   Title - Amazon                   ← line i-1 (heading)
+    //    www.amazon.com/.../dp/ASIN      ← line i   (url)
+    //   Snippet text...                  ← line i+1 (description)
+    const rawBooks: Array<{ full: string; asin: string; snippet: string }> = [];
+    const seen = new Set<string>();
+    const lines = ddgText.split("\n");
+    const SKIP_TITLE = /^(Amazon\.com|Amazon Best Sellers|Feedback|Ad$|Viewing ads|etsy\.com|springbok)/i;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        const asinMatch = line.match(/amazon\.com\/[^\s]*\/dp\/([A-Z0-9]{10})/);
+        if (!asinMatch || seen.has(asinMatch[1])) continue;
+        const asin = asinMatch[1];
+        seen.add(asin);
+
+        // Title: look at preceding non-empty lines for the heading text
+        let title = "";
+        for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+            const prev = lines[j].trim();
+            if (prev.length > 15 && !SKIP_TITLE.test(prev) && !/^www\./.test(prev)) {
+                // Strip "- Amazon" suffix DDG often appends
+                title = prev.replace(/\s*[-–]\s*Amazon\s*$/i, "").trim();
+                break;
+            }
+        }
+
+        // Fallback: snippet from lines after the URL
+        const snippet = lines.slice(i + 1, i + 4).map(l => l.trim()).filter(Boolean).join(" ");
+
+        const full = title.length > 15 ? title : snippet.slice(0, 200);
+        if (full.length > 10) {
+            rawBooks.push({ full, asin, snippet });
+        }
+        if (rawBooks.length >= 20) break;
+    }
+
+    // Step 2: Deep scrape product pages (up to 8 in parallel batches of 4)
+    const toScrape = rawBooks.slice(0, 8);
+    const batch1 = await Promise.all(toScrape.slice(0, 4).map(b => scrapeProductPage(b.asin)));
+    const batch2 = await Promise.all(toScrape.slice(4, 8).map(b => scrapeProductPage(b.asin)));
+    const deepResults = [...batch1, ...batch2];
+
+    // Merge: prefer title from product page (more accurate), fall back to DDG title
+    const topBooks: CompetitorBook[] = rawBooks.slice(0, 10).map((b, i) => {
+        const deep = deepResults[i] ?? { title: "", categories: [], bullets: [], bsr: null, rating: 0, reviews: 0, price: "", bestseller: false };
+        const fullTitle = deep.title || b.full;
+        const { title, subtitle } = splitTitleSubtitle(fullTitle);
+        return {
+            rank: i + 1,
+            title: title || fullTitle,
+            subtitle,
+            asin: b.asin,
+            reviews: deep.reviews,
+            rating: deep.rating,
+            price: deep.price,
+            bsr: deep.bsr,
+            categories: deep.categories,
+            bullets: deep.bullets,
+            bestseller: deep.bestseller,
+        };
+    }).filter(b => b.title.length > 5);
+
+    // Step 3: Frequency analysis on all collected titles
+    const allTitles = topBooks.map(b => [b.title, b.subtitle].filter(Boolean).join(" "));
+    const topKeywords = analyzeFrequency(allTitles);
+    const allCats = [...new Set(deepResults.flatMap(d => d.categories))].slice(0, 10);
+    const audienceTerms = AUDIENCE.filter(a => allTitles.some(t => t.toLowerCase().includes(a)));
+    const benefitTerms  = BENEFITS.filter(b => allTitles.some(t => t.toLowerCase().includes(b)));
+
+    const titlePatterns: string[] = [];
+    const subtitlePatterns: string[] = [];
+    for (const b of topBooks.slice(0, 5)) {
+        if (b.title && !titlePatterns.includes(b.title)) titlePatterns.push(b.title);
+        if (b.subtitle && !subtitlePatterns.includes(b.subtitle)) subtitlePatterns.push(b.subtitle);
+    }
+
+    const prices = deepResults.map(d => d.price).filter(Boolean).map(p => parseFloat(p.replace("$", ""))).filter(n => !isNaN(n));
+    const priceRange = prices.length > 0
+        ? { min: `$${Math.min(...prices).toFixed(2)}`, max: `$${Math.max(...prices).toFixed(2)}` }
+        : { min: "", max: "" };
+
+    const allReviews = deepResults.map(d => d.reviews).filter(r => r > 0);
+    const avgReviews = allReviews.length > 0 ? Math.round(allReviews.reduce((s, r) => s + r, 0) / allReviews.length) : 0;
+
+    return {
+        keyword: searchKeyword,
+        totalFound: topBooks.length,
+        topBooks,
+        topKeywords,
+        audienceTerms,
+        benefitTerms,
+        titlePatterns,
+        subtitlePatterns,
+        categories: allCats,
+        avgReviews,
+        priceRange,
+        scrapedAt: new Date().toISOString(),
+    };
+}
+
 // ── Etsy Intel: ocasión + estado de ánimo ────────────────────────────────────
 
 export interface EtsyKeywordIntel extends KeywordIntel {

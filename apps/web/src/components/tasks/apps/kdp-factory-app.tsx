@@ -405,6 +405,7 @@ import { GelatoPanel } from "./kdp/GelatoPanel";
 import { ContenidoPanel } from "./kdp/ContenidoPanel";
 import { CalendarPanel } from "./kdp/CalendarPanel";
 import { PinterestPanel } from "./kdp/PinterestPanel";
+import { CompetitorSEOPanel } from "./kdp/CompetitorSEOPanel";
 
 /** Modal a pantalla completa con comportamiento consistente en todos los editores grandes. */
 function FullModal({ open, onClose, zIndex = 110, maxWidth = "max-w-4xl", children }: {
@@ -811,6 +812,9 @@ export function KdpFactoryApp() {
         return (saved === "pdf" || saved === "contenido" || saved === "portadas" || saved === "trafico" || saved === "guia") ? saved as "pdf" | "contenido" | "portadas" | "trafico" | "guia" : "pdf";
     });
     const [intelliMode, setIntelliMode] = useState<"detector" | "insights" | "dna">("detector");
+
+    const [competitorSeoOpen, setCompetitorSeoOpen] = useState(false);
+    const [competitorIntel, setCompetitorIntel] = useState<null | { topKeywords: {word:string;pct:number}[]; audienceTerms: string[]; benefitTerms: string[]; subtitlePatterns: string[]; categories: string[]; avgReviews: number; priceRange: {min:string;max:string} }>(null);
 
     // ── Clone Engine state ───────────────────────────────────────────────────
     type CloneResult = { nicheName: string; title: string; titleTemplate?: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: "low" | "medium" | "high" };
@@ -11169,7 +11173,16 @@ POST-LANZAMIENTO:
                     : "",
                 linked.notes ? `notas: ${linked.notes}` : "",
             ].filter(Boolean).join(" · ") : "";
-            const mergedExtras = [contentExtras, nicheContext].filter(Boolean).join(" · ");
+            const competitorContext = competitorIntel ? [
+                competitorIntel.topKeywords.length > 0 ? `keywords más usadas por competidores: ${competitorIntel.topKeywords.slice(0, 10).map(k => k.word).join(", ")}` : "",
+                competitorIntel.audienceTerms.length > 0 ? `audiencias en títulos competidores: ${competitorIntel.audienceTerms.join(", ")}` : "",
+                competitorIntel.benefitTerms.length > 0 ? `beneficios en títulos competidores: ${competitorIntel.benefitTerms.join(", ")}` : "",
+                competitorIntel.subtitlePatterns.length > 0 ? `patrones de subtítulo que funcionan: ${competitorIntel.subtitlePatterns.slice(0, 3).join(" / ")}` : "",
+                competitorIntel.categories.length > 0 ? `categorías Amazon de competidores: ${competitorIntel.categories.slice(0, 5).join(", ")}` : "",
+                competitorIntel.priceRange.min ? `precio medio competidores: ${competitorIntel.priceRange.min}–${competitorIntel.priceRange.max}` : "",
+                competitorIntel.avgReviews > 0 ? `media de reseñas competidores: ${competitorIntel.avgReviews}` : "",
+            ].filter(Boolean).join(" · ") : "";
+            const mergedExtras = [contentExtras, nicheContext, competitorContext].filter(Boolean).join(" · ");
             const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -14678,8 +14691,47 @@ POST-LANZAMIENTO:
                         apiBaseUrl={API_BASE_URL}
                     />}
 
-                    {/* Contenido */}
-                    {factorySubTab === "contenido" && <ContenidoPanel
+                    {/* Competidor SEO + Contenido */}
+                    {factorySubTab === "contenido" && (
+                        <div className="space-y-4">
+                            {/* Competitor SEO accordion */}
+                            <div className="rounded-2xl border border-white/8 overflow-hidden">
+                                <button
+                                    onClick={() => setCompetitorSeoOpen(v => !v)}
+                                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <Search size={15} className="text-violet-400" />
+                                        <span className="text-sm font-bold text-white">Analizar SEO de competidores</span>
+                                        {competitorIntel ? (
+                                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400">
+                                                {competitorIntel.topKeywords.length} keywords activas
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-zinc-600 font-normal ml-1">Extrae keywords, patrones y categorías de los top 20 en Amazon</span>
+                                        )}
+                                    </div>
+                                    {competitorSeoOpen ? <ChevronUp size={15} className="text-zinc-500" /> : <ChevronDown size={15} className="text-zinc-500" />}
+                                </button>
+                                {competitorSeoOpen && (
+                                    <div className="px-4 pb-4 border-t border-white/8 pt-4">
+                                        <CompetitorSEOPanel
+                                            defaultKeyword={contentNiche}
+                                            defaultProductType={contentProductType === "Coloring Book" ? "coloring-book" : contentProductType === "Seamless Pattern" ? "seamless-pattern" : "coloring-book"}
+                                            niches={niches}
+                                            onApplyKeywords={(kws) => {
+                                                setContentNiche(prev => {
+                                                    const extra = kws.join(", ");
+                                                    return prev ? `${prev} | Keywords: ${extra}` : extra;
+                                                });
+                                            }}
+                                            onAnalysisComplete={setCompetitorIntel}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <ContenidoPanel
                         niches={niches}
                         contentSaveNicheId={contentSaveNicheId}
                         contentType={contentType}
@@ -14708,7 +14760,9 @@ POST-LANZAMIENTO:
                         saveContentToNiche={saveContentToNiche}
                         deleteNicheListing={deleteNicheListing}
                         nd={nd}
-                    />}
+                    />
+                        </div>
+                    )}
 
                     {/* Portadas */}
                     {factorySubTab === "portadas" && <CoverFactoryPanel

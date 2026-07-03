@@ -1932,4 +1932,18 @@ Estructura exacta:
             return reply.status(500).send({ error: e.message ?? "Error enviando a Telegram" });
         }
     });
+
+    // ── Competitor SEO Analysis ───────────────────────────────────────────────
+    app.post("/niches/competitor-seo", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { keyword, productType = "coloring-book" } = request.body ?? {};
+            if (!keyword?.trim()) return reply.status(400).send({ error: "keyword requerido" });
+            const { analyzeCompetitorSEO } = await import("../lib/seo-engine.js");
+            const intelligence = await analyzeCompetitorSEO(keyword.trim(), productType);
+            return reply.send(intelligence);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
 }
