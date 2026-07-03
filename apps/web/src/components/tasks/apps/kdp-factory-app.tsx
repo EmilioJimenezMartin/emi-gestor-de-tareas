@@ -801,9 +801,14 @@ export function KdpFactoryApp() {
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban" | "table">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
     const [kanbanStyleFilter, setKanbanStyleFilter] = useState<string>("all");
-    const [studioSubTab, setStudioSubTab] = useState<"niches" | "intelligence" | "calendar" | "pinterest">(() => {
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "intelligence" | "calendar">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
-        return (saved === "niches" || saved === "intelligence" || saved === "calendar" || saved === "pinterest") ? saved as "niches" | "intelligence" | "calendar" | "pinterest" : "niches";
+        return (saved === "niches" || saved === "intelligence" || saved === "calendar") ? saved as "niches" | "intelligence" | "calendar" : "niches";
+    });
+    const [trafficTab, setTrafficTab] = useState<"pinterest" | "reddit" | "instagram">("pinterest");
+    const [factorySubTab, setFactorySubTab] = useState<"pdf" | "contenido" | "portadas" | "trafico" | "guia">(() => {
+        const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-factory-subtab") : null;
+        return (saved === "pdf" || saved === "contenido" || saved === "portadas" || saved === "trafico" || saved === "guia") ? saved as "pdf" | "contenido" | "portadas" | "trafico" | "guia" : "pdf";
     });
     const [intelliMode, setIntelliMode] = useState<"detector" | "insights" | "dna">("detector");
 
@@ -1686,7 +1691,7 @@ export function KdpFactoryApp() {
     const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "columns">(() =>
         (typeof window !== "undefined" && (localStorage.getItem("kdp-pipeline-view") as "list" | "columns")) || "list"
     );
-    const studioSubTabRef = useRef<"niches" | "intelligence" | "calendar" | "pinterest">("niches");
+    const studioSubTabRef = useRef<"niches" | "intelligence" | "calendar">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
     // --- Ventas / KDP Sales state ---
@@ -3851,6 +3856,8 @@ export function KdpFactoryApp() {
     const [colorizeSourceUrl, setColorizeSourceUrl] = useState<string | null>(null);
     const [colorizePrompt, setColorizePrompt] = useState("vibrant full color illustration, rich saturated colors, highly detailed");
     const [isColorizing, setIsColorizing] = useState(false);
+    const [isApplyingPalette, setIsApplyingPalette] = useState(false);
+    const [applyingPaletteIdx, setApplyingPaletteIdx] = useState<number | null>(null);
     const [splitParts, setSplitParts] = useState(2);
     const [splitProgress, setSplitProgress] = useState<{ current: number; total: number } | null>(null);
     const [gelatoStoreProducts, setGelatoStoreProducts] = useState<any[]>([]);
@@ -11316,69 +11323,86 @@ POST-LANZAMIENTO:
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
     };
 
-    const generateCoverVariants = async (count: number) => {
-        if (!coverTitle.trim()) { toast.error("Escribe el título del libro"); return; }
-        if (!selectedCoverNicheId) { toast.error("Selecciona un nicho"); return; }
-        setIsBuildingCoverVariants(true);
-        setVariantProgress(0);
-        const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
-        const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
-        const productType = selectedNiche?.productType ?? "coloring-book";
-        const [dimW, dimH] = coverImgDims.split("x").map(Number);
-        const newUrls: string[] = [];
+    // 3 color palettes applied to the existing cover image
+    const COLOR_PALETTES = [
+        { label: "Warm sunset",   cloudinary: "e_hue:35,e_saturation:45,e_brightness:5",      canvas: "hue-rotate(35deg) saturate(1.45) brightness(1.05)"  },
+        { label: "Ocean blue",    cloudinary: "e_hue:185,e_saturation:35",                    canvas: "hue-rotate(185deg) saturate(1.35)"                  },
+        { label: "Mystic violet", cloudinary: "e_hue:-55,e_saturation:30,e_brightness:8",     canvas: "hue-rotate(-55deg) saturate(1.3) brightness(1.08)"  },
+    ] as const;
 
-        // Fetch all strategy prompts once, then use one per variant
-        const { prompts: strategyPrompts } = await buildCoverPrompt(
-            selectedCoverNicheId,
-            coverColorTheme,
-            coverColoringStyle,
-            selectedNiche?.name ?? coverTitle,
-            productType,
-            coverStyle || selectedNiche?.styleCategory || "generic",
-        );
+    const applyCloudinaryColor = (baseUrl: string, transform: string): string => {
+        // Insert transform after /upload/ — works for standard Cloudinary URLs
+        return baseUrl.replace(/\/upload\/(?!e_)/, `/upload/${transform}/`);
+    };
 
-        for (let i = 0; i < count; i++) {
-            try {
-                const prompt = strategyPrompts[i % strategyPrompts.length];
-                const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ prompt, provider: model.provider, modelId: model.modelId, width: dimW || 1024, height: dimH || 1024 }),
-                });
-                if (!res.ok) { setVariantProgress(i + 1); continue; }
-                let blob = await res.blob();
-                blob = await applyKdpPadding(blob).catch(() => blob);
-                const dataUrl = await new Promise<string>((resolve, reject) => {
+    const applyCanvasColor = (baseUrl: string, cssFilter: string): Promise<string> =>
+        new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext("2d")!;
+                ctx.filter = cssFilter;
+                ctx.drawImage(img, 0, 0);
+                canvas.toBlob(blob => {
+                    if (!blob) return reject(new Error("canvas toBlob failed"));
                     const reader = new FileReader();
                     reader.onload = () => resolve(reader.result as string);
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
-                });
-                const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ dataUrl }),
-                });
-                if (uploadRes.ok) {
-                    const cloudUrl: string = (await uploadRes.json()).image?.url;
-                    if (cloudUrl) newUrls.push(cloudUrl);
+                }, "image/jpeg", 0.92);
+            };
+            img.onerror = reject;
+            img.src = baseUrl;
+        });
+
+    const generateCoverVariants = async (_count: number) => {
+        if (!selectedCoverNicheId) { toast.error("Selecciona un nicho"); return; }
+        const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
+        const baseUrl = generatedCoverUrl ?? selectedNiche?.coverUrl ?? null;
+        if (!baseUrl) { toast.error("Genera primero una portada base"); return; }
+
+        setIsBuildingCoverVariants(true);
+        setVariantProgress(0);
+        const newUrls: string[] = [];
+        const isCloudinary = baseUrl.includes("res.cloudinary.com");
+
+        for (let i = 0; i < COLOR_PALETTES.length; i++) {
+            const palette = COLOR_PALETTES[i];
+            try {
+                if (isCloudinary) {
+                    // Instant — Cloudinary applies the transform on the fly, no upload needed
+                    const variantUrl = applyCloudinaryColor(baseUrl, palette.cloudinary);
+                    newUrls.push(variantUrl);
+                } else {
+                    // Canvas recolor + re-upload to Cloudinary
+                    const dataUrl = await applyCanvasColor(baseUrl, palette.canvas);
+                    const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dataUrl }),
+                    });
+                    if (uploadRes.ok) {
+                        const cloudUrl: string = (await uploadRes.json()).image?.url;
+                        if (cloudUrl) newUrls.push(cloudUrl);
+                    }
                 }
             } catch { /* skip failed variant */ }
             setVariantProgress(i + 1);
         }
+
         if (newUrls.length > 0) {
-            const existing = niches.find(n => n._id === selectedCoverNicheId)?.coverCandidates ?? [];
+            const existing = selectedNiche?.coverCandidates ?? [];
             const allCandidates = [...existing, ...newUrls.filter(u => !existing.includes(u))];
-            const mainUrl = newUrls[0];
             await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
                 method: "PATCH", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ coverUrl: mainUrl, coverCandidates: allCandidates, pipelineHasCover: true }),
+                body: JSON.stringify({ coverCandidates: allCandidates, pipelineHasCover: true }),
             }).catch(() => {});
-            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: mainUrl, coverCandidates: allCandidates, pipelineHasCover: true } : n));
-            setGeneratedCoverUrl(mainUrl);
-            toast.success(`${newUrls.length} variante${newUrls.length !== 1 ? "s" : ""} generada${newUrls.length !== 1 ? "s" : ""} · puntuando…`);
+            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverCandidates: allCandidates, pipelineHasCover: true } : n));
+            toast.success(`${newUrls.length} variante${newUrls.length !== 1 ? "s" : ""} de color generada${newUrls.length !== 1 ? "s" : ""}`);
             if (allCandidates.length >= 2) {
-                const updatedNiche = niches.find(n => n._id === selectedCoverNicheId);
-                if (updatedNiche) void scoreCoverCandidates({ ...updatedNiche, coverCandidates: allCandidates, coverUrl: mainUrl });
+                if (selectedNiche) void scoreCoverCandidates({ ...selectedNiche, coverCandidates: allCandidates, coverUrl: selectedNiche.coverUrl ?? baseUrl });
             }
         } else {
             toast.error("No se pudo generar ninguna variante");
@@ -11541,6 +11565,50 @@ POST-LANZAMIENTO:
             setCoverStep(2);
         } catch { toast.error("Error conectando con la API"); }
         finally { setIsColorizing(false); }
+    };
+
+    // Apply a color palette to the selected colorize source and set it as the working cover
+    const applyPaletteVariant = async (idx: number) => {
+        const sourceUrl = colorizeSourceUrl;
+        if (!sourceUrl || !selectedCoverNicheId) return;
+        const palette = COLOR_PALETTES[idx];
+        setIsApplyingPalette(true);
+        setApplyingPaletteIdx(idx);
+        try {
+            let dataUrl: string;
+            if (sourceUrl.includes("res.cloudinary.com")) {
+                // Cloudinary: construct derived URL (no upload needed)
+                const variantUrl = applyCloudinaryColor(sourceUrl, palette.cloudinary);
+                // Fetch to get blob for pendingCoverBlobRef
+                const blob = await fetch(variantUrl).then(r => r.blob());
+                pendingCoverBlobRef.current = blob;
+                setGeneratedCoverUrl(URL.createObjectURL(blob));
+                toast.success(`Paleta "${palette.label}" aplicada`);
+                setCoverStep(2);
+                return;
+            } else {
+                dataUrl = await applyCanvasColor(sourceUrl, palette.canvas);
+            }
+            // Upload to Cloudinary
+            const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dataUrl }),
+            });
+            if (!uploadRes.ok) throw new Error("Error subiendo a Cloudinary");
+            const cloudUrl: string = (await uploadRes.json()).image?.url;
+            if (!cloudUrl) throw new Error("Sin URL de Cloudinary");
+            // Set as working cover
+            const blob = await fetch(cloudUrl).then(r => r.blob());
+            pendingCoverBlobRef.current = blob;
+            setGeneratedCoverUrl(URL.createObjectURL(blob));
+            toast.success(`Paleta "${palette.label}" aplicada`);
+            setCoverStep(2);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error aplicando paleta");
+        } finally {
+            setIsApplyingPalette(false);
+            setApplyingPaletteIdx(null);
+        }
     };
 
     // ── Canvas text-layer compositor (word-wrap aware) ──────────────────────
@@ -12146,13 +12214,12 @@ POST-LANZAMIENTO:
         };
 
     const renderStudio = () => {
-        const STUDIO_TABS: KdpTabDef<"niches" | "intelligence" | "calendar" | "pinterest">[] = [
+        const STUDIO_TABS: KdpTabDef<"niches" | "intelligence" | "calendar">[] = [
             { id: "niches",       label: "Nichos",       icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"          },
             { id: "intelligence", label: "Intelligence", icon: <Zap size={13} />,          color: "text-violet-400", activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
             { id: "calendar",     label: "Calendario",   icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
-            { id: "pinterest",    label: "Pinterest",    icon: <span className="text-[11px]">𝙋</span>, color: "text-rose-400", activeBg: "bg-rose-500/10 border-rose-500/25 text-rose-300" },
         ];
-        const switchStudioTab = (t: "niches" | "intelligence" | "calendar" | "pinterest") => {
+        const switchStudioTab = (t: "niches" | "intelligence" | "calendar") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
             if (t === "intelligence") { void fetchAutoCloneQueue(); void fetchViralNiches(); }
@@ -14139,18 +14206,6 @@ POST-LANZAMIENTO:
                 apiBaseUrl={API_BASE_URL}
             />}
 
-            {/* ══ PINTEREST QUEUE ══ */}
-            {studioSubTab === "pinterest" && (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                        <div className="h-px w-full bg-gradient-to-r from-rose-500/80 via-pink-400/40 to-transparent" />
-                        <div className="p-6">
-                            <PinterestPanel />
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* ══ INTELLIGENCE HUB ══ */}
             {studioSubTab === "intelligence" && (
                 <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -14581,81 +14636,166 @@ POST-LANZAMIENTO:
                 {activeTab === "studio" && renderStudio()}
                 {activeTab === "creation" && renderCreation()}
                 {activeTab === "insights" && renderInsights()}
-                {activeTab === "gelato" && <><GelatoPanel
-                    bookDrafts={bookDrafts}
-                    activeDraftId={activeDraftId}
-                    niches={niches}
-                    vaultImages={vaultImages}
-                    iaCatalogs={iaCatalogs}
-                    cloudinaryImages={cloudinaryImages}
-                    showKdpTips={showKdpTips}
-                    setShowKdpTips={setShowKdpTips}
-                    setZipFactoryOpen={setZipFactoryOpen}
-                    setConfirmDeleteDraftId={setConfirmDeleteDraftId}
-                    setNiches={setNiches}
-                    setBookDrafts={setBookDrafts}
-                    openKdpTemplateSelector={openKdpTemplateSelector}
-                    newBookDraft={newBookDraft}
-                    guardedLoadBookDraft={guardedLoadBookDraft}
-                    apiBaseUrl={API_BASE_URL}
-                /><ContenidoPanel
-                    niches={niches}
-                    contentSaveNicheId={contentSaveNicheId}
-                    contentType={contentType}
-                    contentResult={contentResult}
-                    contentNiche={contentNiche}
-                    contentProductType={contentProductType}
-                    contentLanguage={contentLanguage}
-                    contentExtras={contentExtras}
-                    contentPlatform={contentPlatform}
-                    isGeneratingContent={isGeneratingContent}
-                    savingContentListing={savingContentListing}
-                    expandedListingId={expandedListingId}
-                    deletingListingId={deletingListingId}
-                    setContentSaveNicheId={setContentSaveNicheId}
-                    setContentNiche={setContentNiche}
-                    setContentType={setContentType}
-                    setContentResult={setContentResult}
-                    setContentLanguage={setContentLanguage}
-                    setContentProductType={setContentProductType}
-                    setContentExtras={setContentExtras}
-                    setContentPlatform={setContentPlatform}
-                    setExpandedListingId={setExpandedListingId}
-                    setNicheDetailId={setNicheDetailId}
-                    setNicheDetailTab={tab => setNicheDetailTab(tab as any)}
-                    generateContent={generateContent}
-                    saveContentToNiche={saveContentToNiche}
-                    deleteNicheListing={deleteNicheListing}
-                    nd={nd}
-                /><CoverFactoryPanel
-                    niches={niches}
-                    coverFactorySearch={coverFactorySearch}
-                    coverFactoryNicheId={coverFactoryNicheId}
-                    coverFactorySort={coverFactorySort}
-                    setCoverFactorySearch={setCoverFactorySearch}
-                    setCoverFactoryNicheId={setCoverFactoryNicheId}
-                    setCoverFactorySort={setCoverFactorySort}
-                    setSelectedCoverNicheId={setSelectedCoverNicheId}
-                    setGeneratedCoverUrl={setGeneratedCoverUrl}
-                    setGeneratedBackCoverUrl={setGeneratedBackCoverUrl}
-                    setShowCoverModal={setShowCoverModal}
-                    setCoverTextLayers={setCoverTextLayers as (layers: any[]) => void}
-                    setCoverTitle={setCoverTitle}
-                    setCoverSubtitle={setCoverSubtitle}
-                    setCoverStyle={setCoverStyle}
-                    setCoverColorTheme={setCoverColorTheme}
-                    setCoverModelId={setCoverModelId}
-                    setCoverDescription={setCoverDescription}
-                    setCoverStep={step => setCoverStep(step as any)}
-                    setCoverModalTab={tab => setCoverModalTab(tab as any)}
-                    setNiches={setNiches}
-                    setLightboxUrl={setLightboxUrl}
-                    setConfirmDeleteCandGallery={setConfirmDeleteCandGallery}
-                    downloadFile={downloadFile}
-                    nicheStyleToCover={NICHE_STYLE_TO_COVER}
-                    nicheStyleModel={NICHE_STYLE_MODEL}
-                    apiBaseUrl={API_BASE_URL}
-                />{renderKdpGuide()}</>}
+                {activeTab === "gelato" && (() => {
+                    const FACTORY_TABS: { id: "pdf" | "contenido" | "portadas" | "trafico" | "guia"; label: string; icon: React.ReactNode; activeBg: string }[] = [
+                        { id: "pdf",       label: "PDF / Libro", icon: <BookOpen size={13} />,  activeBg: "bg-emerald-500/10 border-emerald-500/25 text-emerald-300" },
+                        { id: "contenido", label: "Contenido",   icon: <FileText size={13} />,  activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
+                        { id: "portadas",  label: "Portadas",    icon: <ImageIcon size={13} />, activeBg: "bg-fuchsia-500/10 border-fuchsia-500/25 text-fuchsia-300" },
+                        { id: "trafico",   label: "Tráfico",     icon: <Globe size={13} />,     activeBg: "bg-rose-500/10 border-rose-500/25 text-rose-300" },
+                        { id: "guia",      label: "Guía KDP",    icon: <BookOpen size={13} />,  activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300" },
+                    ];
+                    return (<>
+                    {/* Factory sub-tab bar */}
+                    <div className="flex gap-2 mb-6 flex-wrap">
+                        {FACTORY_TABS.map(t => (
+                            <button
+                                key={t.id}
+                                onClick={() => { setFactorySubTab(t.id); localStorage.setItem("kdp-factory-subtab", t.id); }}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-all ${factorySubTab === t.id ? t.activeBg : "border-white/8 text-zinc-500 hover:text-zinc-300 hover:border-white/15"}`}
+                            >
+                                {t.icon}{t.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* PDF / Libro */}
+                    {factorySubTab === "pdf" && <GelatoPanel
+                        bookDrafts={bookDrafts}
+                        activeDraftId={activeDraftId}
+                        niches={niches}
+                        vaultImages={vaultImages}
+                        iaCatalogs={iaCatalogs}
+                        cloudinaryImages={cloudinaryImages}
+                        showKdpTips={showKdpTips}
+                        setShowKdpTips={setShowKdpTips}
+                        setZipFactoryOpen={setZipFactoryOpen}
+                        setConfirmDeleteDraftId={setConfirmDeleteDraftId}
+                        setNiches={setNiches}
+                        setBookDrafts={setBookDrafts}
+                        openKdpTemplateSelector={openKdpTemplateSelector}
+                        newBookDraft={newBookDraft}
+                        guardedLoadBookDraft={guardedLoadBookDraft}
+                        apiBaseUrl={API_BASE_URL}
+                    />}
+
+                    {/* Contenido */}
+                    {factorySubTab === "contenido" && <ContenidoPanel
+                        niches={niches}
+                        contentSaveNicheId={contentSaveNicheId}
+                        contentType={contentType}
+                        contentResult={contentResult}
+                        contentNiche={contentNiche}
+                        contentProductType={contentProductType}
+                        contentLanguage={contentLanguage}
+                        contentExtras={contentExtras}
+                        contentPlatform={contentPlatform}
+                        isGeneratingContent={isGeneratingContent}
+                        savingContentListing={savingContentListing}
+                        expandedListingId={expandedListingId}
+                        deletingListingId={deletingListingId}
+                        setContentSaveNicheId={setContentSaveNicheId}
+                        setContentNiche={setContentNiche}
+                        setContentType={setContentType}
+                        setContentResult={setContentResult}
+                        setContentLanguage={setContentLanguage}
+                        setContentProductType={setContentProductType}
+                        setContentExtras={setContentExtras}
+                        setContentPlatform={setContentPlatform}
+                        setExpandedListingId={setExpandedListingId}
+                        setNicheDetailId={setNicheDetailId}
+                        setNicheDetailTab={tab => setNicheDetailTab(tab as any)}
+                        generateContent={generateContent}
+                        saveContentToNiche={saveContentToNiche}
+                        deleteNicheListing={deleteNicheListing}
+                        nd={nd}
+                    />}
+
+                    {/* Portadas */}
+                    {factorySubTab === "portadas" && <CoverFactoryPanel
+                        niches={niches}
+                        coverFactorySearch={coverFactorySearch}
+                        coverFactoryNicheId={coverFactoryNicheId}
+                        coverFactorySort={coverFactorySort}
+                        setCoverFactorySearch={setCoverFactorySearch}
+                        setCoverFactoryNicheId={setCoverFactoryNicheId}
+                        setCoverFactorySort={setCoverFactorySort}
+                        setSelectedCoverNicheId={setSelectedCoverNicheId}
+                        setGeneratedCoverUrl={setGeneratedCoverUrl}
+                        setGeneratedBackCoverUrl={setGeneratedBackCoverUrl}
+                        setShowCoverModal={setShowCoverModal}
+                        setCoverTextLayers={setCoverTextLayers as (layers: any[]) => void}
+                        setCoverTitle={setCoverTitle}
+                        setCoverSubtitle={setCoverSubtitle}
+                        setCoverStyle={setCoverStyle}
+                        setCoverColorTheme={setCoverColorTheme}
+                        setCoverModelId={setCoverModelId}
+                        setCoverDescription={setCoverDescription}
+                        setCoverStep={step => setCoverStep(step as any)}
+                        setCoverModalTab={tab => setCoverModalTab(tab as any)}
+                        setNiches={setNiches}
+                        setLightboxUrl={setLightboxUrl}
+                        setConfirmDeleteCandGallery={setConfirmDeleteCandGallery}
+                        downloadFile={downloadFile}
+                        nicheStyleToCover={NICHE_STYLE_TO_COVER}
+                        nicheStyleModel={NICHE_STYLE_MODEL}
+                        apiBaseUrl={API_BASE_URL}
+                    />}
+
+                    {/* Tráfico */}
+                    {factorySubTab === "trafico" && (
+                        <div className="space-y-4">
+                            <div className="flex gap-2 flex-wrap">
+                                {([
+                                    { id: "pinterest" as const, label: "Pinterest", activeBg: "bg-rose-500/10 border-rose-500/25 text-rose-300" },
+                                    { id: "reddit"    as const, label: "Reddit",    activeBg: "bg-orange-500/10 border-orange-500/25 text-orange-300" },
+                                    { id: "instagram" as const, label: "Instagram", activeBg: "bg-pink-500/10 border-pink-500/25 text-pink-300" },
+                                ]).map(t => (
+                                    <button key={t.id} onClick={() => setTrafficTab(t.id)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-all ${trafficTab === t.id ? t.activeBg : "border-white/8 text-zinc-500 hover:text-zinc-300 hover:border-white/15"}`}>
+                                        {t.label}
+                                        {(t.id === "reddit" || t.id === "instagram") && (
+                                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-600">Próximo</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {trafficTab === "pinterest" && (
+                                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-rose-500/80 via-pink-400/40 to-transparent" />
+                                    <div className="p-6"><PinterestPanel /></div>
+                                </div>
+                            )}
+                            {trafficTab === "reddit" && (
+                                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-orange-500/80 via-orange-400/40 to-transparent" />
+                                    <div className="p-8 space-y-4">
+                                        <p className="text-base font-bold text-white">Reddit — Próximamente</p>
+                                        <p className="text-sm text-zinc-400 leading-relaxed max-w-lg">Generador de posts para subreddits de coloring books adaptados al tono de cada comunidad para no parecer spam. Tú decides cuándo publicar.</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {["r/Coloring", "r/adultcoloring", "r/coloringbooks", "r/KDP", "r/selfpublishing", "r/PassiveIncome"].map(sub => (
+                                                <span key={sub} className="text-xs px-2.5 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400">{sub}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {trafficTab === "instagram" && (
+                                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-pink-500/80 via-purple-400/40 to-transparent" />
+                                    <div className="p-8 space-y-4">
+                                        <p className="text-base font-bold text-white">Instagram — Próximamente</p>
+                                        <p className="text-sm text-zinc-400 leading-relaxed max-w-lg">Misma cola que Pinterest pero optimizada para Instagram: formato cuadrado o Reels, caption con hasta 30 hashtags, publicación via API de Meta.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Guía KDP */}
+                    {factorySubTab === "guia" && renderKdpGuide()}
+                    </>);
+                })()}
                 {activeTab === "config" && renderConfig()}
             </div>
             {/* Image Preview Modal */}
@@ -15131,14 +15271,43 @@ POST-LANZAMIENTO:
                                                 </button>
                                             )}
                                         </div>
-                                        {colorizeSourceUrl && (
-                                            <div className="flex gap-2 items-center rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/[0.04] p-2">
-                                                <img src={colorizeSourceUrl} alt="origen" className="w-10 h-10 rounded-lg object-cover border border-white/10 shrink-0" />
-                                                <p className="text-[10px] text-neutral-500 flex-1">Imagen seleccionada</p>
+                                        {colorizeSourceUrl && (<>
+                                            {/* ── Palette variants (instant, client-side) ── */}
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/60">Variantes de color — elige una</p>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {COLOR_PALETTES.map((palette, idx) => (
+                                                        <div key={idx} className="space-y-1.5">
+                                                            <div className="relative aspect-square rounded-xl overflow-hidden border border-white/10 bg-zinc-900">
+                                                                <img
+                                                                    src={colorizeSourceUrl}
+                                                                    alt={palette.label}
+                                                                    className="w-full h-full object-cover"
+                                                                    style={{ filter: palette.canvas }}
+                                                                />
+                                                            </div>
+                                                            <button
+                                                                onClick={() => void applyPaletteVariant(idx)}
+                                                                disabled={isApplyingPalette}
+                                                                className={`w-full h-7 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all ${applyingPaletteIdx === idx ? "bg-fuchsia-500/30 border border-fuchsia-500/50 text-fuchsia-300" : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:border-white/25"} disabled:opacity-50`}
+                                                            >
+                                                                {applyingPaletteIdx === idx ? "Aplicando…" : "Usar esta"}
+                                                            </button>
+                                                            <p className="text-[9px] text-neutral-600 text-center">{palette.label}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        )}
+
+                                            {/* ── Divider ── */}
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 h-px bg-white/8" />
+                                                <span className="text-[9px] text-neutral-700 uppercase tracking-widest">o colorizar con IA</span>
+                                                <div className="flex-1 h-px bg-white/8" />
+                                            </div>
+                                        </>)}
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Instrucciones de color</label>
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Instrucciones de color (IA)</label>
                                             <input type="text" value={colorizePrompt} onChange={e => setColorizePrompt(e.target.value)}
                                                 className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40"
                                                 placeholder="vibrant full color illustration, rich colors…" />
@@ -15416,42 +15585,11 @@ POST-LANZAMIENTO:
                                 )}
                             </div>
 
-                            {/* ── Variants: generate N at once + auto-score ── */}
+                            {/* ── Hint to use Colorize for palette variants ── */}
                             {coverModalTab === "front" && coverMode === "ai" && (
-                                <div className="border border-fuchsia-500/15 bg-fuchsia-500/[0.03] rounded-2xl p-3 space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/70 flex items-center gap-1.5">
-                                            <Sparkles size={9} /> Variantes · auto-puntuar
-                                        </p>
-                                        <div className="flex gap-1">
-                                            {([2, 3, 5] as const).map(n => (
-                                                <button key={n} onClick={() => setVariantCount(n)}
-                                                    className={`w-7 h-6 rounded-lg border text-[10px] font-black transition-all ${variantCount === n ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
-                                                    {n}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {isBuildingCoverVariants ? (
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between text-[10px]">
-                                                <span className="text-neutral-500 flex items-center gap-1.5"><Loader2 size={9} className="animate-spin" /> Generando variante {variantProgress + 1} de {variantCount}…</span>
-                                                <span className="text-fuchsia-400/70">{variantProgress}/{variantCount}</span>
-                                            </div>
-                                            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                                                <div className="h-full bg-gradient-to-r from-fuchsia-500 to-violet-500 rounded-full transition-all duration-500"
-                                                    style={{ width: `${(variantProgress / variantCount) * 100}%` }} />
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <button onClick={() => void generateCoverVariants(variantCount)}
-                                            disabled={!coverTitle.trim() || !selectedCoverNicheId}
-                                            className="w-full h-9 rounded-xl bg-gradient-to-r from-fuchsia-600/80 to-violet-600/80 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 active:scale-[0.98]">
-                                            <Sparkles size={11} /> Generar {variantCount} variantes · puntuar con IA
-                                        </button>
-                                    )}
-                                    <p className="text-[9px] text-neutral-700 leading-snug">Genera {variantCount} portadas distintas, las sube como candidatas y elige la mejor automáticamente por CTR de miniatura.</p>
-                                </div>
+                                <p className="text-[10px] text-neutral-700 leading-snug px-1">
+                                    Para crear variantes de color de una imagen, usa el modo <span className="text-fuchsia-400/70 font-black">🎨 Colorizar</span>.
+                                </p>
                             )}
 
                             {/* ── KDP Spine Calculator ── */}

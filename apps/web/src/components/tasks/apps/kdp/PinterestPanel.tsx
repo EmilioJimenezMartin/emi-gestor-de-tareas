@@ -87,7 +87,6 @@ export function PinterestPanel() {
         Promise.all([fetchStatus(), fetchQueue()]).finally(() => setLoading(false));
     }, [fetchStatus, fetchQueue]);
 
-    // Check for OAuth callback query param
     useEffect(() => {
         if (typeof window === "undefined") return;
         const params = new URLSearchParams(window.location.search);
@@ -199,14 +198,14 @@ export function PinterestPanel() {
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-5">
             {/* Header */}
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                     <svg className="w-5 h-5 text-red-500" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/>
                     </svg>
-                    <h3 className="text-sm font-semibold text-white">Pinterest Queue</h3>
+                    <h3 className="text-base font-bold text-white">Pinterest Queue</h3>
                     {pendingTotal > 0 && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/20">
                             {pendingTotal} pendientes
@@ -217,24 +216,46 @@ export function PinterestPanel() {
                     <button
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-600/30 transition disabled:opacity-50"
+                        className="text-sm px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-600/30 transition disabled:opacity-50"
                     >
                         {generating ? "Generando..." : "+ Generar pins"}
                     </button>
                     <button
                         onClick={() => setActiveTab(activeTab === "queue" ? "connect" : "queue")}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 border border-white/10 transition"
+                        className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 border border-white/10 transition"
                     >
-                        {activeTab === "queue" ? "⚙ Conectar API" : "← Volver"}
+                        {activeTab === "queue" ? "⚙ Conectar API" : "← Cola"}
                     </button>
                 </div>
             </div>
 
+            {/* Context block — always visible */}
+            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Para qué sirve</p>
+                <p className="text-sm text-zinc-300 leading-relaxed">
+                    Pinterest genera <strong className="text-white">tráfico externo orgánico</strong> a tus libros en Amazon. El algoritmo de Amazon A10 premia el tráfico que llega desde fuera — más tráfico externo = mejor posición en búsquedas = más ventas sin pagar anuncios.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg bg-white/[0.03] border border-white/8 p-3 space-y-1.5">
+                        <p className="text-xs font-bold text-rose-400 uppercase tracking-wide">Opción B — Manual</p>
+                        <p className="text-sm text-zinc-400 leading-snug">
+                            Genera los pins arriba. Cada pin tiene título, descripción y hashtags listos. Pulsa <strong className="text-white">Copiar</strong> y pégalo en Pinterest. Sin configuración, funciona hoy mismo.
+                        </p>
+                    </div>
+                    <div className="rounded-lg bg-white/[0.03] border border-white/8 p-3 space-y-1.5">
+                        <p className="text-xs font-bold text-sky-400 uppercase tracking-wide">Opción A — Automático</p>
+                        <p className="text-sm text-zinc-400 leading-snug">
+                            Conecta tu cuenta Pinterest via API y pulsa <strong className="text-white">Publicar</strong>. Los pins se suben solos al board que elijas. Requiere ~10 min de configuración — ver <strong className="text-white">Conectar API</strong>.
+                        </p>
+                    </div>
+                </div>
+                <p className="text-xs text-zinc-600">
+                    Requisito: tus nichos deben tener ASIN y portada para aparecer en la cola.
+                </p>
+            </div>
+
             {activeTab === "connect" ? (
-                <ConnectTab
-                    connected={connected}
-                    onConnect={handleConnectPinterest}
-                />
+                <ConnectTab connected={connected} onConnect={handleConnectPinterest} />
             ) : (
                 <>
                     {/* Board selector + batch publish */}
@@ -243,7 +264,7 @@ export function PinterestPanel() {
                             <select
                                 value={selectedBoard}
                                 onChange={e => setSelectedBoard(e.target.value)}
-                                className="flex-1 text-xs bg-transparent text-white border-none outline-none"
+                                className="flex-1 text-sm bg-transparent text-white border-none outline-none"
                             >
                                 <option value="">Seleccionar board...</option>
                                 {boards.map(b => (
@@ -253,7 +274,7 @@ export function PinterestPanel() {
                             <button
                                 onClick={handleBatchPublish}
                                 disabled={!selectedBoard || batchPublishing}
-                                className="text-xs px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition disabled:opacity-40"
+                                className="text-sm px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition disabled:opacity-40"
                             >
                                 {batchPublishing ? "Publicando..." : "Publicar 5"}
                             </button>
@@ -279,7 +300,7 @@ export function PinterestPanel() {
 
                     {/* Pin list */}
                     {pins.length === 0 ? (
-                        <div className="text-center py-12 text-zinc-600 text-sm">
+                        <div className="text-center py-12 text-zinc-500 text-sm">
                             No hay pins {STATUS_LABELS[filterStatus]?.toLowerCase()}s.
                             {filterStatus === "pending" && (
                                 <p className="mt-1 text-xs">Pulsa "+ Generar pins" para crear la cola.</p>
@@ -334,7 +355,7 @@ function PinRow({
     onBoardChange: (id: string) => void;
 }) {
     return (
-        <div className={`rounded-xl border transition-all ${expanded ? "border-white/15 bg-white/5" : "border-white/8 bg-white/3 hover:bg-white/5"}`}>
+        <div className={`rounded-xl border transition-all ${expanded ? "border-white/15 bg-white/5" : "border-white/8 bg-white/[0.03] hover:bg-white/5"}`}>
             <div
                 className="flex items-center gap-3 p-3 cursor-pointer"
                 onClick={onToggleExpand}
@@ -346,16 +367,16 @@ function PinRow({
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[pin.status]}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs px-1.5 py-0.5 rounded border ${STATUS_COLORS[pin.status]}`}>
                             {STATUS_LABELS[pin.status]}
                         </span>
-                        <span className="text-[10px] text-zinc-600">
+                        <span className="text-xs text-zinc-500">
                             {pin.pinType === "cover" ? "Portada" : "Interior"}
                         </span>
                     </div>
-                    <p className="text-xs font-medium text-white truncate">{pin.title}</p>
-                    <p className="text-[11px] text-zinc-500 truncate">{pin.nicheName}</p>
+                    <p className="text-sm font-medium text-white truncate">{pin.title}</p>
+                    <p className="text-xs text-zinc-500 truncate">{pin.nicheName}</p>
                 </div>
 
                 {/* Quick actions */}
@@ -363,21 +384,20 @@ function PinRow({
                     <button
                         onClick={onCopy}
                         title="Copiar caption"
-                        className={`text-xs px-2 py-1 rounded-lg border transition ${
+                        className={`text-xs px-2.5 py-1 rounded-lg border transition ${
                             copyFeedback
                                 ? "text-emerald-400 bg-emerald-400/15 border-emerald-400/20"
                                 : "text-zinc-400 bg-white/5 border-white/10 hover:text-white"
                         }`}
                     >
-                        {copyFeedback ? "✓" : "Copiar"}
+                        {copyFeedback ? "✓ Copiado" : "Copiar"}
                     </button>
 
                     {pin.status === "pending" && connected && (
                         <button
                             onClick={onPublish}
                             disabled={publishing}
-                            title="Publicar via API"
-                            className="text-xs px-2 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition disabled:opacity-50"
+                            className="text-xs px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition disabled:opacity-50"
                         >
                             {publishing ? "..." : "Publicar"}
                         </button>
@@ -386,8 +406,7 @@ function PinRow({
                     {pin.status === "pending" && (
                         <button
                             onClick={onSkip}
-                            title="Omitir pin"
-                            className="text-xs px-2 py-1 rounded-lg text-zinc-500 bg-white/5 border border-white/10 hover:text-zinc-300 transition"
+                            className="text-xs px-2.5 py-1 rounded-lg text-zinc-500 bg-white/5 border border-white/10 hover:text-zinc-300 transition"
                         >
                             Skip
                         </button>
@@ -395,10 +414,9 @@ function PinRow({
                     {pin.status !== "pending" && (
                         <button
                             onClick={onRestore}
-                            title="Restaurar a pendiente"
-                            className="text-xs px-2 py-1 rounded-lg text-zinc-500 bg-white/5 border border-white/10 hover:text-zinc-300 transition"
+                            className="text-xs px-2.5 py-1 rounded-lg text-zinc-500 bg-white/5 border border-white/10 hover:text-zinc-300 transition"
                         >
-                            ↩
+                            ↩ Restaurar
                         </button>
                     )}
                 </div>
@@ -406,9 +424,9 @@ function PinRow({
 
             {/* Expanded content */}
             {expanded && (
-                <div className="px-3 pb-3 space-y-2.5 border-t border-white/8 pt-2.5">
+                <div className="px-3 pb-4 space-y-3 border-t border-white/8 pt-3">
                     {/* Full caption preview */}
-                    <div className="rounded-lg bg-black/30 p-2.5 text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                    <div className="rounded-lg bg-black/30 p-3 text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
                         <span className="font-semibold text-white">{pin.title}</span>
                         {"\n\n"}
                         {pin.description}
@@ -416,14 +434,14 @@ function PinRow({
                         <span className="text-rose-400/80">{pin.hashtags.join(" ")}</span>
                     </div>
 
-                    {/* Board selector (Option A — only if connected) */}
+                    {/* Board selector */}
                     {connected && boards.length > 0 && (
                         <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-zinc-500 flex-shrink-0">Board:</span>
+                            <span className="text-xs text-zinc-500 flex-shrink-0">Board:</span>
                             <select
                                 value={pin.boardId ?? ""}
                                 onChange={e => onBoardChange(e.target.value)}
-                                className="flex-1 text-xs bg-black/30 text-white border border-white/10 rounded-lg px-2 py-1 outline-none"
+                                className="flex-1 text-sm bg-black/30 text-white border border-white/10 rounded-lg px-2 py-1 outline-none"
                             >
                                 <option value="">Sugerido: {pin.boardSuggestion}</option>
                                 {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -432,30 +450,20 @@ function PinRow({
                     )}
 
                     {/* Amazon link */}
-                    <div className="flex items-center gap-2 text-[11px]">
+                    <div className="flex items-center gap-2 text-sm">
                         <span className="text-zinc-500">Amazon:</span>
-                        <a
-                            href={pin.amazonUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sky-400 hover:underline truncate"
-                        >
+                        <a href={pin.amazonUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline truncate">
                             {pin.amazonUrl}
                         </a>
                     </div>
 
-                    {/* Error display */}
                     {pin.error && (
-                        <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-2.5 py-1.5 border border-red-400/20">
+                        <p className="text-sm text-red-400 bg-red-400/10 rounded-lg px-3 py-2 border border-red-400/20">
                             {pin.error}
                         </p>
                     )}
 
-                    {/* Delete */}
-                    <button
-                        onClick={onDelete}
-                        className="text-[11px] text-red-500/60 hover:text-red-400 transition"
-                    >
+                    <button onClick={onDelete} className="text-xs text-red-500/60 hover:text-red-400 transition">
                         Eliminar de la cola
                     </button>
                 </div>
@@ -466,46 +474,72 @@ function PinRow({
 
 function ConnectTab({ connected, onConnect }: { connected: boolean; onConnect: () => void }) {
     return (
-        <div className="rounded-xl border border-white/10 bg-white/3 p-6 space-y-4">
-            <div className="flex items-center gap-3">
-                <div className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-emerald-400" : "bg-zinc-600"}`} />
+        <div className="space-y-4">
+            {/* Status */}
+            <div className={`flex items-center gap-3 p-3.5 rounded-xl border ${connected ? "border-emerald-500/20 bg-emerald-500/5" : "border-white/8 bg-white/[0.02]"}`}>
+                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${connected ? "bg-emerald-400" : "bg-zinc-600"}`} />
                 <p className="text-sm font-medium text-white">
-                    {connected ? "Cuenta Pinterest conectada" : "Pinterest no conectado"}
+                    {connected
+                        ? "Cuenta Pinterest conectada — puedes publicar pins desde la cola"
+                        : "Pinterest no conectado — solo disponible el modo manual (Opción B)"}
                 </p>
             </div>
 
-            <p className="text-xs text-zinc-400 leading-relaxed">
-                Conecta tu cuenta Pinterest para publicar pins automáticamente via la API oficial.
-                Si prefieres publicarlos manualmente, usa el botón <strong className="text-zinc-300">"Copiar"</strong> en cada pin
-                y pégalo directamente en Pinterest.
-            </p>
+            {/* What is this */}
+            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-sky-400">Opción A — Publicación automática via API</p>
+                <p className="text-sm text-zinc-300 leading-relaxed">
+                    Con la API conectada, cada pin de la cola tiene un botón <strong className="text-white">Publicar</strong> que lo sube directamente a tu Pinterest — sin abrir el navegador, sin copiar/pegar. También puedes lanzar 5 pins en lote con 3 segundos entre ellos para no disparar el rate limit.
+                </p>
+            </div>
 
-            <div className="space-y-2 text-xs text-zinc-500">
-                <p className="font-medium text-zinc-400">Para conectar la API:</p>
-                <ol className="list-decimal list-inside space-y-1">
-                    <li>Ve a <strong className="text-zinc-300">developers.pinterest.com</strong> y crea una app</li>
-                    <li>En <strong className="text-zinc-300">Ajustes → API Keys</strong> añade <code className="text-sky-400">PINTEREST_APP_ID</code> y <code className="text-sky-400">PINTEREST_APP_SECRET</code></li>
-                    <li>Pulsa "Conectar cuenta" abajo</li>
+            {/* Step by step */}
+            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Cómo configurarlo (~10 min)</p>
+                <ol className="space-y-4">
+                    {[
+                        {
+                            n: "1",
+                            title: "Crear app en Pinterest Developers",
+                            body: 'Ve a developers.pinterest.com → My Apps → Create App. El nombre da igual. En "Redirect URIs" añade exactamente: http://localhost:3001/pinterest/callback',
+                        },
+                        {
+                            n: "2",
+                            title: "Activar los permisos necesarios",
+                            body: "En tu app activa estos tres scopes: boards:read · boards:write · pins:write. Sin los tres no funcionará.",
+                        },
+                        {
+                            n: "3",
+                            title: "Guardar las credenciales en Ajustes",
+                            body: "Copia el App ID y el App Secret. Ve a Ajustes y crea dos entradas: PINTEREST_APP_ID y PINTEREST_APP_SECRET con sus valores.",
+                        },
+                        {
+                            n: "4",
+                            title: "Autorizar tu cuenta",
+                            body: "Pulsa el botón de abajo. Te lleva a Pinterest para autorizar la app. Aceptas y vuelves aquí automáticamente con la cuenta conectada.",
+                        },
+                    ].map(step => (
+                        <li key={step.n} className="flex gap-3">
+                            <span className="w-6 h-6 rounded-full bg-sky-500/15 border border-sky-500/25 text-sky-400 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step.n}</span>
+                            <div className="space-y-1">
+                                <p className="text-sm font-semibold text-white">{step.title}</p>
+                                <p className="text-sm text-zinc-400 leading-relaxed">{step.body}</p>
+                            </div>
+                        </li>
+                    ))}
                 </ol>
             </div>
 
             {!connected && (
                 <button
                     onClick={onConnect}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 text-sm transition"
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 text-sm font-semibold transition w-full justify-center"
                 >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/>
                     </svg>
-                    Conectar cuenta Pinterest
+                    Autorizar cuenta Pinterest
                 </button>
-            )}
-
-            {connected && (
-                <div className="flex items-center gap-2 text-xs text-emerald-400">
-                    <span>✓ Conectado.</span>
-                    <span className="text-zinc-500">Los pins se pueden publicar directamente desde la cola.</span>
-                </div>
             )}
         </div>
     );
