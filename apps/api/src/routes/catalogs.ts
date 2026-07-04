@@ -15,11 +15,13 @@ function ensureMongo(reply: any): boolean {
 }
 
 export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: any } = { io: null }) {
-    // GET /catalogs — list all catalogs
-    app.get("/catalogs", async (_req, reply) => {
+    // GET /catalogs — list all catalogs (optional ?nicheId=xxx&limit=N)
+    app.get("/catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const catalogs = await Catalog.find().sort({ createdAt: -1 }).lean();
+            const { nicheId, limit } = request.query as { nicheId?: string; limit?: string };
+            const query = nicheId ? { nicheIds: nicheId } : {};
+            const catalogs = await Catalog.find(query).sort({ createdAt: -1 }).limit(limit ? parseInt(limit) : 200).lean();
             return reply.send({ catalogs });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });

@@ -1,545 +1,357 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
+import { Copy, Check, Send, Sparkles, X, Download } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-interface PinterestPin {
-    _id: string;
-    nicheId: string;
-    nicheName: string;
+interface CatalogImage { url: string; publicId: string; }
+interface Catalog { _id: string; prompt: string; name: string; images: CatalogImage[]; status: string; }
+interface Niche { _id: string; name: string; nickname?: string; catalogIds?: string[]; }
+interface Board { id: string; name: string; }
+interface PinDraft {
     imageUrl: string;
+    prompt: string;
+    nicheName: string;
     title: string;
     description: string;
-    hashtags: string[];
-    amazonUrl: string;
-    boardId?: string;
-    boardSuggestion: string;
-    pinType: "cover" | "sample";
-    status: "pending" | "posted" | "skipped" | "scheduled" | "failed";
-    postedAt?: string;
-    pinterestPinId?: string;
-    error?: string;
-    createdAt: string;
+    hashtags: string;
+    generating: boolean;
+    copied: boolean;
 }
-
-interface Board {
-    id: string;
-    name: string;
-    pin_count?: number;
-}
-
-const STATUS_COLORS: Record<string, string> = {
-    pending:   "text-amber-400 bg-amber-400/10 border-amber-400/20",
-    posted:    "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-    skipped:   "text-zinc-500 bg-zinc-500/10 border-zinc-500/20",
-    scheduled: "text-sky-400 bg-sky-400/10 border-sky-400/20",
-    failed:    "text-red-400 bg-red-400/10 border-red-400/20",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-    pending: "Pendiente", posted: "Publicado", skipped: "Omitido",
-    scheduled: "Programado", failed: "Error",
-};
 
 export function PinterestPanel() {
-    const [pins, setPins] = useState<PinterestPin[]>([]);
+    const [niches, setNiches] = useState<Niche[]>([]);
+    const [selectedNicheId, setSelectedNicheId] = useState("");
+    const [catalogs, setCatalogs] = useState<Catalog[]>([]);
+    const [loadingNiches, setLoadingNiches] = useState(true);
+    const [loadingCatalogs, setLoadingCatalogs] = useState(false);
+    const [nicheSearch, setNicheSearch] = useState("");
+    const [nicheOpen, setNicheOpen] = useState(false);
+    const nicheRef = useRef<HTMLDivElement>(null);
+    const [drafts, setDrafts] = useState<PinDraft[]>([]);
+    const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
     const [boards, setBoards] = useState<Board[]>([]);
     const [connected, setConnected] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [generating, setGenerating] = useState(false);
     const [selectedBoard, setSelectedBoard] = useState("");
-    const [filterStatus, setFilterStatus] = useState("pending");
-    const [pendingTotal, setPendingTotal] = useState(0);
-    const [expandedPin, setExpandedPin] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<"queue" | "connect">("queue");
-    const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
     const [publishing, setPublishing] = useState<string | null>(null);
-    const [batchPublishing, setBatchPublishing] = useState(false);
 
-    const fetchStatus = useCallback(async () => {
-        try {
-            const r = await fetch(`${API}/pinterest/status`);
-            const d = await r.json();
-            setConnected(d.connected);
-            if (d.connected) {
-                const rb = await fetch(`${API}/pinterest/boards`);
-                if (rb.ok) {
-                    const db = await rb.json();
-                    setBoards(db.boards ?? []);
+    // Load niches + Pinterest status
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const [rn, rs] = await Promise.all([fetch(`${API}/niches`), fetch(`${API}/pinterest/status`)]);
+                if (rn.ok) { const d = await rn.json(); setNiches((d.niches ?? []).filter((n: Niche) => (n.catalogIds?.length ?? 0) > 0)); }
+                if (rs.ok) {
+                    const d = await rs.json();
+                    setConnected(d.connected);
+                    if (d.connected) {
+                        const rb = await fetch(`${API}/pinterest/boards`);
+                        if (rb.ok) { const db = await rb.json(); setBoards(db.boards ?? []); }
+                    }
                 }
-            }
-        } catch { /* ignore */ }
+            } finally { setLoadingNiches(false); }
+        };
+        void load();
     }, []);
 
-    const fetchQueue = useCallback(async () => {
-        try {
-            const r = await fetch(`${API}/pinterest/queue?status=${filterStatus}&limit=50`);
-            if (!r.ok) return;
-            const d = await r.json();
-            setPins(d.pins ?? []);
-            setPendingTotal(d.pendingTotal ?? 0);
-        } catch { /* ignore */ }
-    }, [filterStatus]);
-
+    // Load catalogs when niche changes
     useEffect(() => {
-        setLoading(true);
-        Promise.all([fetchStatus(), fetchQueue()]).finally(() => setLoading(false));
-    }, [fetchStatus, fetchQueue]);
+        if (!selectedNicheId) { setCatalogs([]); return; }
+        setLoadingCatalogs(true);
+        setCatalogs([]);
+        fetch(`${API}/catalogs?nicheId=${selectedNicheId}&limit=30`)
+            .then(r => r.ok ? r.json() : { catalogs: [] })
+            .then(d => setCatalogs((d.catalogs ?? []).filter((c: Catalog) => c.images?.length > 0)))
+            .finally(() => setLoadingCatalogs(false));
+    }, [selectedNicheId]);
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("pinterest") === "connected") {
-            fetchStatus();
-            const url = new URL(window.location.href);
-            url.searchParams.delete("pinterest");
-            window.history.replaceState({}, "", url.toString());
-        }
-    }, [fetchStatus]);
+    const selectedNiche = niches.find(n => n._id === selectedNicheId);
+    const allImages = catalogs.flatMap(c => c.images.map(img => ({ url: img.url, prompt: c.prompt, catalogName: c.name })));
 
-    const handleGenerate = async () => {
-        setGenerating(true);
-        try {
-            const r = await fetch(`${API}/pinterest/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.error);
-            await fetchQueue();
-            alert(`✓ ${d.created} pins generados para ${d.nichesProcessed} nichos.`);
-        } catch (e: any) {
-            alert(`Error: ${e.message}`);
-        } finally {
-            setGenerating(false);
-        }
-    };
-
-    const handlePatch = async (id: string, body: object) => {
-        const r = await fetch(`${API}/pinterest/pins/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        });
-        if (!r.ok) { const d = await r.json(); alert(d.error); return; }
-        await fetchQueue();
-    };
-
-    const handleDelete = async (id: string) => {
-        if (!confirm("¿Eliminar este pin de la cola?")) return;
-        await fetch(`${API}/pinterest/pins/${id}`, { method: "DELETE" });
-        await fetchQueue();
-    };
-
-    const handlePublishOne = async (pin: PinterestPin) => {
-        const board = pin.boardId || selectedBoard;
-        if (!board) { alert("Selecciona un board primero."); return; }
-        setPublishing(pin._id);
-        try {
-            const r = await fetch(`${API}/pinterest/pins/${pin._id}/publish`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ boardId: board }),
-            });
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.error);
-            await fetchQueue();
-        } catch (e: any) {
-            alert(`Error al publicar: ${e.message}`);
-        } finally {
-            setPublishing(null);
-        }
-    };
-
-    const handleBatchPublish = async () => {
-        if (!selectedBoard) { alert("Selecciona un board primero."); return; }
-        if (!confirm(`¿Publicar los primeros 5 pins pendientes en "${boards.find(b => b.id === selectedBoard)?.name}"?`)) return;
-        setBatchPublishing(true);
-        try {
-            const r = await fetch(`${API}/pinterest/publish-batch`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ boardId: selectedBoard, limit: 5 }),
-            });
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.error);
-            await fetchQueue();
-            alert(`✓ Publicados: ${d.published}. Errores: ${d.errors?.length ?? 0}`);
-        } catch (e: any) {
-            alert(`Error: ${e.message}`);
-        } finally {
-            setBatchPublishing(false);
-        }
-    };
-
-    const handleCopyCaption = (pin: PinterestPin) => {
-        const text = `${pin.title}\n\n${pin.description}\n\n${pin.hashtags.join(" ")}`;
-        navigator.clipboard.writeText(text).then(() => {
-            setCopyFeedback(pin._id);
-            setTimeout(() => setCopyFeedback(null), 2000);
+    const toggleImage = (url: string) => {
+        setSelectedImages(prev => {
+            const next = new Set(prev);
+            if (next.has(url)) { next.delete(url); setDrafts(d => d.filter(x => x.imageUrl !== url)); }
+            else next.add(url);
+            return next;
         });
     };
 
-    const handleConnectPinterest = async () => {
+    const confirmSelection = () => {
+        const nicheName = selectedNiche?.nickname?.trim() || selectedNiche?.name || "";
+        const newDrafts: PinDraft[] = [];
+        for (const url of selectedImages) {
+            if (drafts.some(d => d.imageUrl === url)) continue;
+            const img = allImages.find(i => i.url === url);
+            newDrafts.push({ imageUrl: url, prompt: img?.prompt ?? "", nicheName, title: "", description: "", hashtags: "", generating: false, copied: false });
+        }
+        if (newDrafts.length > 0) setDrafts(p => [...p, ...newDrafts]);
+    };
+
+    const removeDraft = (url: string) => {
+        setDrafts(p => p.filter(d => d.imageUrl !== url));
+        setSelectedImages(p => { const n = new Set(p); n.delete(url); return n; });
+    };
+
+    const updateDraft = (url: string, patch: Partial<PinDraft>) =>
+        setDrafts(p => p.map(d => d.imageUrl === url ? { ...d, ...patch } : d));
+
+    const generateText = async (draft: PinDraft) => {
+        updateDraft(draft.imageUrl, { generating: true });
         try {
-            const r = await fetch(`${API}/pinterest/auth-url`);
+            const r = await fetch(`${API}/ai/generate-text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "full-listing",
+                    niche: draft.nicheName,
+                    productType: "coloring-book",
+                    language: "en",
+                    extras: `image prompt used to create this image: "${draft.prompt}". Format: pinterest pin. Return a title (max 100 chars), description (max 500 chars) and 10 hashtags separated by spaces.`,
+                }),
+            });
             const d = await r.json();
-            if (!r.ok) throw new Error(d.error ?? "Error");
-            window.location.href = d.url;
+            if (!r.ok) throw new Error(d.error);
+            const text: string = typeof d.result === "string" ? d.result : JSON.stringify(d.result);
+            const titleM = text.match(/title[^:]*:\s*["']?(.{10,120})["']?/i);
+            const descM  = text.match(/description[^:]*:\s*["']?(.{20,600})["']?/i);
+            const tagsM  = text.match(/(?:hashtags?|tags?)[^:]*:\s*(.{5,400})/i);
+            updateDraft(draft.imageUrl, {
+                title:       titleM?.[1]?.replace(/["'\n]/g, "").trim() ?? "",
+                description: descM?.[1]?.replace(/["'\n]/g, "").trim() ?? "",
+                hashtags:    tagsM?.[1]?.replace(/["\[\]{}\n]/g, "").trim() ?? "",
+                generating: false,
+            });
+            toast.success("Texto generado");
         } catch (e: any) {
-            alert(e.message);
+            toast.error(e.message);
+            updateDraft(draft.imageUrl, { generating: false });
         }
     };
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-48 text-zinc-500 text-sm">
-                Cargando Pinterest...
-            </div>
-        );
-    }
+    const copyPin = (draft: PinDraft) => {
+        navigator.clipboard.writeText([draft.title, "", draft.description, "", draft.hashtags].join("\n")).then(() => {
+            updateDraft(draft.imageUrl, { copied: true });
+            setTimeout(() => updateDraft(draft.imageUrl, { copied: false }), 2000);
+        });
+    };
+
+    const publishPin = async (draft: PinDraft) => {
+        if (!connected) { toast.error("Conecta Pinterest API primero"); return; }
+        if (!selectedBoard) { toast.error("Selecciona un board"); return; }
+        setPublishing(draft.imageUrl);
+        try {
+            const hashtags = draft.hashtags.split(/[\s,]+/).map(t => t.startsWith("#") ? t : `#${t}`).filter(t => t.length > 1);
+            const r = await fetch(`${API}/pinterest/queue`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nicheName: draft.nicheName, imageUrl: draft.imageUrl, title: draft.title, description: draft.description, hashtags, amazonUrl: "", boardSuggestion: selectedBoard, pinType: "cover" }),
+            });
+            if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
+            toast.success("Pin publicado en Pinterest");
+            removeDraft(draft.imageUrl);
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally { setPublishing(null); }
+    };
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => { if (nicheRef.current && !nicheRef.current.contains(e.target as Node)) setNicheOpen(false); };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    const filteredNiches = niches.filter(n => {
+        const q = nicheSearch.toLowerCase();
+        return (n.nickname?.toLowerCase().includes(q) || n.name.toLowerCase().includes(q));
+    });
+
+    if (loadingNiches) return <div className="flex items-center justify-center h-32 text-zinc-500 text-sm">Cargando...</div>;
 
     return (
         <div className="space-y-5">
-            {/* Header */}
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5 text-red-500" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/>
-                    </svg>
-                    <h3 className="text-base font-bold text-white">Pinterest Queue</h3>
-                    {pendingTotal > 0 && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/20">
-                            {pendingTotal} pendientes
+
+            {/* Step 1 — pick niche */}
+            <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">1. Elige el nicho</p>
+                <div ref={nicheRef} className="relative">
+                    <button
+                        onClick={() => setNicheOpen(v => !v)}
+                        className="w-full flex items-center justify-between h-12 px-4 bg-white/5 border border-white/10 rounded-xl text-base text-left transition hover:border-white/20 focus:outline-none"
+                    >
+                        <span className={selectedNiche ? "text-white" : "text-zinc-500"}>
+                            {selectedNiche ? (selectedNiche.nickname?.trim() || selectedNiche.name) : "Selecciona un nicho..."}
                         </span>
-                    )}
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleGenerate}
-                        disabled={generating}
-                        className="text-sm px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-600/30 transition disabled:opacity-50"
-                    >
-                        {generating ? "Generando..." : "+ Generar pins"}
+                        <svg className={`w-4 h-4 text-zinc-500 transition-transform ${nicheOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
                     </button>
-                    <button
-                        onClick={() => setActiveTab(activeTab === "queue" ? "connect" : "queue")}
-                        className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 border border-white/10 transition"
-                    >
-                        {activeTab === "queue" ? "⚙ Conectar API" : "← Cola"}
-                    </button>
-                </div>
-            </div>
 
-            {/* Context block — always visible */}
-            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Para qué sirve</p>
-                <p className="text-sm text-zinc-300 leading-relaxed">
-                    Pinterest genera <strong className="text-white">tráfico externo orgánico</strong> a tus libros en Amazon. El algoritmo de Amazon A10 premia el tráfico que llega desde fuera — más tráfico externo = mejor posición en búsquedas = más ventas sin pagar anuncios.
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-lg bg-white/[0.03] border border-white/8 p-3 space-y-1.5">
-                        <p className="text-xs font-bold text-rose-400 uppercase tracking-wide">Opción B — Manual</p>
-                        <p className="text-sm text-zinc-400 leading-snug">
-                            Genera los pins arriba. Cada pin tiene título, descripción y hashtags listos. Pulsa <strong className="text-white">Copiar</strong> y pégalo en Pinterest. Sin configuración, funciona hoy mismo.
-                        </p>
-                    </div>
-                    <div className="rounded-lg bg-white/[0.03] border border-white/8 p-3 space-y-1.5">
-                        <p className="text-xs font-bold text-sky-400 uppercase tracking-wide">Opción A — Automático</p>
-                        <p className="text-sm text-zinc-400 leading-snug">
-                            Conecta tu cuenta Pinterest via API y pulsa <strong className="text-white">Publicar</strong>. Los pins se suben solos al board que elijas. Requiere ~10 min de configuración — ver <strong className="text-white">Conectar API</strong>.
-                        </p>
-                    </div>
-                </div>
-                <p className="text-xs text-zinc-600">
-                    Requisito: tus nichos deben tener ASIN y portada para aparecer en la cola.
-                </p>
-            </div>
-
-            {activeTab === "connect" ? (
-                <ConnectTab connected={connected} onConnect={handleConnectPinterest} />
-            ) : (
-                <>
-                    {/* Board selector + batch publish */}
-                    {connected && boards.length > 0 && (
-                        <div className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10">
-                            <select
-                                value={selectedBoard}
-                                onChange={e => setSelectedBoard(e.target.value)}
-                                className="flex-1 text-sm bg-transparent text-white border-none outline-none"
-                            >
-                                <option value="">Seleccionar board...</option>
-                                {boards.map(b => (
-                                    <option key={b.id} value={b.id}>{b.name}</option>
-                                ))}
-                            </select>
-                            <button
-                                onClick={handleBatchPublish}
-                                disabled={!selectedBoard || batchPublishing}
-                                className="text-sm px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition disabled:opacity-40"
-                            >
-                                {batchPublishing ? "Publicando..." : "Publicar 5"}
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Status filter */}
-                    <div className="flex gap-1.5">
-                        {["pending", "posted", "skipped", "failed"].map(s => (
-                            <button
-                                key={s}
-                                onClick={() => setFilterStatus(s)}
-                                className={`text-xs px-3 py-1 rounded-full border transition ${
-                                    filterStatus === s
-                                        ? STATUS_COLORS[s]
-                                        : "text-zinc-500 border-zinc-700 hover:border-zinc-500"
-                                }`}
-                            >
-                                {STATUS_LABELS[s]}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Pin list */}
-                    {pins.length === 0 ? (
-                        <div className="text-center py-12 text-zinc-500 text-sm">
-                            No hay pins {STATUS_LABELS[filterStatus]?.toLowerCase()}s.
-                            {filterStatus === "pending" && (
-                                <p className="mt-1 text-xs">Pulsa "+ Generar pins" para crear la cola.</p>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="space-y-2">
-                            {pins.map(pin => (
-                                <PinRow
-                                    key={pin._id}
-                                    pin={pin}
-                                    boards={boards}
-                                    connected={connected}
-                                    expanded={expandedPin === pin._id}
-                                    publishing={publishing === pin._id}
-                                    copyFeedback={copyFeedback === pin._id}
-                                    selectedBoard={selectedBoard}
-                                    onToggleExpand={() => setExpandedPin(expandedPin === pin._id ? null : pin._id)}
-                                    onCopy={() => handleCopyCaption(pin)}
-                                    onSkip={() => handlePatch(pin._id, { status: "skipped" })}
-                                    onRestore={() => handlePatch(pin._id, { status: "pending" })}
-                                    onDelete={() => handleDelete(pin._id)}
-                                    onPublish={() => handlePublishOne(pin)}
-                                    onBoardChange={(boardId: string) => handlePatch(pin._id, { boardId })}
+                    {nicheOpen && (
+                        <div className="absolute z-50 top-full mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 shadow-2xl overflow-hidden">
+                            <div className="p-2 border-b border-white/8">
+                                <input
+                                    autoFocus
+                                    value={nicheSearch}
+                                    onChange={e => setNicheSearch(e.target.value)}
+                                    placeholder="Buscar nicho..."
+                                    className="w-full h-10 px-3 bg-white/5 rounded-lg text-base text-white placeholder:text-zinc-500 focus:outline-none"
                                 />
-                            ))}
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {filteredNiches.length === 0 && <p className="text-base text-zinc-600 px-4 py-4">Sin resultados.</p>}
+                                {filteredNiches.map(n => (
+                                    <button key={n._id}
+                                        onClick={() => { setSelectedNicheId(n._id); setSelectedImages(new Set()); setNicheOpen(false); setNicheSearch(""); }}
+                                        className={`w-full text-left px-4 py-3 text-base transition hover:bg-white/5 ${selectedNicheId === n._id ? "text-rose-300 font-semibold" : "text-zinc-200"}`}>
+                                        {n.nickname?.trim() || n.name}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
-                </>
-            )}
-        </div>
-    );
-}
-
-function PinRow({
-    pin, boards, connected, expanded, publishing, copyFeedback, selectedBoard,
-    onToggleExpand, onCopy, onSkip, onRestore, onDelete, onPublish, onBoardChange,
-}: {
-    pin: PinterestPin;
-    boards: Board[];
-    connected: boolean;
-    expanded: boolean;
-    publishing: boolean;
-    copyFeedback: boolean;
-    selectedBoard: string;
-    onToggleExpand: () => void;
-    onCopy: () => void;
-    onSkip: () => void;
-    onRestore: () => void;
-    onDelete: () => void;
-    onPublish: () => void;
-    onBoardChange: (id: string) => void;
-}) {
-    return (
-        <div className={`rounded-xl border transition-all ${expanded ? "border-white/15 bg-white/5" : "border-white/8 bg-white/[0.03] hover:bg-white/5"}`}>
-            <div
-                className="flex items-center gap-3 p-3 cursor-pointer"
-                onClick={onToggleExpand}
-            >
-                {/* Thumbnail */}
-                <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-zinc-800">
-                    <img src={pin.imageUrl} alt="" className="w-full h-full object-cover" onError={e => { (e.target as any).style.display = "none"; }} />
                 </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs px-1.5 py-0.5 rounded border ${STATUS_COLORS[pin.status]}`}>
-                            {STATUS_LABELS[pin.status]}
-                        </span>
-                        <span className="text-xs text-zinc-500">
-                            {pin.pinType === "cover" ? "Portada" : "Interior"}
-                        </span>
-                    </div>
-                    <p className="text-sm font-medium text-white truncate">{pin.title}</p>
-                    <p className="text-xs text-zinc-500 truncate">{pin.nicheName}</p>
-                </div>
-
-                {/* Quick actions */}
-                <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                    <button
-                        onClick={onCopy}
-                        title="Copiar caption"
-                        className={`text-xs px-2.5 py-1 rounded-lg border transition ${
-                            copyFeedback
-                                ? "text-emerald-400 bg-emerald-400/15 border-emerald-400/20"
-                                : "text-zinc-400 bg-white/5 border-white/10 hover:text-white"
-                        }`}
-                    >
-                        {copyFeedback ? "✓ Copiado" : "Copiar"}
-                    </button>
-
-                    {pin.status === "pending" && connected && (
-                        <button
-                            onClick={onPublish}
-                            disabled={publishing}
-                            className="text-xs px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition disabled:opacity-50"
-                        >
-                            {publishing ? "..." : "Publicar"}
-                        </button>
-                    )}
-
-                    {pin.status === "pending" && (
-                        <button
-                            onClick={onSkip}
-                            className="text-xs px-2.5 py-1 rounded-lg text-zinc-500 bg-white/5 border border-white/10 hover:text-zinc-300 transition"
-                        >
-                            Skip
-                        </button>
-                    )}
-                    {pin.status !== "pending" && (
-                        <button
-                            onClick={onRestore}
-                            className="text-xs px-2.5 py-1 rounded-lg text-zinc-500 bg-white/5 border border-white/10 hover:text-zinc-300 transition"
-                        >
-                            ↩ Restaurar
-                        </button>
-                    )}
-                </div>
+                {niches.length === 0 && <p className="text-sm text-zinc-600">No hay nichos con imágenes generadas.</p>}
             </div>
 
-            {/* Expanded content */}
-            {expanded && (
-                <div className="px-3 pb-4 space-y-3 border-t border-white/8 pt-3">
-                    {/* Full caption preview */}
-                    <div className="rounded-lg bg-black/30 p-3 text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
-                        <span className="font-semibold text-white">{pin.title}</span>
-                        {"\n\n"}
-                        {pin.description}
-                        {"\n\n"}
-                        <span className="text-rose-400/80">{pin.hashtags.join(" ")}</span>
-                    </div>
+            {/* Step 2 — pick images */}
+            {selectedNicheId && (
+                <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">2. Selecciona las imágenes</p>
 
-                    {/* Board selector */}
-                    {connected && boards.length > 0 && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-zinc-500 flex-shrink-0">Board:</span>
-                            <select
-                                value={pin.boardId ?? ""}
-                                onChange={e => onBoardChange(e.target.value)}
-                                className="flex-1 text-sm bg-black/30 text-white border border-white/10 rounded-lg px-2 py-1 outline-none"
-                            >
-                                <option value="">Sugerido: {pin.boardSuggestion}</option>
+                    {loadingCatalogs && <p className="text-sm text-zinc-500 py-4">Cargando imágenes...</p>}
+
+                    {!loadingCatalogs && allImages.length === 0 && (
+                        <p className="text-sm text-zinc-600 py-4">Este nicho no tiene imágenes generadas todavía.</p>
+                    )}
+
+                    {!loadingCatalogs && allImages.length > 0 && (
+                        <>
+                            <div className="flex flex-wrap gap-2">
+                                {allImages.map(({ url }) => {
+                                    const sel = selectedImages.has(url);
+                                    const inUse = drafts.some(d => d.imageUrl === url);
+                                    return (
+                                        <button key={url} onClick={() => !inUse && toggleImage(url)} disabled={inUse}
+                                            className={`relative w-20 h-20 rounded-xl overflow-hidden border-2 transition ${sel ? "border-rose-500" : "border-transparent hover:border-white/30"} ${inUse ? "opacity-40 cursor-default" : ""}`}>
+                                            <img src={url} alt="" className="w-full h-full object-cover" />
+                                            {sel && !inUse && (
+                                                <div className="absolute inset-0 bg-rose-500/30 flex items-center justify-center">
+                                                    <Check size={20} className="text-white drop-shadow" />
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {selectedImages.size > 0 && (
+                                <button onClick={confirmSelection}
+                                    className="h-9 px-4 rounded-xl bg-rose-600/80 hover:bg-rose-500 text-white text-sm font-semibold transition">
+                                    Crear pins con {selectedImages.size} imagen{selectedImages.size > 1 ? "es" : ""}
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* Step 3 — edit & publish */}
+            {drafts.length > 0 && (
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">3. Título y publicar</p>
+                        {connected && boards.length > 0 && (
+                            <select value={selectedBoard} onChange={e => setSelectedBoard(e.target.value)}
+                                className="h-7 px-2 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300 outline-none">
+                                <option value="">Board...</option>
                                 {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                             </select>
-                        </div>
-                    )}
-
-                    {/* Amazon link */}
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className="text-zinc-500">Amazon:</span>
-                        <a href={pin.amazonUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline truncate">
-                            {pin.amazonUrl}
-                        </a>
+                        )}
                     </div>
 
-                    {pin.error && (
-                        <p className="text-sm text-red-400 bg-red-400/10 rounded-lg px-3 py-2 border border-red-400/20">
-                            {pin.error}
-                        </p>
-                    )}
-
-                    <button onClick={onDelete} className="text-xs text-red-500/60 hover:text-red-400 transition">
-                        Eliminar de la cola
-                    </button>
+                    {drafts.map(draft => (
+                        <div key={draft.imageUrl} className="rounded-xl border border-white/8 bg-white/[0.02] p-3 flex gap-3">
+                            <img src={draft.imageUrl} alt="" className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-white/10" />
+                            <div className="flex-1 min-w-0 space-y-2">
+                                <div className="flex gap-2">
+                                    <input value={draft.title} onChange={e => updateDraft(draft.imageUrl, { title: e.target.value })}
+                                        placeholder="Título del pin..."
+                                        className="flex-1 h-8 px-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-rose-500/40" />
+                                    <button onClick={() => void generateText(draft)} disabled={draft.generating} title="Generar con IA"
+                                        className="h-8 w-8 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 border border-violet-600/30 transition disabled:opacity-40 flex items-center justify-center">
+                                        <Sparkles size={13} className={draft.generating ? "animate-pulse" : ""} />
+                                    </button>
+                                    <button onClick={() => removeDraft(draft.imageUrl)}
+                                        className="h-8 w-8 rounded-lg hover:bg-white/10 text-zinc-600 hover:text-zinc-400 transition flex items-center justify-center">
+                                        <X size={13} />
+                                    </button>
+                                </div>
+                                <textarea value={draft.description} onChange={e => updateDraft(draft.imageUrl, { description: e.target.value })}
+                                    placeholder="Descripción (se genera con ✦)..." rows={2}
+                                    className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none resize-none" />
+                                <input value={draft.hashtags} onChange={e => updateDraft(draft.imageUrl, { hashtags: e.target.value })}
+                                    placeholder="Hashtags (se generan con ✦)..."
+                                    className="w-full h-7 px-2.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-400 placeholder:text-zinc-600 focus:outline-none" />
+                                <div className="flex gap-2 flex-wrap">
+                                    <button onClick={async () => {
+                                        try {
+                                            const res = await fetch(draft.imageUrl);
+                                            const blob = await res.blob();
+                                            await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                                            toast.success("Imagen copiada al portapapeles");
+                                        } catch {
+                                            // fallback: open in new tab so user can copy manually
+                                            window.open(draft.imageUrl, "_blank");
+                                            toast.info("Abre la imagen y cópiala manualmente");
+                                        }
+                                    }} className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition">
+                                        <Copy size={11} />
+                                        Imagen
+                                    </button>
+                                    <a href={draft.imageUrl} download target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition">
+                                        <Download size={11} />
+                                        Descargar
+                                    </a>
+                                    <button onClick={() => { navigator.clipboard.writeText(draft.title); toast.success("Título copiado"); }} disabled={!draft.title}
+                                        className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition disabled:opacity-30">
+                                        <Copy size={11} />
+                                        Título
+                                    </button>
+                                    <button onClick={() => copyPin(draft)} disabled={!draft.title}
+                                        className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition disabled:opacity-30">
+                                        {draft.copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                        {draft.copied ? "Copiado" : "Todo"}
+                                    </button>
+                                    {connected && (
+                                        <button onClick={() => void publishPin(draft)} disabled={!draft.title || publishing === draft.imageUrl}
+                                            className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs border border-red-600/30 transition disabled:opacity-30">
+                                            <Send size={11} />
+                                            {publishing === draft.imageUrl ? "Publicando..." : "Publicar"}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
-        </div>
-    );
-}
 
-function ConnectTab({ connected, onConnect }: { connected: boolean; onConnect: () => void }) {
-    return (
-        <div className="space-y-4">
-            {/* Status */}
-            <div className={`flex items-center gap-3 p-3.5 rounded-xl border ${connected ? "border-emerald-500/20 bg-emerald-500/5" : "border-white/8 bg-white/[0.02]"}`}>
-                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${connected ? "bg-emerald-400" : "bg-zinc-600"}`} />
-                <p className="text-sm font-medium text-white">
-                    {connected
-                        ? "Cuenta Pinterest conectada — puedes publicar pins desde la cola"
-                        : "Pinterest no conectado — solo disponible el modo manual (Opción B)"}
-                </p>
-            </div>
-
-            {/* What is this */}
-            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2">
-                <p className="text-xs font-bold uppercase tracking-widest text-sky-400">Opción A — Publicación automática via API</p>
-                <p className="text-sm text-zinc-300 leading-relaxed">
-                    Con la API conectada, cada pin de la cola tiene un botón <strong className="text-white">Publicar</strong> que lo sube directamente a tu Pinterest — sin abrir el navegador, sin copiar/pegar. También puedes lanzar 5 pins en lote con 3 segundos entre ellos para no disparar el rate limit.
-                </p>
-            </div>
-
-            {/* Step by step */}
-            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Cómo configurarlo (~10 min)</p>
-                <ol className="space-y-4">
-                    {[
-                        {
-                            n: "1",
-                            title: "Crear app en Pinterest Developers",
-                            body: 'Ve a developers.pinterest.com → My Apps → Create App. El nombre da igual. En "Redirect URIs" añade exactamente: http://localhost:3001/pinterest/callback',
-                        },
-                        {
-                            n: "2",
-                            title: "Activar los permisos necesarios",
-                            body: "En tu app activa estos tres scopes: boards:read · boards:write · pins:write. Sin los tres no funcionará.",
-                        },
-                        {
-                            n: "3",
-                            title: "Guardar las credenciales en Ajustes",
-                            body: "Copia el App ID y el App Secret. Ve a Ajustes y crea dos entradas: PINTEREST_APP_ID y PINTEREST_APP_SECRET con sus valores.",
-                        },
-                        {
-                            n: "4",
-                            title: "Autorizar tu cuenta",
-                            body: "Pulsa el botón de abajo. Te lleva a Pinterest para autorizar la app. Aceptas y vuelves aquí automáticamente con la cuenta conectada.",
-                        },
-                    ].map(step => (
-                        <li key={step.n} className="flex gap-3">
-                            <span className="w-6 h-6 rounded-full bg-sky-500/15 border border-sky-500/25 text-sky-400 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step.n}</span>
-                            <div className="space-y-1">
-                                <p className="text-sm font-semibold text-white">{step.title}</p>
-                                <p className="text-sm text-zinc-400 leading-relaxed">{step.body}</p>
-                            </div>
-                        </li>
-                    ))}
-                </ol>
-            </div>
-
+            {/* Pinterest API connection */}
             {!connected && (
-                <button
-                    onClick={onConnect}
-                    className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 text-sm font-semibold transition w-full justify-center"
-                >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/>
-                    </svg>
-                    Autorizar cuenta Pinterest
-                </button>
+                <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2">
+                    <p className="text-sm text-zinc-400">Conecta Pinterest API para publicar directamente. Sin API, usa <strong className="text-white">Copiar</strong> y pégalo a mano.</p>
+                    <button onClick={async () => {
+                        try {
+                            const r = await fetch(`${API}/pinterest/auth-url`);
+                            const d = await r.json();
+                            if (!r.ok) throw new Error(d.error);
+                            window.location.href = d.url;
+                        } catch (e: any) { toast.error(e.message); }
+                    }} className="h-8 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition">
+                        Conectar Pinterest API
+                    </button>
+                </div>
             )}
         </div>
     );

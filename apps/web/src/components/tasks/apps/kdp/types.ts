@@ -68,6 +68,7 @@ export interface NicheFE {
         scannedAt?: string;
     };
     radarInsight?: Record<string, unknown>;
+    competitorIntel?: Record<string, unknown>;
     autoPilotEnabled?: boolean;
     currentPrice?: number;
     suggestedPrice?: number;

@@ -10332,6 +10332,29 @@ POST-LANZAMIENTO:
                             </div>
                         </div>
                     )}
+                    {/* Creating skeleton — optimistic card while POST /catalogs is in flight */}
+                    {isCreatingCatalog && (
+                        <div className="mb-3 rounded-2xl border border-sky-500/20 bg-sky-500/[0.03] overflow-hidden animate-pulse">
+                            <div className="h-px w-full bg-sky-500/20" />
+                            <div className="p-4 pl-5 space-y-3">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="space-y-2 flex-1">
+                                        <div className="h-5 w-2/5 bg-sky-500/10 rounded-lg" />
+                                        <div className="h-3 w-3/5 bg-white/[0.04] rounded-lg" />
+                                    </div>
+                                    <div className="h-5 w-24 bg-sky-500/10 rounded-full" />
+                                </div>
+                                <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))" }}>
+                                    {Array.from({ length: catalogFormCount || 5 }).map((_, i) => (
+                                        <div key={i} className="aspect-square rounded-lg bg-sky-500/[0.06]" style={{ animationDelay: `${i * 0.06}s` }} />
+                                    ))}
+                                </div>
+                                <div className="h-1.5 w-full rounded-full bg-sky-500/10 overflow-hidden">
+                                    <div className="h-full w-1/3 bg-gradient-to-r from-sky-500/40 to-sky-400/60 rounded-full animate-pulse" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     {iaCatalogs.length > 0 && (() => {
                         const filteredByCatalogNiche = (() => {
                             let base = iaCatalogs;

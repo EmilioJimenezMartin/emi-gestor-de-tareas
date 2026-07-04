@@ -55,6 +55,7 @@ export interface INiche extends Document {
     scoredAt?: Date;
     marketScan?: Record<string, unknown>;
     radarInsight?: Record<string, unknown>;
+    competitorIntel?: Record<string, unknown>;
     pendingCatalogPrompts?: string[];
     autoPilotEnabled?: boolean;
     currentPrice?: number;
@@ -143,6 +144,7 @@ const NicheSchema = new Schema<INiche>(
         marketScan: { type: Object },
         // Insight completo del Radar (precio típico, perfil comprador, competidores, oportunidad)
         radarInsight: { type: Object },
+        competitorIntel: { type: Object },
         pendingCatalogPrompts: [{ type: String }],
         autoPilotEnabled: { type: Boolean, default: false },
         currentPrice: { type: Number },

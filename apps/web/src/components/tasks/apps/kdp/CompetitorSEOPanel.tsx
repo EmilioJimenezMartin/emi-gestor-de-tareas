@@ -45,6 +45,7 @@ interface SimpleNiche {
     name: string;
     nickname?: string;
     productType?: string;
+    competitorIntel?: Record<string, unknown>;
 }
 
 interface Props {
@@ -65,6 +66,14 @@ export function CompetitorSEOPanel({ defaultKeyword = "", defaultProductType = "
     const [expandedBook, setExpandedBook] = useState<number | null>(null);
     const [activeSection, setActiveSection] = useState<"keywords" | "books" | "categories">("keywords");
 
+    const saveToNiche = async (nicheId: string, intel: CompetitorSEOIntelligence) => {
+        await fetch(`${API}/niches/${nicheId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ competitorIntel: intel }),
+        }).catch(() => {});
+    };
+
     const analyze = async () => {
         if (!keyword.trim()) return;
         setLoading(true);
@@ -80,6 +89,7 @@ export function CompetitorSEOPanel({ defaultKeyword = "", defaultProductType = "
             if (!r.ok) throw new Error(d.error ?? "Error analizando");
             setData(d);
             onAnalysisComplete?.(d);
+            if (linkedNicheId) void saveToNiche(linkedNicheId, d);
         } catch (e: any) {
             setError(e.message);
         } finally {
@@ -105,7 +115,18 @@ export function CompetitorSEOPanel({ defaultKeyword = "", defaultProductType = "
                                 setLinkedNicheId(id);
                                 if (id) {
                                     const n = niches.find(n => n._id === id);
-                                    if (n) setKeyword(n.nickname?.trim() || n.name);
+                                    if (n) {
+                                        setKeyword(n.nickname?.trim() || n.name);
+                                        if (n.competitorIntel) {
+                                            const saved = n.competitorIntel as unknown as CompetitorSEOIntelligence;
+                                            setData(saved);
+                                            onAnalysisComplete?.(saved);
+                                        } else {
+                                            setData(null);
+                                        }
+                                    }
+                                } else {
+                                    setData(null);
                                 }
                             }}
                             className="flex-1 h-9 px-3 bg-white/5 border border-white/10 rounded-xl text-sm text-zinc-300 outline-none"
@@ -160,6 +181,12 @@ export function CompetitorSEOPanel({ defaultKeyword = "", defaultProductType = "
 
             {data && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {data.scrapedAt && (
+                        <p className="text-xs text-zinc-600 px-1">
+                            Análisis guardado · {new Date(data.scrapedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}
+                            {linkedNicheId && <span className="text-zinc-700"> · Re-analiza para actualizar</span>}
+                        </p>
+                    )}
                     {/* Summary stats */}
                     <div className="grid grid-cols-4 gap-3">
                         {[

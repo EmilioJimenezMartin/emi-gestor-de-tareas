@@ -172,6 +172,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (request.body.backCoverUrl !== undefined) update.backCoverUrl = request.body.backCoverUrl;
             if (request.body.sampleImageUrl !== undefined) update.sampleImageUrl = request.body.sampleImageUrl;
             if (request.body.discoveryImagePrompt !== undefined) update.discoveryImagePrompt = request.body.discoveryImagePrompt;
+            if (request.body.competitorIntel !== undefined) update.competitorIntel = request.body.competitorIntel;
             const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             // When autopilot is enabled on a niche that's already past the catalog phase, kick off autopilot-run

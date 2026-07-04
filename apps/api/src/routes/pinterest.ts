@@ -63,6 +63,30 @@ export async function registerPinterestRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /pinterest/queue — add a pin manually
+    app.post("/pinterest/queue", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { nicheName, imageUrl, title, description, hashtags, amazonUrl, boardSuggestion, pinType } = request.body ?? {};
+            if (!imageUrl || !title) return reply.status(400).send({ error: "imageUrl y title son obligatorios" });
+            const pin = await PinterestPin.create({
+                nicheId: "manual",
+                nicheName: nicheName || "Manual",
+                imageUrl,
+                title,
+                description: description || "",
+                hashtags: hashtags || [],
+                amazonUrl: amazonUrl || "",
+                boardSuggestion: boardSuggestion || "",
+                pinType: pinType || "cover",
+                status: "pending",
+            });
+            return reply.send({ pin });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // ── Pin generation ────────────────────────────────────────────────────────
 
     // POST /pinterest/generate — generate pins for published niches
