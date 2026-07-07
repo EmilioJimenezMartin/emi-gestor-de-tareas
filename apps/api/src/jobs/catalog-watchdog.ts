@@ -150,18 +150,11 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
                         });
                         continue;
                     }
-                    // Max retries hit — cancel and alert
-                    fresh.status = "cancelled";
-                    fresh.lastError = `Watchdog: cancelado tras ${MAX_AUTO_RESTARTS} reintentos sin éxito`;
-                    await fresh.save();
-                    io?.emit("catalog:progress", { catalogId, status: "cancelled", current: fresh.images.length, total: fresh.totalImages, skipped: fresh.skippedImages ?? 0, lastError: fresh.lastError });
-                    io?.emit("catalog:completed", { catalogId });
-                    void activateNextQueued(agenda, io);
-                    void triggerAutoPilotContinue(agenda, catalogId, fresh.nicheIds ?? [], io);
+                    // Max retries hit — leave it running, just notify. Never auto-cancel.
+                    console.warn(`[watchdog] Catalog ${catalogId} "${fresh.name}" — ${MAX_AUTO_RESTARTS} smart-retries exhausted, leaving as-is (no auto-cancel)`);
                     await shouldNotify("watchdog.restart").then(ok => {
-                        if (ok) sendTelegram(`⛔ <b>Catálogo cancelado</b>\n"${fresh.name}" — ${MAX_AUTO_RESTARTS} reintentos fallidos. Libera el slot.`).catch(() => {});
+                        if (ok) sendTelegram(`⚠️ <b>Catálogo bloqueado</b>\n"${fresh.name}" — ${MAX_AUTO_RESTARTS} reintentos fallidos. Requiere revisión manual.`).catch(() => {});
                     });
-                    console.log(`[watchdog] Catalog ${catalogId} cancelled after ${MAX_AUTO_RESTARTS} restarts`);
                     continue;
                 }
 
@@ -217,14 +210,8 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
 
                 const reactivations = (catalog as any).retries ?? 0;
                 if (reactivations >= MAX_QUEUE_REACTIVATIONS) {
-                    await Catalog.findByIdAndUpdate(catalogId, {
-                        status: "cancelled",
-                        lastError: `Watchdog: cancelado tras ${MAX_QUEUE_REACTIVATIONS} reactivaciones sin éxito en estado queued`,
-                    });
-                    io?.emit("catalog:progress", { catalogId, status: "cancelled", current: 0, total: (catalog as any).totalImages, skipped: 0, lastError: "Watchdog: cancelado" });
-                    io?.emit("catalog:completed", { catalogId });
-                    console.warn(`[watchdog] Catalog ${catalogId} "${(catalog as any).name}" cancelled — ${MAX_QUEUE_REACTIVATIONS} queue reactivations exhausted`);
-                    sendTelegram(`⛔ <b>Catálogo cancelado</b>\n"${(catalog as any).name}" — ${MAX_QUEUE_REACTIVATIONS} intentos de activación fallidos`).catch(() => {});
+                    // Never auto-cancel — leave as queued, just warn.
+                    console.warn(`[watchdog] Catalog ${catalogId} "${(catalog as any).name}" — ${MAX_QUEUE_REACTIVATIONS} queue reactivations exhausted, leaving as queued (no auto-cancel)`);
                     continue;
                 }
 

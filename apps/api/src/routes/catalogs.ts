@@ -21,7 +21,8 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
         try {
             const { nicheId, limit } = request.query as { nicheId?: string; limit?: string };
             const query = nicheId ? { nicheIds: nicheId } : {};
-            const catalogs = await Catalog.find(query).sort({ createdAt: -1 }).limit(limit ? parseInt(limit) : 200).lean();
+            const parsedLimit = limit ? parseInt(limit) : 9999;
+            const catalogs = await Catalog.find(query).sort({ createdAt: -1 }).limit(parsedLimit).lean();
             return reply.send({ catalogs });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });

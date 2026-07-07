@@ -94,6 +94,7 @@ export interface NicheFE {
         opportunityScore: number;
     };
     saturationScannedAt?: string;
+    catalogImageOrder?: string[];
     createdAt: string;
     updatedAt?: string;
 }

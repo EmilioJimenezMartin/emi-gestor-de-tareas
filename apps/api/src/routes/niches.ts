@@ -1935,6 +1935,70 @@ Estructura exacta:
     });
 
     // ── Competitor SEO Analysis ───────────────────────────────────────────────
+    // POST /niches/cover-intel — scrape top Amazon cover images for inspiration
+    app.post("/niches/cover-intel", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { keyword = "mandala coloring book adults" } = request.body ?? {};
+            const searchQ = keyword.toLowerCase().includes("coloring") ? keyword : `${keyword} coloring book`;
+
+            // DDG search
+            const ddgUrl = `https://html.duckduckgo.com/html/?q=site:amazon.com+${encodeURIComponent(searchQ)}`;
+            const ddgRes = await fetch(ddgUrl, {
+                headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36", "Accept-Language": "en-US,en;q=0.9" },
+                signal: AbortSignal.timeout(15_000),
+            });
+            const ddgText = await ddgRes.text();
+
+            // Extract ASINs
+            const asinRe = /amazon\.com\/(?:[^"'\s<>]*\/)?dp\/([A-Z0-9]{10})/g;
+            const asins = new Set<string>();
+            let m: RegExpExecArray | null;
+            while ((m = asinRe.exec(ddgText)) !== null && asins.size < 10) asins.add(m[1]);
+
+            if (asins.size === 0) return reply.send({ covers: [], keyword });
+
+            const jinaKey = process.env.JINA_API_KEY;
+            const jinaH: Record<string, string> = {
+                Accept: "text/plain", "X-Return-Format": "text",
+                "X-No-Cache": "true", "X-Timeout": "12",
+                ...(jinaKey ? { Authorization: `Bearer ${jinaKey}` } : {}),
+            };
+
+            const covers: Array<{ asin: string; title: string; coverUrl: string; rank: number }> = [];
+            let rank = 1;
+            const PAGE_UI = /^(Skip|About this|Buying options|Videos|Reviews|Keyboard|Amazon|Best Sellers|Under \$|Health|Home|Add to|See more|Report|Delivering|Update|All Departments|Alexa|Cart|Orders)/i;
+
+            for (const asin of asins) {
+                if (covers.length >= 8) break;
+                try {
+                    const r = await fetch(`https://r.jina.ai/https://www.amazon.com/dp/${asin}`, {
+                        headers: jinaH, signal: AbortSignal.timeout(15_000),
+                    });
+                    if (!r.ok) continue;
+                    const text = await r.text();
+                    if (text.length < 200) continue;
+
+                    // Extract Amazon CDN image URL
+                    const imgMatch = text.match(/https:\/\/m\.media-amazon\.com\/images\/I\/([A-Za-z0-9%_+.-]{10,80})\.(?:jpg|jpeg|png)/i);
+                    if (!imgMatch) continue;
+                    const coverUrl = imgMatch[0].replace(/\._[A-Z]{2}\d+_\./g, "._SL800_.").replace(/\?.*$/, "");
+
+                    // Extract title (first meaningful non-UI line)
+                    const title = text.split("\n").map((l: string) => l.trim()).find((l: string) =>
+                        l.length > 15 && l.length < 200 && /[A-Za-z]/.test(l[0]) && !PAGE_UI.test(l)
+                    ) ?? `Book ${rank}`;
+
+                    covers.push({ asin, title, coverUrl, rank: rank++ });
+                } catch { /* skip failed */ }
+            }
+
+            return reply.send({ covers, keyword: searchQ });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     app.post("/niches/competitor-seo", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {

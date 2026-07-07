@@ -92,12 +92,22 @@ export function NicheDetailModal(props: NicheDetailModalProps) {
 
 const detailNiche = niches.find(n => n._id === nicheDetailId);
 if (!detailNiche) return null;
-const linkedCats = iaCatalogs.filter(c => c.nicheIds?.includes(nicheDetailId));
+// Bidirectional: catalog has the niche in nicheIds OR niche has the catalog in catalogIds
+const linkedCats = iaCatalogs.filter(c =>
+    (c.nicheIds ?? []).includes(nicheDetailId) ||
+    (detailNiche.catalogIds ?? []).includes(c._id)
+);
 const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId || (img.nicheIds ?? []).includes(nicheDetailId ?? ""));
 const allImgs: { publicId: string; url: string; width?: number; height?: number; catalogId?: string }[] = (() => {
     const seen = new Set<string>();
+    const catImgs = linkedCats.flatMap(c => c.images.map(img => ({ ...img, catalogId: c._id })));
+    // Fallback: when no catalog images are linked, use catalogImageOrder stored on the niche
+    const fallbackImgs = catImgs.length === 0
+        ? (detailNiche.catalogImageOrder ?? []).map(url => ({ publicId: url, url, catalogId: undefined }))
+        : [];
     return [
-        ...linkedCats.flatMap(c => c.images.map(img => ({ ...img, catalogId: c._id }))),
+        ...catImgs,
+        ...fallbackImgs,
         ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
     ].filter(img => { if (seen.has(img.publicId)) return false; seen.add(img.publicId); return true; });
 })();

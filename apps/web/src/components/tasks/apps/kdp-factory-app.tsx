@@ -1802,7 +1802,7 @@ export function KdpFactoryApp() {
     const fetchCatalogs = async () => {
         setIsLoadingCatalogs(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/catalogs`);
+            const res = await fetch(`${API_BASE_URL}/catalogs?limit=9999`);
             if (!res.ok) return;
             const data = await res.json();
             setIaCatalogs(data.catalogs ?? []);
@@ -2287,7 +2287,10 @@ export function KdpFactoryApp() {
                 }
 
                 lastPrompt = imagePrompt;
-                const modelId = NICHE_STYLE_MODEL[style] ?? NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
+                // Use the user's selected model if they've changed it from the default;
+                // otherwise fall back to the style-based mapping.
+                const styleModelId = NICHE_STYLE_MODEL[style] ?? NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
+                const modelId = selectedModel && selectedModel !== "pollinations-flux" ? selectedModel : styleModelId;
                 const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
                 const catalogLabel = styles.length > 1 ? `${niche.name} · ${style}` : niche.name;
 
@@ -3756,11 +3759,19 @@ export function KdpFactoryApp() {
     type TextLayer = {
         id: string; text: string; x: number; y: number;
         fontSize: number; color: string; fontFamily: string;
-        bold: boolean; italic: boolean; shadow: boolean;
-        stroke: boolean; strokeColor: string; uppercase: boolean;
+        bold: boolean; italic: boolean;
+        shadow: boolean; shadowStrength: number;
+        stroke: boolean; strokeColor: string; strokeWidth: number;
+        uppercase: boolean;
         align: "left" | "center" | "right";
         letterSpacing: number; opacity: number;
         visible: boolean;
+        // Background behind text
+        bg: "none" | "band" | "pill" | "blur" | "mark"; bgColor: string; bgOpacity: number;
+        // Glow
+        glow: boolean; glowColor: string; glowStrength: number;
+        // Gradient text
+        gradient: boolean; gradientFrom: string; gradientTo: string;
     };
     const COVER_FONTS: { label: string; value: string; group: string }[] = [
         // ── Editorial Bold ──
@@ -3838,8 +3849,12 @@ export function KdpFactoryApp() {
     ];
     const defaultLayer = (overrides: Partial<TextLayer> & Pick<TextLayer, "id" | "text">): TextLayer => ({
         x: 50, y: 80, fontSize: 24, color: "#ffffff", fontFamily: "sans-serif",
-        bold: false, italic: false, shadow: true, stroke: false, strokeColor: "#000000",
+        bold: false, italic: false, shadow: true, shadowStrength: 80,
+        stroke: false, strokeColor: "#000000", strokeWidth: 3,
         uppercase: false, align: "center", letterSpacing: 0, opacity: 100, visible: true,
+        bg: "none", bgColor: "#000000", bgOpacity: 55,
+        glow: false, glowColor: "#FFD700", glowStrength: 50,
+        gradient: false, gradientFrom: "#FFD700", gradientTo: "#FF6B35",
         ...overrides,
     });
     const [coverTextLayers, setCoverTextLayers] = useState<TextLayer[]>([]);
@@ -3858,8 +3873,10 @@ export function KdpFactoryApp() {
     const [coverHistoryTick, setCoverHistoryTick] = useState(0);
     // Colorize mode
     const [colorizeSourceUrl, setColorizeSourceUrl] = useState<string | null>(null);
-    const [colorizePrompt, setColorizePrompt] = useState("vibrant full color illustration, rich saturated colors, highly detailed");
+    const [colorizePrompt, setColorizePrompt] = useState("KDP coloring book cover, fully colored vibrant illustration, rich jewel tones (deep purple, gold, teal, emerald), one dominant subject fills frame, professional digital painting, bestseller quality, no text no watermarks, portrait orientation");
     const [isColorizing, setIsColorizing] = useState(false);
+    const [colorizeCatalogsCache, setColorizeCatalogsCache] = useState<IACatalogFE[]>([]);
+    const [isFetchingColorizeImgs, setIsFetchingColorizeImgs] = useState(false);
     const [isApplyingPalette, setIsApplyingPalette] = useState(false);
     const [applyingPaletteIdx, setApplyingPaletteIdx] = useState<number | null>(null);
     const [splitParts, setSplitParts] = useState(2);
@@ -4921,8 +4938,19 @@ POST-LANZAMIENTO:
         syncApRunning(); // also run immediately on mount
 
         socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE; lastError?: string; skipped?: number; promptSnippet?: string; imageStartedAt?: number }) => {
-            setIaCatalogs((prev) =>
-                prev.map((c) => {
+            setIaCatalogs((prev) => {
+                const exists = prev.some(c => c._id === data.catalogId);
+                if (!exists) {
+                    // Catalog not in local state — fetch it and add it so future events match
+                    fetch(`${API_BASE_URL}/catalogs/${data.catalogId}`)
+                        .then(r => r.json())
+                        .then(d => {
+                            if (d.catalog) setIaCatalogs(p => p.some(c => c._id === d.catalog._id) ? p : [d.catalog, ...p]);
+                        })
+                        .catch(() => {});
+                    return prev;
+                }
+                return prev.map((c) => {
                     if (c._id !== data.catalogId) return c;
                     const updated: IACatalogFE = {
                         ...c,
@@ -4930,7 +4958,6 @@ POST-LANZAMIENTO:
                         lastError: data.lastError !== undefined ? data.lastError : c.lastError,
                         skippedImages: data.skipped !== undefined ? data.skipped : c.skippedImages,
                         currentPrompt: data.promptSnippet !== undefined ? data.promptSnippet : c.currentPrompt,
-                        // Track when the current image started (reset when a new slot begins, clear when image arrives)
                         imageStartedAt: data.imageStartedAt !== undefined ? data.imageStartedAt : (data.image ? undefined : c.imageStartedAt),
                     };
                     if (data.image) {
@@ -4938,13 +4965,28 @@ POST-LANZAMIENTO:
                         if (!alreadyExists) updated.images = [...updated.images, data.image];
                     }
                     return updated;
-                })
-            );
+                });
+            });
         });
 
         socket.on("catalog:completed", (data: { catalogId: string }) => {
             let label = "Catálogo";
             setIaCatalogs((prev) => {
+                const exists = prev.some(c => c._id === data.catalogId);
+                if (!exists) {
+                    // Fetch the completed catalog so it appears in the UI
+                    fetch(`${API_BASE_URL}/catalogs/${data.catalogId}`)
+                        .then(r => r.json())
+                        .then(d => {
+                            if (d.catalog) {
+                                setIaCatalogs(p => p.some(c => c._id === d.catalog._id) ? p.map(c => c._id === d.catalog._id ? { ...d.catalog, status: "completed" as const } : c) : [{ ...d.catalog, status: "completed" as const }, ...p]);
+                                toast.success(`"${d.catalog.name}" completado · ${d.catalog.images?.length ?? 0} imágenes`);
+                                speak(`Catálogo ${d.catalog.name?.slice(0, 40)} completado`);
+                            }
+                        })
+                        .catch(() => {});
+                    return prev;
+                }
                 const updated: IACatalogFE[] = prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed" as const, lastError: "" } : c));
                 const catalog = updated.find(c => c._id === data.catalogId);
                 label = catalog?.name ?? "Catálogo";
@@ -10938,6 +10980,7 @@ POST-LANZAMIENTO:
                                                     <div key={img.publicId} className="space-y-1">
                                                         <div className={`group relative aspect-square rounded-xl overflow-hidden bg-white/5 border transition-all cursor-pointer ${isImgLinking ? "border-sky-500/50" : "border-white/8 hover:border-amber-500/30"}`}>
                                                             <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+
                                                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                                                                 <button
                                                                     onClick={() => { setPreviewImage(img.url); setPreviewContext({ urls: cat.images.map(i => i.url), index: imgIdx, catalogCtx: { id: cat._id, images: cat.images } }); }}
@@ -10986,6 +11029,18 @@ POST-LANZAMIENTO:
                                                     </div>
                                                 );
                                             })}
+                                            {/* Skeleton slot for image currently being generated */}
+                                            {cat.status === "running" && cat.images.length < cat.totalImages && (
+                                                <div className="aspect-square rounded-xl overflow-hidden border border-amber-500/25 bg-amber-500/[0.04] animate-pulse flex flex-col items-center justify-center gap-1 relative">
+                                                    <div className="w-5 h-5 rounded-full border-2 border-amber-400/40 border-t-amber-400 animate-spin" />
+                                                    <span className="text-[8px] text-amber-500/60 font-black tabular-nums">{cat.images.length + 1}/{cat.totalImages}</span>
+                                                    {cat.imageStartedAt && (
+                                                        <span className="absolute bottom-1 right-1.5 text-[7px] text-amber-600/70 tabular-nums font-mono">
+                                                            {Math.floor((Date.now() - cat.imageStartedAt) / 1000)}s
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -11583,6 +11638,30 @@ POST-LANZAMIENTO:
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingBackCover(false); }
     };
 
+    // Fetch ALL catalogs for the selected niche when entering colorize mode.
+    // iaCatalogs only holds the 200 most recent catalogs globally, so older catalogs
+    // linked to this niche might be missing. This ensures we show every image available.
+    useEffect(() => {
+        if (coverMode !== "colorize" || !selectedCoverNicheId) {
+            setColorizeCatalogsCache([]);
+            return;
+        }
+        setIsFetchingColorizeImgs(true);
+        fetch(`${API_BASE_URL}/catalogs?nicheId=${selectedCoverNicheId}&limit=9999`)
+            .then(r => r.json())
+            .then(data => {
+                setColorizeCatalogsCache(data.catalogs ?? []);
+                // Merge into global iaCatalogs so the rest of the app also benefits
+                setIaCatalogs(prev => {
+                    const existingIds = new Set(prev.map(c => c._id));
+                    const fresh = (data.catalogs ?? []).filter((c: IACatalogFE) => !existingIds.has(c._id));
+                    return fresh.length > 0 ? [...prev, ...fresh] : prev;
+                });
+            })
+            .catch(() => { /* silent */ })
+            .finally(() => setIsFetchingColorizeImgs(false));
+    }, [coverMode, selectedCoverNicheId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const colorizeCover = async () => {
         if (!colorizeSourceUrl) { toast.error("Selecciona una imagen de origen"); return; }
         setIsColorizing(true);
@@ -11647,24 +11726,22 @@ POST-LANZAMIENTO:
         }
     };
 
-    // ── Canvas text-layer compositor (word-wrap aware) ──────────────────────
-    // previewWidth: measured width of the preview container in px (used to match visual scale)
+    // ── Canvas text-layer compositor (word-wrap + bg/glow/gradient aware) ─────
     const drawTextLayerOnCanvas = (ctx: CanvasRenderingContext2D, layer: TextLayer, cw: number, ch: number, previewWidth = 256) => {
         if (layer.visible === false) return;
         const px = (layer.x / 100) * cw;
         const py = (layer.y / 100) * ch;
-        // Scale font the same way the CSS preview does: fontSize * 0.4 px at previewWidth → scale up to cw
-        const fs = Math.round(layer.fontSize * 0.4 * (cw / previewWidth));
+        const scale = cw / previewWidth;
+        const fs = Math.round(layer.fontSize * 0.4 * scale);
         const raw = layer.uppercase ? layer.text.toUpperCase() : layer.text;
         const fontFamily = layer.fontFamily || "sans-serif";
-        const maxW = cw * 0.85;
+        const maxW = cw * 0.88;
+        const scaledLS = (layer.letterSpacing ?? 0) * 0.4 * scale;
 
         ctx.save();
         ctx.globalAlpha = (layer.opacity ?? 100) / 100;
         ctx.font = `${layer.italic ? "italic " : ""}${layer.bold ? "bold " : ""}${fs}px ${fontFamily}`;
-        const scaledLS = (layer.letterSpacing ?? 0) * 0.4 * (cw / previewWidth);
         if (scaledLS !== 0) (ctx as any).letterSpacing = `${scaledLS}px`;
-        ctx.fillStyle = layer.color;
         ctx.textAlign = layer.align as CanvasTextAlign;
         ctx.textBaseline = "middle";
 
@@ -11683,18 +11760,118 @@ POST-LANZAMIENTO:
         if (lines.length === 0) lines.push("");
 
         const lineH = fs * 1.3;
-        const startY = py - ((lines.length - 1) * lineH) / 2;
+        const totalH = lineH * lines.length;
+        const startY = py - (totalH - lineH) / 2;
+        const maxLineW = Math.max(...lines.map(l => ctx.measureText(l).width + scaledLS * l.length));
 
-        const drawLine = (text: string, y: number) => {
-            if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.88)"; ctx.shadowBlur = 14; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
-            if (layer.stroke) {
-                ctx.strokeStyle = layer.strokeColor || "#000";
-                ctx.lineWidth = Math.max(1, fs * 0.08);
-                ctx.lineJoin = "round";
-                const tmp = ctx.shadowColor; ctx.shadowColor = "transparent";
-                ctx.strokeText(text, px, y); ctx.shadowColor = tmp;
+        // ── Background ──────────────────────────────────────────────────────
+        if (layer.bg && layer.bg !== "none") {
+            ctx.save();
+            ctx.shadowColor = "transparent";
+            ctx.shadowBlur = 0;
+            const bgAlpha = (layer.bgOpacity ?? 55) / 100;
+            const bgBase = layer.bgColor ?? "#000000";
+
+            if (layer.bg === "band") {
+                const padV = fs * 0.55;
+                const bandY = startY - lineH * 0.5 - padV;
+                const bandH = totalH + padV * 2;
+                ctx.globalAlpha *= bgAlpha;
+                ctx.fillStyle = bgBase;
+                ctx.fillRect(0, bandY, cw, bandH);
+            } else if (layer.bg === "pill") {
+                const padH = fs * 0.35, padW = fs * 0.75;
+                const rw = maxLineW + padW * 2;
+                const rh = totalH + padH * 2;
+                const rx = layer.align === "left" ? px - padW : layer.align === "right" ? px - rw + padW : px - rw / 2;
+                const ry = startY - lineH * 0.5 - padH;
+                const radius = Math.min(rh / 2, fs * 0.45);
+                ctx.globalAlpha *= bgAlpha;
+                ctx.fillStyle = bgBase;
+                ctx.beginPath();
+                (ctx as any).roundRect?.(rx, ry, rw, rh, [radius]) ?? ctx.rect(rx, ry, rw, rh);
+                ctx.fill();
+            } else if (layer.bg === "blur") {
+                // Approximate frosted glass: layered semi-transparent bands with decreasing opacity
+                const padV = fs * 0.7;
+                const bandY = startY - lineH * 0.5 - padV;
+                const bandH = totalH + padV * 2;
+                for (let i = 3; i >= 0; i--) {
+                    ctx.globalAlpha = bgAlpha * (layer.opacity ?? 100) / 100 * (0.15 + i * 0.2);
+                    ctx.fillStyle = bgBase;
+                    ctx.fillRect(0, bandY - i * fs * 0.08, cw, bandH + i * fs * 0.16);
+                }
+            } else if (layer.bg === "mark") {
+                // Brush-stroke / highlighter mark: full-width band with irregular rounded edges per line
+                const padV = fs * 0.18;
+                const overflowH = fs * 0.12; // slightly taller to feel hand-drawn
+                ctx.globalAlpha *= bgAlpha;
+                ctx.fillStyle = bgBase;
+                // Draw one irregular rect per line
+                lines.forEach((_, li) => {
+                    const lineY = startY + li * lineH;
+                    const ry = lineY - lineH * 0.5 - padV + (li % 2 === 0 ? fs * 0.03 : -fs * 0.03);
+                    const rh = lineH + padV * 2 + overflowH;
+                    // Irregular corners: alternate per line for organic feel
+                    const tl = fs * (li % 2 === 0 ? 0.08 : 0.18);
+                    const tr = fs * (li % 2 === 0 ? 0.22 : 0.06);
+                    const br = fs * (li % 2 === 0 ? 0.10 : 0.20);
+                    const bl = fs * (li % 2 === 0 ? 0.24 : 0.08);
+                    ctx.beginPath();
+                    (ctx as any).roundRect?.(0, ry, cw, rh, [tl, tr, br, bl]) ?? ctx.rect(0, ry, cw, rh);
+                    ctx.fill();
+                });
             }
+            ctx.restore();
+            ctx.globalAlpha = (layer.opacity ?? 100) / 100;
+        }
+
+        // ── Fill style: gradient or solid ────────────────────────────────────
+        let fillStyle: string | CanvasGradient = layer.color;
+        if (layer.gradient && layer.gradientFrom && layer.gradientTo) {
+            const gx = layer.align === "left" ? px : layer.align === "right" ? px - maxLineW : px - maxLineW / 2;
+            const grad = ctx.createLinearGradient(gx, startY - fs * 0.5, gx + maxLineW, startY + totalH + fs * 0.5);
+            grad.addColorStop(0, layer.gradientFrom);
+            grad.addColorStop(1, layer.gradientTo);
+            fillStyle = grad;
+        }
+
+        // ── Draw each line ───────────────────────────────────────────────────
+        const drawLine = (text: string, y: number) => {
+            ctx.save();
+            const strength = (layer.shadowStrength ?? 80) / 100;
+
+            if (layer.glow) {
+                ctx.shadowColor = layer.glowColor ?? "#FFD700";
+                ctx.shadowBlur = Math.round(fs * (layer.glowStrength ?? 50) / 100 * 1.8);
+                ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+            } else if (layer.shadow) {
+                ctx.shadowColor = `rgba(0,0,0,${0.55 + strength * 0.4})`;
+                ctx.shadowBlur = Math.round(fs * (0.12 + strength * 0.28));
+                ctx.shadowOffsetX = Math.round(fs * 0.03);
+                ctx.shadowOffsetY = Math.round(fs * 0.07);
+            }
+
+            if (layer.stroke) {
+                const sw = Math.max(1, (layer.strokeWidth ?? 3) * 0.4 * scale);
+                ctx.strokeStyle = layer.strokeColor || "#000";
+                ctx.lineWidth = sw;
+                ctx.lineJoin = "round";
+                const tmpShadow = ctx.shadowColor;
+                ctx.shadowColor = "transparent";
+                ctx.strokeText(text, px, y);
+                ctx.shadowColor = tmpShadow;
+            }
+
+            // Double-draw glow for intensity
+            if (layer.glow) {
+                ctx.fillStyle = fillStyle;
+                ctx.fillText(text, px, y);
+            }
+
+            ctx.fillStyle = fillStyle;
             ctx.fillText(text, px, y);
+            ctx.restore();
         };
 
         for (let i = 0; i < lines.length; i++) drawLine(lines[i], startY + i * lineH);
@@ -12828,7 +13005,10 @@ POST-LANZAMIENTO:
                                                 )}
                                                 {colNiches.map(niche => {
                                                     const linkedCats = catsForNiche(niche);
-                                                    const imgCount = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                                    const catImgCount = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                                    // Fall back to catalogImageOrder when catalogs aren't linked properly
+                                                    const fallbackUrls: string[] = catImgCount === 0 ? (niche.catalogImageOrder ?? []) : [];
+                                                    const imgCount = catImgCount > 0 ? catImgCount : fallbackUrls.length;
                                                     const productLabel = NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType;
                                                     const styleLabel = (niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : niche.productType === "seamless-pattern" ? SEAMLESS_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory;
                                                     const rev = totalRevenue(niche);
@@ -12836,7 +13016,7 @@ POST-LANZAMIENTO:
                                                     const catsTotal = linkedCats.length;
                                                     const catsRunning = linkedCats.filter(c => c.status === "running" || c.status === "pending").length;
                                                     const catsFailed = linkedCats.filter(c => c.status === "failed").length;
-                                                    const firstCatImg = linkedCats.flatMap(c => c.images).find(img => img.url)?.url ?? null;
+                                                    const firstCatImg = linkedCats.flatMap(c => c.images).find(img => img.url)?.url ?? fallbackUrls[0] ?? null;
                                                     // coverUrl → sampleImageUrl → first catalog image
                                                     const coverImg = niche.coverUrl || niche.sampleImageUrl || firstCatImg;
                                                     return (
@@ -12902,7 +13082,9 @@ POST-LANZAMIENTO:
                                                                 )}
                                                                 {/* Image strip: show up to 4 thumbnails inline */}
                                                                 {imgCount > 0 && (() => {
-                                                                    const thumbs = linkedCats.flatMap(c => c.images.map(i => i.url)).slice(0, 4);
+                                                                    const thumbs = catImgCount > 0
+                                                                        ? linkedCats.flatMap(c => c.images.map(i => i.url)).slice(0, 4)
+                                                                        : fallbackUrls.slice(0, 4);
                                                                     return (
                                                                         <div className="flex items-center gap-1">
                                                                             {thumbs.map((url, ti) => (
@@ -13094,8 +13276,10 @@ POST-LANZAMIENTO:
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {pagedNiches.map((niche, cardIndex) => {
                                     const linkedCats = catsForNiche(niche);
-                                    const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0)
-                                        + cloudinaryImages.filter(img => img.nicheId === niche._id || (img.nicheIds ?? []).includes(niche._id)).length;
+                                    const catImgsP = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                    const linkedImgs = catImgsP
+                                        + cloudinaryImages.filter(img => img.nicheId === niche._id || (img.nicheIds ?? []).includes(niche._id)).length
+                                        + (catImgsP === 0 ? (niche.catalogImageOrder?.length ?? 0) : 0);
                                     const cardPhase = (niche.phase === "pdf" ? "seo" : niche.phase) ?? "niche";
                                     const phaseGradient: Record<string, string> = { niche: "from-sky-500 via-sky-400 to-cyan-400", catalog: "from-blue-500 via-blue-400 to-sky-400", libro: "from-indigo-500 via-indigo-400 to-blue-400", seo: "from-violet-500 via-violet-400 to-indigo-400", cover: "from-fuchsia-500 via-fuchsia-400 to-violet-400", published: "from-emerald-500 via-emerald-400 to-cyan-400" };
                                     const phaseHoverBorder: Record<string, string> = { niche: "hover:border-sky-500/25", catalog: "hover:border-blue-500/25", libro: "hover:border-indigo-500/25", seo: "hover:border-violet-500/25", cover: "hover:border-fuchsia-500/25", published: "hover:border-emerald-500/25" };
@@ -13113,13 +13297,13 @@ POST-LANZAMIENTO:
                                     const activeBlob = cardPhase === "published" ? pubBlob : (phaseBlob[cardPhase] ?? "bg-sky-500/8");
                                     // Extra ring for Activo state
                                     const isActivo = cardPhase === "published" && ls === "published";
-                                    const firstCatThumb = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                    const firstCatThumb = linkedCats.find(c => c.images.length > 0)?.images[0]?.url ?? (catImgsP === 0 ? niche.catalogImageOrder?.[0] : undefined);
                                     const coverThumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumb;
                                     // Build ordered carousel: cover/sample first, then all catalog images, then cloudinary
                                     const nicheCarouselUrls = [
                                         niche.coverUrl,
                                         niche.sampleImageUrl !== niche.coverUrl ? niche.sampleImageUrl : undefined,
-                                        ...linkedCats.flatMap(c => c.images.map(i => i.url)),
+                                        ...(catImgsP > 0 ? linkedCats.flatMap(c => c.images.map(i => i.url)) : (niche.catalogImageOrder ?? [])),
                                         ...cloudinaryImages.filter(ci => ci.nicheId === niche._id || (ci.nicheIds ?? []).includes(niche._id)).map(ci => ci.url),
                                     ].filter((u): u is string => Boolean(u))
                                         .filter((u, i, arr) => arr.indexOf(u) === i);
@@ -14003,10 +14187,12 @@ POST-LANZAMIENTO:
                                     <tbody>
                                         {tableNiches.map((niche, idx) => {
                                             const linkedCats = catsForNiche(niche);
-                                            const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0)
-                                                + cloudinaryImages.filter(img => img.nicheId === niche._id || (img.nicheIds ?? []).includes(niche._id)).length;
+                                            const catImgsT = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                            const linkedImgs = catImgsT
+                                                + cloudinaryImages.filter(img => img.nicheId === niche._id || (img.nicheIds ?? []).includes(niche._id)).length
+                                                + (catImgsT === 0 ? (niche.catalogImageOrder?.length ?? 0) : 0);
                                             const cardPhase = nicheComputedPhases.get(niche._id) ?? "niche";
-                                            const firstCatThumbT = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                            const firstCatThumbT = linkedCats.find(c => c.images.length > 0)?.images[0]?.url ?? (niche.catalogImageOrder?.[0]);
                                             const thumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumbT;
                                             return (
                                                 <tr key={niche._id}
@@ -15264,10 +15450,16 @@ POST-LANZAMIENTO:
 
                             {/* ── Collage: image picker ── */}
                             {coverMode === "collage" && coverModalTab === "front" && (() => {
-                                const nicheImgUrls = selectedCoverNicheId
-                                    ? iaCatalogs
-                                        .filter(c => c.nicheIds?.includes(selectedCoverNicheId) && c.status === "completed")
-                                        .flatMap((c: any) => c.images.map((img: any) => img.url))
+                                const selectedNicheObj = niches.find(n => n._id === selectedCoverNicheId);
+                                const nicheImgUrls = selectedNicheObj
+                                    ? [
+                                        ...catsForNiche(selectedNicheObj)
+                                            .filter((c: any) => c.status === "completed")
+                                            .flatMap((c: any) => c.images.map((img: any) => img.url)),
+                                        ...cloudinaryImages
+                                            .filter(img => img.nicheId === selectedCoverNicheId || (img.nicheIds ?? []).includes(selectedCoverNicheId!))
+                                            .map(img => img.url),
+                                      ].filter((u, i, arr) => arr.indexOf(u) === i)
                                     : [];
                                 return (
                                     <div className="space-y-3">
@@ -15318,15 +15510,36 @@ POST-LANZAMIENTO:
 
                             {/* ── Colorize mode ── */}
                             {coverMode === "colorize" && coverModalTab === "front" && (() => {
+                                // Combine: fresh fetch (colorizeCatalogsCache) + local iaCatalogs linked to this niche
+                                const selectedNicheObj = niches.find(n => n._id === selectedCoverNicheId);
+                                const allCats = selectedCoverNicheId
+                                    ? [
+                                        ...colorizeCatalogsCache,
+                                        ...(selectedNicheObj ? catsForNiche(selectedNicheObj) : []),
+                                      ].filter((c, i, arr) => arr.findIndex(x => x._id === c._id) === i)
+                                    : [];
                                 const nicheImgUrls = selectedCoverNicheId
-                                    ? iaCatalogs.filter(c => c.nicheIds?.includes(selectedCoverNicheId) && c.images?.length > 0).flatMap((c: any) => c.images.map((img: any) => img.url))
+                                    ? [
+                                        ...allCats
+                                            .filter((c: any) => c.images?.length > 0)
+                                            .flatMap((c: any) => c.images.map((img: any) => img.url)),
+                                        ...cloudinaryImages
+                                            .filter(img => img.nicheId === selectedCoverNicheId || (img.nicheIds ?? []).includes(selectedCoverNicheId!))
+                                            .map(img => img.url),
+                                      ].filter((u, i, arr) => arr.indexOf(u) === i)
                                     : [];
                                 return (
                                     <div className="space-y-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/60">Imagen de origen (líneas a colorear)</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/60">Imagen de origen (líneas a colorear)</p>
+                                            {isFetchingColorizeImgs && <Loader2 size={10} className="animate-spin text-fuchsia-400/60 shrink-0" />}
+                                            {!isFetchingColorizeImgs && nicheImgUrls.length > 0 && (
+                                                <span className="text-[9px] text-neutral-700">{nicheImgUrls.length} imágenes</span>
+                                            )}
+                                        </div>
                                         {/* Pick from catalog */}
                                         {nicheImgUrls.length > 0 && (
-                                            <div className="grid grid-cols-5 gap-1.5 max-h-72 overflow-y-auto pr-1">
+                                            <div className="grid grid-cols-5 gap-1.5 max-h-80 overflow-y-auto pr-1">
                                                 {nicheImgUrls.map((url: string, i: number) => (
                                                     <button key={i} onClick={() => setColorizeSourceUrl(url)}
                                                         className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${colorizeSourceUrl === url ? "border-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.4)]" : "border-transparent hover:border-white/20"}`}>
@@ -15335,6 +15548,9 @@ POST-LANZAMIENTO:
                                                     </button>
                                                 ))}
                                             </div>
+                                        )}
+                                        {!isFetchingColorizeImgs && nicheImgUrls.length === 0 && selectedCoverNicheId && (
+                                            <p className="text-[10px] text-neutral-600">No hay imágenes para este nicho. Genera catálogos primero o sube una imagen.</p>
                                         )}
                                         {/* Or upload local file */}
                                         <div className="flex items-center gap-2">
@@ -15742,29 +15958,77 @@ POST-LANZAMIENTO:
                                 const a = coverAuthor || "Emilio Jimenez";
                                 const mkId = () => Date.now().toString() + Math.random();
                                 const COVER_STYLE_PRESETS = [
-                                    { label: "Classic Gold", emoji: "🏆", layers: [
-                                        { text: t, y: 78, fontSize: 32, color: "#FFD700", bold: true, shadow: true, uppercase: true, fontFamily: "'Cinzel', serif" },
-                                        { text: s, y: 87, fontSize: 14, color: "#fff", italic: true, shadow: true, fontFamily: "'Cinzel', serif" },
-                                        { text: a, y: 94, fontSize: 11, color: "#FFD700", uppercase: true, letterSpacing: 2, fontFamily: "'Cinzel', serif" },
+                                    // ── Amazon Bestseller (banda oscura inferior, Cinzel dorado) ──
+                                    { label: "Amazon Gold", emoji: "🏆", layers: [
+                                        { text: t, y: 80, fontSize: 34, color: "#FFD700", bold: true, uppercase: true, shadow: true, shadowStrength: 90, bg: "band", bgColor: "#0a0a0a", bgOpacity: 85, fontFamily: "'Cinzel', serif", letterSpacing: 1 },
+                                        { text: s, y: 88, fontSize: 13, color: "#e5c87a", italic: true, shadow: true, bg: "band", bgColor: "#0a0a0a", bgOpacity: 85, fontFamily: "'Cinzel', serif" },
+                                        { text: a, y: 94, fontSize: 10, color: "#FFD700", uppercase: true, letterSpacing: 3, bg: "band", bgColor: "#0a0a0a", bgOpacity: 85, fontFamily: "'Cinzel', serif" },
                                     ]},
-                                    { label: "Bold Outline", emoji: "⬛", layers: [
-                                        { text: t, y: 78, fontSize: 34, color: "#fff", bold: true, stroke: true, strokeColor: "#000", uppercase: true, fontFamily: "'Oswald', sans-serif" },
-                                        { text: s, y: 87, fontSize: 15, color: "#fff", stroke: true, strokeColor: "#000", fontFamily: "'Oswald', sans-serif" },
-                                        { text: a, y: 93, fontSize: 11, color: "#ddd", stroke: true, strokeColor: "#000", fontFamily: "'Oswald', sans-serif" },
+                                    // ── Gold Gradient (texto degradado dorado, sin fondo) ──
+                                    { label: "Gold Gradient", emoji: "✨", layers: [
+                                        { text: t, y: 78, fontSize: 36, bold: true, uppercase: true, gradient: true, gradientFrom: "#FFE566", gradientTo: "#C8830A", shadow: true, shadowStrength: 95, fontFamily: "'Cinzel Decorative', serif", letterSpacing: 1 },
+                                        { text: s, y: 87, fontSize: 13, color: "#fff", italic: true, shadow: true, shadowStrength: 85, fontFamily: "'Cinzel', serif" },
+                                        { text: a, y: 94, fontSize: 10, gradient: true, gradientFrom: "#FFD700", gradientTo: "#B8860B", uppercase: true, letterSpacing: 4, fontFamily: "'Cinzel', serif" },
                                     ]},
-                                    { label: "Neon Glow", emoji: "💜", layers: [
-                                        { text: t, y: 78, fontSize: 30, color: "#e879f9", bold: true, shadow: true, fontFamily: "'Raleway', sans-serif" },
-                                        { text: s, y: 87, fontSize: 13, color: "#c4b5fd", italic: true, shadow: true, fontFamily: "'Raleway', sans-serif" },
-                                        { text: a, y: 94, fontSize: 10, color: "#a78bfa", uppercase: true, letterSpacing: 3, fontFamily: "'Raleway', sans-serif" },
+                                    // ── Dark Band (banda difuminada, letra blanca impactante) ──
+                                    { label: "Dark Band", emoji: "⬛", layers: [
+                                        { text: t, y: 79, fontSize: 32, color: "#fff", bold: true, uppercase: true, stroke: true, strokeColor: "#000", strokeWidth: 5, bg: "blur", bgColor: "#000000", bgOpacity: 70, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 2 },
+                                        { text: s, y: 87, fontSize: 14, color: "#ddd", bg: "blur", bgColor: "#000000", bgOpacity: 70, fontFamily: "'Montserrat', sans-serif" },
+                                        { text: a, y: 93, fontSize: 10, color: "#aaa", uppercase: true, letterSpacing: 3, bg: "blur", bgColor: "#000000", bgOpacity: 70, fontFamily: "'Montserrat', sans-serif" },
                                     ]},
-                                    { label: "Elegant", emoji: "✨", layers: [
-                                        { text: t, y: 76, fontSize: 26, color: "#fef3c7", shadow: true, fontFamily: "'Playfair Display', serif" },
-                                        { text: s, y: 85, fontSize: 12, color: "#d97706", italic: true, shadow: true, fontFamily: "'Playfair Display', serif" },
-                                        { text: "— " + a + " —", y: 93, fontSize: 10, color: "#fef3c7", uppercase: true, letterSpacing: 2, fontFamily: "'Playfair Display', serif" },
+                                    // ── Mystic Purple (glow violeta, Playfair) ──
+                                    { label: "Mystic", emoji: "🔮", layers: [
+                                        { text: t, y: 77, fontSize: 30, color: "#e9d5ff", bold: true, glow: true, glowColor: "#9333ea", glowStrength: 65, shadow: false, fontFamily: "'Playfair Display', serif" },
+                                        { text: s, y: 86, fontSize: 13, color: "#c4b5fd", italic: true, glow: true, glowColor: "#7c3aed", glowStrength: 40, shadow: false, fontFamily: "'Playfair Display', serif" },
+                                        { text: "— " + a + " —", y: 93, fontSize: 10, color: "#a78bfa", uppercase: true, letterSpacing: 3, fontFamily: "'Cinzel', serif" },
                                     ]},
-                                    { label: "Minimal", emoji: "◻️", layers: [
-                                        { text: t, y: 80, fontSize: 28, color: "#fff", fontFamily: "sans-serif" },
-                                        { text: a, y: 93, fontSize: 10, color: "rgba(255,255,255,0.55)", uppercase: true, letterSpacing: 3, fontFamily: "sans-serif" },
+                                    // ── Nature Script (script verde, fondo pill orgánico) ──
+                                    { label: "Nature", emoji: "🌿", layers: [
+                                        { text: t, y: 78, fontSize: 32, gradient: true, gradientFrom: "#d1fae5", gradientTo: "#6ee7b7", shadow: true, shadowStrength: 80, fontFamily: "'Dancing Script', cursive" },
+                                        { text: s, y: 87, fontSize: 13, color: "#a7f3d0", italic: true, shadow: true, fontFamily: "'Lora', serif" },
+                                        { text: a, y: 94, fontSize: 10, color: "#6ee7b7", uppercase: true, letterSpacing: 3, fontFamily: "'Lora', serif" },
+                                    ]},
+                                    // ── Ocean Zen (azul-teal difuminado, Raleway) ──
+                                    { label: "Ocean Zen", emoji: "🌊", layers: [
+                                        { text: t, y: 79, fontSize: 28, gradient: true, gradientFrom: "#e0f2fe", gradientTo: "#38bdf8", bold: true, shadow: true, shadowStrength: 85, bg: "mark", bgColor: "#0c4a6e", bgOpacity: 32, fontFamily: "'Raleway', sans-serif", letterSpacing: 1 },
+                                        { text: s, y: 88, fontSize: 13, color: "#bae6fd", italic: true, bg: "none", bgColor: "#0c4a6e", bgOpacity: 30, fontFamily: "'Raleway', sans-serif" },
+                                        { text: a, y: 94, fontSize: 10, color: "#7dd3fc", uppercase: true, letterSpacing: 4, fontFamily: "'Raleway', sans-serif" },
+                                    ]},
+                                    // ── Fire (gradiente naranja-rojo, Anton impacto) ──
+                                    { label: "Fire", emoji: "🔥", layers: [
+                                        { text: t, y: 79, fontSize: 38, bold: true, uppercase: true, gradient: true, gradientFrom: "#fef08a", gradientTo: "#ef4444", stroke: true, strokeColor: "#7f1d1d", strokeWidth: 4, shadow: true, shadowStrength: 90, fontFamily: "'Anton', sans-serif" },
+                                        { text: s, y: 88, fontSize: 14, color: "#fed7aa", stroke: true, strokeColor: "#7f1d1d", strokeWidth: 2, shadow: true, fontFamily: "'Anton', sans-serif" },
+                                        { text: a, y: 94, fontSize: 11, color: "#fca5a5", uppercase: true, letterSpacing: 3, fontFamily: "'Oswald', sans-serif" },
+                                    ]},
+                                    // ── Luxury Black (Bodoni italic, dorado tenue, pill) ──
+                                    { label: "Luxury", emoji: "💎", layers: [
+                                        { text: t, y: 78, fontSize: 26, color: "#fef9c3", italic: true, shadow: true, shadowStrength: 90, bg: "pill", bgColor: "#000000", bgOpacity: 75, fontFamily: "'Bodoni Moda', serif" },
+                                        { text: s, y: 87, fontSize: 12, color: "#fde68a", italic: true, bg: "pill", bgColor: "#000000", bgOpacity: 75, fontFamily: "'Bodoni Moda', serif", letterSpacing: 1 },
+                                        { text: "— " + a + " —", y: 94, fontSize: 9, color: "#fef3c7", uppercase: true, letterSpacing: 4, fontFamily: "'Cormorant Garamond', serif" },
+                                    ]},
+                                    // ── Sakura (script rosa, letra con glow cálido) ──
+                                    { label: "Sakura", emoji: "🌸", layers: [
+                                        { text: t, y: 77, fontSize: 30, gradient: true, gradientFrom: "#fce7f3", gradientTo: "#f9a8d4", shadow: true, shadowStrength: 70, glow: true, glowColor: "#ec4899", glowStrength: 30, fontFamily: "'Great Vibes', cursive" },
+                                        { text: s, y: 86, fontSize: 13, color: "#fbcfe8", italic: true, shadow: true, fontFamily: "'Lora', serif" },
+                                        { text: a, y: 93, fontSize: 10, color: "#f9a8d4", uppercase: true, letterSpacing: 4, fontFamily: "'Montserrat', sans-serif" },
+                                    ]},
+                                    // ── Retro Vintage (Rye, crema y naranja quemado) ──
+                                    { label: "Retro", emoji: "🎪", layers: [
+                                        { text: t, y: 78, fontSize: 28, color: "#fef3c7", bold: false, uppercase: true, stroke: true, strokeColor: "#92400e", strokeWidth: 3, shadow: true, shadowStrength: 80, bg: "band", bgColor: "#1c0a00", bgOpacity: 80, fontFamily: "'Rye', cursive", letterSpacing: 1 },
+                                        { text: s, y: 87, fontSize: 12, color: "#fdba74", bg: "band", bgColor: "#1c0a00", bgOpacity: 80, fontFamily: "'Special Elite', cursive" },
+                                        { text: a, y: 94, fontSize: 10, color: "#fef3c7", uppercase: true, letterSpacing: 3, bg: "band", bgColor: "#1c0a00", bgOpacity: 80, fontFamily: "'Josefin Slab', serif" },
+                                    ]},
+                                    // ── Clean Modern (Montserrat, blanco puro, mínimo) ──
+                                    { label: "Modern", emoji: "◻️", layers: [
+                                        { text: t, y: 79, fontSize: 26, color: "#fff", bold: true, uppercase: true, shadow: true, shadowStrength: 85, letterSpacing: 3, fontFamily: "'Montserrat', sans-serif" },
+                                        { text: s, y: 88, fontSize: 12, color: "rgba(255,255,255,0.75)", letterSpacing: 2, fontFamily: "'Montserrat', sans-serif" },
+                                        { text: a, y: 94, fontSize: 9, color: "rgba(255,255,255,0.5)", uppercase: true, letterSpacing: 5, fontFamily: "'Montserrat', sans-serif" },
+                                    ]},
+                                    // ── Sacred (Uncial Antiqua, dorado glow, medieval) ──
+                                    { label: "Sacred", emoji: "🌟", layers: [
+                                        { text: t, y: 78, fontSize: 26, gradient: true, gradientFrom: "#FFF9C4", gradientTo: "#F5C400", bold: false, glow: true, glowColor: "#FFD700", glowStrength: 55, shadow: true, shadowStrength: 90, fontFamily: "'Uncial Antiqua', cursive" },
+                                        { text: s, y: 87, fontSize: 12, color: "#fde68a", italic: true, shadow: true, fontFamily: "'Almendra', serif" },
+                                        { text: "✦ " + a + " ✦", y: 94, fontSize: 10, color: "#fbbf24", uppercase: true, letterSpacing: 2, fontFamily: "'Cinzel', serif" },
                                     ]},
                                 ];
                                 return (
@@ -15783,15 +16047,15 @@ POST-LANZAMIENTO:
                                         </div>
 
                                         {/* Cover style presets */}
-                                        <div className="space-y-1.5">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Estilos de portada</p>
-                                            <div className="grid grid-cols-3 gap-1">
+                                        <div className="space-y-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilos profesionales · click para aplicar</p>
+                                            <div className="grid grid-cols-4 gap-1.5">
                                                 {COVER_STYLE_PRESETS.map(preset => (
                                                     <button key={preset.label}
                                                         onClick={() => setCoverTextLayers(preset.layers.map(l => defaultLayer({ id: mkId(), x: 50, ...l } as any)))}
-                                                        className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl bg-white/[0.03] border border-white/8 hover:border-fuchsia-500/30 hover:bg-fuchsia-500/[0.06] transition-all group">
-                                                        <span className="text-base leading-none">{preset.emoji}</span>
-                                                        <span className="text-[9px] font-black text-neutral-600 group-hover:text-fuchsia-400 transition-colors leading-tight text-center">{preset.label}</span>
+                                                        className="flex flex-col items-center gap-1 py-2.5 px-1.5 rounded-xl bg-white/[0.03] border border-white/8 hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.08] transition-all group active:scale-95">
+                                                        <span className="text-lg leading-none">{preset.emoji}</span>
+                                                        <span className="text-[9px] font-black text-neutral-500 group-hover:text-fuchsia-300 transition-colors leading-tight text-center">{preset.label}</span>
                                                     </button>
                                                 ))}
                                             </div>
@@ -15856,52 +16120,111 @@ POST-LANZAMIENTO:
                                         {/* Per-layer controls */}
                                         {coverTextLayers.length > 0 && (
                                             <div className="space-y-2">
-                                                {coverTextLayers.map(layer => (
-                                                    <div key={layer.id} className="rounded-xl bg-white/[0.03] border border-white/6 overflow-hidden">
-                                                        {/* Text input row */}
-                                                        <div className="flex items-center gap-2 px-2.5 py-2 border-b border-white/4">
-                                                            <input value={layer.text} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, text: e.target.value } : l))}
-                                                                className="flex-1 min-w-0 bg-transparent text-xs text-white placeholder:text-neutral-700 outline-none" />
+                                                {coverTextLayers.map((layer, li) => {
+                                                    const upd = (patch: Partial<TextLayer>) => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, ...patch } : l));
+                                                    const tog = (key: keyof TextLayer) => upd({ [key]: !layer[key] } as any);
+                                                    const activeBtn = "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300";
+                                                    const inactiveBtn = "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-white";
+                                                    return (
+                                                    <div key={layer.id} className="rounded-xl bg-white/[0.03] border border-white/8 overflow-hidden">
+                                                        {/* Row 1: text + delete */}
+                                                        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.05]">
+                                                            <span className="text-[9px] text-neutral-700 font-black w-3">{li+1}</span>
+                                                            <input value={layer.text} onChange={e => upd({ text: e.target.value })}
+                                                                className="flex-1 min-w-0 bg-transparent text-xs text-white outline-none placeholder:text-neutral-700" placeholder="Texto..." />
                                                             <button onClick={() => setCoverTextLayers(prev => prev.filter(l => l.id !== layer.id))} className="text-neutral-700 hover:text-rose-400 transition-colors shrink-0"><X size={10} /></button>
                                                         </div>
-                                                        {/* Style row */}
-                                                        <div className="flex items-center gap-2 px-2.5 py-1.5 flex-wrap">
-                                                            {/* Color */}
-                                                            <input type="color" value={layer.color} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, color: e.target.value } : l))}
-                                                                className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color texto" />
-                                                            {/* Stroke color (only when stroke active) */}
-                                                            {layer.stroke && (
-                                                                <input type="color" value={layer.strokeColor || "#000000"} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, strokeColor: e.target.value } : l))}
-                                                                    className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color contorno" />
-                                                            )}
-                                                            {/* Size slider */}
-                                                            <input type="range" min={8} max={72} value={layer.fontSize} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, fontSize: Number(e.target.value) } : l))}
+                                                        {/* Row 2: font + size */}
+                                                        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.04]">
+                                                            <select value={layer.fontFamily} onChange={e => upd({ fontFamily: e.target.value })}
+                                                                className="flex-1 min-w-0 h-6 bg-white/5 border border-white/8 rounded-lg text-[9px] text-zinc-300 outline-none px-1.5 truncate">
+                                                                {COVER_FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                                                            </select>
+                                                            <input type="range" min={8} max={80} value={layer.fontSize} onChange={e => upd({ fontSize: Number(e.target.value) })}
                                                                 className="w-16 shrink-0 accent-fuchsia-500" />
-                                                            <span className="text-[9px] text-neutral-700 shrink-0 w-4 text-right">{layer.fontSize}</span>
-                                                            {/* Toggles */}
+                                                            <span className="text-[9px] text-neutral-600 w-5 text-right shrink-0">{layer.fontSize}</span>
+                                                        </div>
+                                                        {/* Row 3: color + toggles + align */}
+                                                        <div className="flex items-center gap-1.5 px-3 py-1.5 flex-wrap border-b border-white/[0.04]">
+                                                            <input type="color" value={layer.color} onChange={e => upd({ color: e.target.value })}
+                                                                className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color texto" />
+                                                            {layer.stroke && <input type="color" value={layer.strokeColor || "#000000"} onChange={e => upd({ strokeColor: e.target.value })}
+                                                                className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color contorno" />}
                                                             {([
-                                                                { key: "bold", label: "B", title: "Negrita", style: "font-bold" },
-                                                                { key: "italic", label: "I", title: "Cursiva", style: "italic" },
-                                                                { key: "uppercase", label: "AA", title: "Mayúsculas", style: "" },
-                                                                { key: "shadow", label: "⌫", title: "Sombra", style: "" },
-                                                                { key: "stroke", label: "○", title: "Contorno", style: "" },
-                                                            ] as const).map(({ key, label, title, style }) => (
-                                                                <button key={key} title={title}
-                                                                    onClick={() => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, [key]: !l[key] } : l))}
-                                                                    className={`w-6 h-6 rounded-lg text-[9px] ${style} border transition-all shrink-0 ${(layer[key] as boolean) ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-white"}`}>
-                                                                    {label}
+                                                                { key: "bold" as const, label: "B", title: "Negrita", cls: "font-bold" },
+                                                                { key: "italic" as const, label: "I", title: "Cursiva", cls: "italic" },
+                                                                { key: "uppercase" as const, label: "Aa", title: "Mayúsculas", cls: "" },
+                                                            ]).map(({ key, label, title, cls }) => (
+                                                                <button key={key} title={title} onClick={() => tog(key)}
+                                                                    className={`w-6 h-6 rounded-lg text-[9px] ${cls} border transition-all shrink-0 ${layer[key] ? activeBtn : inactiveBtn}`}>{label}</button>
+                                                            ))}
+                                                            <div className="w-px h-4 bg-white/8 shrink-0" />
+                                                            {(["left","center","right"] as const).map(al => (
+                                                                <button key={al} onClick={() => upd({ align: al })}
+                                                                    className={`w-6 h-6 rounded-lg text-[9px] border transition-all shrink-0 ${layer.align===al ? activeBtn : inactiveBtn}`}>
+                                                                    {al==="left"?"⫷":al==="center"?"≡":"⫸"}
                                                                 </button>
                                                             ))}
-                                                            {/* Alignment */}
-                                                            {(["left", "center", "right"] as const).map(al => (
-                                                                <button key={al} onClick={() => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, align: al } : l))}
-                                                                    className={`w-6 h-6 rounded-lg text-[9px] border transition-all shrink-0 ${layer.align === al ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-white"}`}>
-                                                                    {al === "left" ? "⫷" : al === "center" ? "≡" : "⫸"}
+                                                            <div className="w-px h-4 bg-white/8 shrink-0" />
+                                                            <input type="range" min={0} max={20} value={layer.letterSpacing ?? 0} onChange={e => upd({ letterSpacing: Number(e.target.value) })}
+                                                                className="w-10 shrink-0 accent-fuchsia-500" title={`Espaciado: ${layer.letterSpacing ?? 0}`} />
+                                                        </div>
+                                                        {/* Row 4: sombra + contorno + glow + gradiente */}
+                                                        <div className="flex items-center gap-1.5 px-3 py-1.5 flex-wrap border-b border-white/[0.04]">
+                                                            <span className="text-[8px] text-neutral-700 font-black uppercase tracking-wider mr-0.5">FX</span>
+                                                            <button title="Sombra" onClick={() => tog("shadow")}
+                                                                className={`h-6 px-2 rounded-lg text-[9px] border transition-all ${layer.shadow ? activeBtn : inactiveBtn}`}>
+                                                                Sombra
+                                                            </button>
+                                                            {layer.shadow && <input type="range" min={0} max={100} value={layer.shadowStrength ?? 80} onChange={e => upd({ shadowStrength: Number(e.target.value) })}
+                                                                className="w-10 shrink-0 accent-fuchsia-500" title={`Sombra: ${layer.shadowStrength ?? 80}%`} />}
+                                                            <button title="Contorno" onClick={() => tog("stroke")}
+                                                                className={`h-6 px-2 rounded-lg text-[9px] border transition-all ${layer.stroke ? activeBtn : inactiveBtn}`}>
+                                                                Borde
+                                                            </button>
+                                                            {layer.stroke && <input type="range" min={1} max={12} value={layer.strokeWidth ?? 3} onChange={e => upd({ strokeWidth: Number(e.target.value) })}
+                                                                className="w-10 shrink-0 accent-fuchsia-500" title={`Grosor: ${layer.strokeWidth ?? 3}`} />}
+                                                            <button title="Glow" onClick={() => tog("glow")}
+                                                                className={`h-6 px-2 rounded-lg text-[9px] border transition-all ${layer.glow ? "border-amber-500/50 bg-amber-500/15 text-amber-300" : inactiveBtn}`}>
+                                                                ✦ Glow
+                                                            </button>
+                                                            {layer.glow && <>
+                                                                <input type="color" value={layer.glowColor ?? "#FFD700"} onChange={e => upd({ glowColor: e.target.value })}
+                                                                    className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color glow" />
+                                                                <input type="range" min={10} max={100} value={layer.glowStrength ?? 50} onChange={e => upd({ glowStrength: Number(e.target.value) })}
+                                                                    className="w-10 shrink-0 accent-amber-400" title={`Glow: ${layer.glowStrength ?? 50}%`} />
+                                                            </>}
+                                                        </div>
+                                                        {/* Row 5: fondo + gradiente */}
+                                                        <div className="flex items-center gap-1.5 px-3 py-1.5 flex-wrap">
+                                                            <span className="text-[8px] text-neutral-700 font-black uppercase tracking-wider mr-0.5">BG</span>
+                                                            {(["none","band","mark","pill","blur"] as const).map(bgType => (
+                                                                <button key={bgType} onClick={() => upd({ bg: bgType })}
+                                                                    className={`h-6 px-2 rounded-lg text-[9px] border transition-all capitalize ${layer.bg===bgType ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : inactiveBtn}`}>
+                                                                    {bgType === "none" ? "Sin" : bgType === "band" ? "Banda" : bgType === "mark" ? "Marca" : bgType === "pill" ? "Píldora" : "Blur"}
                                                                 </button>
                                                             ))}
+                                                            {layer.bg !== "none" && <>
+                                                                <input type="color" value={layer.bgColor ?? "#000000"} onChange={e => upd({ bgColor: e.target.value })}
+                                                                    className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color fondo" />
+                                                                <input type="range" min={10} max={100} value={layer.bgOpacity ?? 55} onChange={e => upd({ bgOpacity: Number(e.target.value) })}
+                                                                    className="w-10 shrink-0 accent-sky-400" title={`Opacidad: ${layer.bgOpacity ?? 55}%`} />
+                                                            </>}
+                                                            <div className="w-px h-4 bg-white/8 shrink-0" />
+                                                            <button onClick={() => tog("gradient")}
+                                                                className={`h-6 px-2 rounded-lg text-[9px] border transition-all ${layer.gradient ? "border-fuchsia-500/50 bg-fuchsia-500/15 text-fuchsia-300" : inactiveBtn}`}>
+                                                                Degradado
+                                                            </button>
+                                                            {layer.gradient && <>
+                                                                <input type="color" value={layer.gradientFrom ?? "#FFD700"} onChange={e => upd({ gradientFrom: e.target.value })}
+                                                                    className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color inicio" />
+                                                                <input type="color" value={layer.gradientTo ?? "#FF6B35"} onChange={e => upd({ gradientTo: e.target.value })}
+                                                                    className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color fin" />
+                                                            </>}
                                                         </div>
                                                     </div>
-                                                ))}
+                                                    );
+                                                })}
                                                 <p className="text-[9px] text-neutral-700">Arrastra el texto sobre la previsualización · se incrusta al guardar</p>
                                             </div>
                                         )}
@@ -15970,37 +16293,65 @@ POST-LANZAMIENTO:
                                                 </div>
                                             )}
                                             {/* Draggable text overlays (mini preview) */}
-                                            {coverModalTab === "front" && coverTextLayers.filter(l => l.visible !== false).map(layer => (
-                                                <div key={layer.id}
-                                                    style={{
-                                                        position: "absolute",
-                                                        left: `${layer.x}%`,
-                                                        top: `${layer.y}%`,
-                                                        transform: "translate(-50%, -50%)",
-                                                        fontSize: `${layer.fontSize * 0.4}px`,
-                                                        color: layer.color,
-                                                        fontWeight: layer.bold ? 700 : 400,
-                                                        fontStyle: layer.italic ? "italic" : "normal",
-                                                        fontFamily: layer.fontFamily || "sans-serif",
-                                                        textAlign: layer.align,
-                                                        textTransform: layer.uppercase ? "uppercase" : "none",
-                                                        letterSpacing: `${(layer.letterSpacing ?? 0) * 0.4}px`,
-                                                        opacity: (layer.opacity ?? 100) / 100,
-                                                        textShadow: layer.shadow
-                                                            ? (layer.stroke ? `0 1px 4px rgba(0,0,0,0.8), -1px -1px 0 ${layer.strokeColor||"#000"}, 1px -1px 0 ${layer.strokeColor||"#000"}, -1px 1px 0 ${layer.strokeColor||"#000"}, 1px 1px 0 ${layer.strokeColor||"#000"}` : "0 1px 4px rgba(0,0,0,0.8)")
-                                                            : (layer.stroke ? `-1px -1px 0 ${layer.strokeColor||"#000"}, 1px -1px 0 ${layer.strokeColor||"#000"}, -1px 1px 0 ${layer.strokeColor||"#000"}, 1px 1px 0 ${layer.strokeColor||"#000"}` : undefined),
-                                                        cursor: "grab",
-                                                        userSelect: "none",
-                                                        whiteSpace: "pre-wrap",
-                                                        wordBreak: "break-word",
-                                                        width: "85%",
-                                                        lineHeight: 1.3,
-                                                        zIndex: 10,
-                                                    }}
-                                                    onMouseDown={e => { e.preventDefault(); draggingLayerRef.current = { id: layer.id, startX: e.clientX, startY: e.clientY, origX: layer.x, origY: layer.y }; }}>
-                                                    {layer.uppercase ? layer.text.toUpperCase() : layer.text}
-                                                </div>
-                                            ))}
+                                            {coverModalTab === "front" && coverTextLayers.filter(l => l.visible !== false).map(layer => {
+                                                const fs = layer.fontSize * 0.4;
+                                                const strength = (layer.shadowStrength ?? 80) / 100;
+                                                const glowCSS = layer.glow
+                                                    ? `0 0 ${Math.round(fs * (layer.glowStrength ?? 50) / 100 * 1.5)}px ${layer.glowColor ?? "#FFD700"}, 0 0 ${Math.round(fs * (layer.glowStrength ?? 50) / 100 * 3)}px ${layer.glowColor ?? "#FFD700"}`
+                                                    : undefined;
+                                                const shadowCSS = !layer.glow && layer.shadow
+                                                    ? `0 ${Math.round(fs * 0.07)}px ${Math.round(fs * (0.15 + strength * 0.25))}px rgba(0,0,0,${(0.55 + strength * 0.35).toFixed(2)})`
+                                                    : undefined;
+                                                const strokeCSS = layer.stroke
+                                                    ? [[-1,-1],[1,-1],[-1,1],[1,1]].map(([dx,dy]) => {
+                                                        const d = Math.max(0.5, (layer.strokeWidth ?? 3) * 0.15);
+                                                        return `${dx*d}px ${dy*d}px 0 ${layer.strokeColor||"#000"}`;
+                                                    }).join(", ")
+                                                    : undefined;
+                                                const textShadow = [glowCSS, shadowCSS, strokeCSS].filter(Boolean).join(", ") || undefined;
+                                                const bgHex = `${layer.bgColor ?? "#000"}${Math.round((layer.bgOpacity ?? 55) / 100 * 255).toString(16).padStart(2, "0")}`;
+                                                const inlineBg = layer.bg === "pill"
+                                                    ? { background: bgHex, padding: `${fs*0.25}px ${fs*0.6}px`, borderRadius: `${fs*0.4}px` }
+                                                    : layer.bg === "blur"
+                                                    ? { background: bgHex, backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", padding: `${fs*0.18}px ${fs*0.4}px` }
+                                                    : {};
+                                                return (
+                                                    <React.Fragment key={layer.id}>
+                                                        {layer.bg === "band" && (
+                                                            <div style={{ position: "absolute", left: 0, right: 0, top: `calc(${layer.y}% - ${fs * 1.1}px)`, height: `${fs * 2.2}px`, background: bgHex, pointerEvents: "none", zIndex: 9 }} />
+                                                        )}
+                                                        {layer.bg === "mark" && (
+                                                            <div style={{ position: "absolute", left: "-3px", right: "-3px", top: `calc(${layer.y}% - ${fs * 0.72}px)`, height: `${fs * 1.42}px`, background: bgHex, borderRadius: `${fs*0.08}px ${fs*0.2}px ${fs*0.18}px ${fs*0.06}px / ${fs*0.22}px ${fs*0.08}px ${fs*0.12}px ${fs*0.24}px`, transform: "skewX(-1deg) scaleX(1.015)", pointerEvents: "none", zIndex: 9 }} />
+                                                        )}
+                                                        <div
+                                                            style={{
+                                                                position: "absolute",
+                                                                left: `${layer.x}%`, top: `${layer.y}%`,
+                                                                transform: "translate(-50%, -50%)",
+                                                                fontSize: `${fs}px`,
+                                                                color: layer.gradient && layer.gradientFrom && layer.gradientTo ? "transparent" : layer.color,
+                                                                backgroundImage: layer.gradient && layer.gradientFrom && layer.gradientTo ? `linear-gradient(135deg, ${layer.gradientFrom}, ${layer.gradientTo})` : undefined,
+                                                                WebkitBackgroundClip: layer.gradient ? "text" : undefined,
+                                                                backgroundClip: layer.gradient ? "text" : undefined,
+                                                                fontWeight: layer.bold ? 700 : 400,
+                                                                fontStyle: layer.italic ? "italic" : "normal",
+                                                                fontFamily: layer.fontFamily || "sans-serif",
+                                                                textAlign: layer.align,
+                                                                textTransform: layer.uppercase ? "uppercase" : "none",
+                                                                letterSpacing: `${(layer.letterSpacing ?? 0) * 0.4}px`,
+                                                                opacity: (layer.opacity ?? 100) / 100,
+                                                                textShadow,
+                                                                cursor: "grab", userSelect: "none",
+                                                                whiteSpace: "pre-wrap", wordBreak: "break-word",
+                                                                width: "88%", lineHeight: 1.3, zIndex: 10,
+                                                                ...inlineBg,
+                                                            }}
+                                                            onMouseDown={e => { e.preventDefault(); draggingLayerRef.current = { id: layer.id, startX: e.clientX, startY: e.clientY, origX: layer.x, origY: layer.y }; }}>
+                                                            {layer.uppercase ? layer.text.toUpperCase() : layer.text}
+                                                        </div>
+                                                    </React.Fragment>
+                                                );
+                                            })}
                                         </div>
                                         {url && coverStep !== 2 && (
                                             <div className="flex flex-col gap-1.5 w-full">

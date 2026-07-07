@@ -48,29 +48,9 @@ export function defineStorageCleanupJob(agenda: Agenda, io?: any) {
             console.warn(`[storage-cleanup] Vault cleanup falló: ${e?.message}`);
         }
 
-        // ── 2. Catálogos cancelados antiguos ──
-        try {
-            const cutoff = new Date(Date.now() - CANCELLED_TTL_DAYS * 24 * 3600 * 1000);
-            const old = await Catalog.find({
-                status: "cancelled",
-                updatedAt: { $lt: cutoff },
-            }).limit(20).lean();
-
-            for (const cat of old as any[]) {
-                if (deleted >= MAX_DELETES_PER_RUN) break;
-                const publicIds: string[] = (cat.images ?? []).map((i: any) => i.publicId).filter(Boolean);
-                // delete_resources admite máx 100 por llamada
-                for (let i = 0; i < publicIds.length; i += 100) {
-                    await cld.api.delete_resources(publicIds.slice(i, i + 100), { type: "upload" }).catch(() => {});
-                }
-                deleted += publicIds.length;
-                await Catalog.findByIdAndDelete(cat._id);
-                console.log(`[storage-cleanup] Catálogo cancelado "${cat.name}" (${publicIds.length} imgs) purgado`);
-            }
-            if (old.length > 0) io?.emit("catalogs:updated");
-        } catch (e: any) {
-            console.warn(`[storage-cleanup] Catálogos cancelados cleanup falló: ${e?.message}`);
-        }
+        // ── 2. Catálogos cancelados — DESACTIVADO ──
+        // No borramos catálogos cancelados automáticamente para evitar pérdida de imágenes.
+        console.log("[storage-cleanup] Purga de catálogos cancelados desactivada — skipped");
 
         console.log(`[storage-cleanup] Hecho — ${deleted} assets eliminados de Cloudinary`);
     });
