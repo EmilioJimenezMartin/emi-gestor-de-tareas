@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import {
     X, Play, Loader2, ZoomIn, Trash2, Check, Sparkles, ChevronDown, ChevronLeft, ChevronRight,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import type { NicheFE, IACatalogFE, CatalogImageFE, CloudinaryImage, BookPage, BookDraft, PageTextStyle } from "./types";
 import { ListingCardFields } from "./ListingCardFields";
 
@@ -90,6 +91,8 @@ export function NicheDetailModal(props: NicheDetailModalProps) {
         fetchNiches, guardedLoadBookDraft, changeTab, defaultTextStyle, apiBaseUrl, nd,
     } = props;
 
+    const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+
 const detailNiche = niches.find(n => n._id === nicheDetailId);
 if (!detailNiche) return null;
 // Bidirectional: catalog has the niche in nicheIds OR niche has the catalog in catalogIds
@@ -98,12 +101,27 @@ const linkedCats = iaCatalogs.filter(c =>
     (detailNiche.catalogIds ?? []).includes(c._id)
 );
 const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId || (img.nicheIds ?? []).includes(nicheDetailId ?? ""));
+// Index ALL iaCatalogs images by URL so fallback images resolve to real publicId+catalogId
+const urlToCatalogImg = new Map<string, { publicId: string; catalogId: string; width?: number; height?: number }>();
+for (const cat of iaCatalogs) {
+    for (const img of cat.images) {
+        if (img.url && !urlToCatalogImg.has(img.url)) {
+            urlToCatalogImg.set(img.url, { publicId: img.publicId, catalogId: cat._id, width: (img as any).width, height: (img as any).height });
+        }
+    }
+}
 const allImgs: { publicId: string; url: string; width?: number; height?: number; catalogId?: string }[] = (() => {
     const seen = new Set<string>();
     const catImgs = linkedCats.flatMap(c => c.images.map(img => ({ ...img, catalogId: c._id })));
     // Fallback: when no catalog images are linked, use catalogImageOrder stored on the niche
+    // Resolve each URL to the real publicId+catalogId via the global catalog index
     const fallbackImgs = catImgs.length === 0
-        ? (detailNiche.catalogImageOrder ?? []).map(url => ({ publicId: url, url, catalogId: undefined }))
+        ? (detailNiche.catalogImageOrder ?? []).map(url => {
+            const resolved = urlToCatalogImg.get(url);
+            return resolved
+                ? { publicId: resolved.publicId, url, catalogId: resolved.catalogId, width: resolved.width, height: resolved.height }
+                : { publicId: url, url, catalogId: undefined as string | undefined };
+        })
         : [];
     return [
         ...catImgs,
@@ -119,7 +137,7 @@ const TABS = [
     { id: "seo" as const, label: "SEO / Listing", icon: <FileText size={11} />, count: detailNiche.listings?.length ?? 0 },
     { id: "preview" as const, label: "Preview", icon: <BookOpen size={11} />, count: 0 },
 ];
-return createPortal(
+const modalPortal = createPortal(
     <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto" onClick={e => { if (e.target === e.currentTarget) setNicheDetailId(null); }}>
         <div className="w-full max-w-4xl mt-8 mb-8 rounded-3xl border border-white/10 bg-[#0a0a0a] shadow-2xl overflow-hidden">
             {/* Header */}
@@ -331,7 +349,7 @@ return createPortal(
                                                 Todas
                                             </button>
                                             <button
-                                                onClick={() => void bulkDeleteNicheImages(allImgs)}
+                                                onClick={() => setShowBulkDeleteConfirm(true)}
                                                 disabled={isDeletingNicheImages}
                                                 className="flex items-center gap-1.5 text-xs font-black text-white bg-rose-500 hover:bg-rose-400 disabled:opacity-50 px-4 py-1.5 rounded-xl transition-all"
                                             >
@@ -1097,5 +1115,21 @@ return createPortal(
         </div>
     </div>,
     document.body
+);
+return (
+    <>
+        {modalPortal}
+        <ConfirmModal
+            open={showBulkDeleteConfirm}
+            onClose={() => setShowBulkDeleteConfirm(false)}
+            onConfirm={() => { setShowBulkDeleteConfirm(false); void bulkDeleteNicheImages(allImgs); }}
+            title={`¿Eliminar ${nicheDetailSelectedPids.size} imagen${nicheDetailSelectedPids.size !== 1 ? "es" : ""}?`}
+            description="Se eliminarán de Cloudinary y de sus catálogos permanentemente. Esta acción no se puede deshacer."
+            confirmLabel={`Eliminar ${nicheDetailSelectedPids.size}`}
+            variant="danger"
+            icon={<Trash2 size={24} className="text-red-400" />}
+            zIndex={9200}
+        />
+    </>
 );
 }
