@@ -138,8 +138,8 @@ const TABS = [
     { id: "preview" as const, label: "Preview", icon: <BookOpen size={11} />, count: 0 },
 ];
 const modalPortal = createPortal(
-    <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto" onClick={e => { if (e.target === e.currentTarget) setNicheDetailId(null); }}>
-        <div className="w-full max-w-4xl mt-8 mb-8 rounded-3xl border border-white/10 bg-[#0a0a0a] shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={e => { if (e.target === e.currentTarget) setNicheDetailId(null); }}>
+        <div className="w-full max-w-4xl rounded-3xl border border-white/10 bg-[#0a0a0a] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* Header */}
             <div className="relative p-6 border-b border-white/8">
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-violet-500/60 via-blue-400/20 to-transparent" />
@@ -176,54 +176,86 @@ const modalPortal = createPortal(
                         <button onClick={() => setNicheDetailId(null)} className="p-2 rounded-xl text-neutral-600 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
                     </div>
                 </div>
-                {/* Tabs */}
-                <div className="flex gap-1 mt-4 overflow-x-auto no-scrollbar">
-                    {TABS.map(tab => (
+                {/* Tabs + bulk actions row */}
+                <div className="flex items-center gap-2 mt-4 overflow-x-auto no-scrollbar">
+                    {!nicheDetailSelectMode && TABS.map(tab => (
                         <button key={tab.id} onClick={() => setNicheDetailTab(tab.id)}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-sm font-black transition-all shrink-0 ${nicheDetailTab === tab.id ? "border-violet-500/40 bg-violet-500/10 text-violet-300" : "border-white/8 bg-transparent text-neutral-600 hover:text-neutral-400"}`}>
                             {tab.icon}{tab.label}
                             {tab.count > 0 && <span className="bg-white/10 rounded-full px-1 text-sm">{tab.count}</span>}
                         </button>
                     ))}
+                    {/* Bulk select actions — shown in header when select mode is active */}
+                    {nicheDetailSelectMode && (
+                        <>
+                            <button
+                                onClick={() => { setNicheDetailSelectMode(false); setNicheDetailSelectedPids(new Set()); }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-sm font-black text-neutral-400 hover:text-white hover:bg-white/10 transition-all shrink-0"
+                            >
+                                <X size={11} /> Cancelar
+                            </button>
+                            <span className="text-sm font-black text-rose-300 shrink-0">
+                                {nicheDetailSelectedPids.size} seleccionada{nicheDetailSelectedPids.size !== 1 ? "s" : ""}
+                            </span>
+                            <div className="flex-1" />
+                            <button
+                                onClick={() => setNicheDetailSelectedPids(new Set(allImgs.map(i => i.publicId)))}
+                                className="text-xs font-black text-neutral-400 hover:text-white px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 transition-all shrink-0"
+                            >
+                                Todas
+                            </button>
+                            <button
+                                onClick={() => setShowBulkDeleteConfirm(true)}
+                                disabled={isDeletingNicheImages || nicheDetailSelectedPids.size === 0}
+                                className="flex items-center gap-1.5 text-xs font-black text-white bg-rose-500 hover:bg-rose-400 disabled:opacity-40 px-4 py-1.5 rounded-xl transition-all shrink-0"
+                            >
+                                {isDeletingNicheImages ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                Eliminar {nicheDetailSelectedPids.size > 0 ? nicheDetailSelectedPids.size : ""}
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
-            {/* Tab content */}
-            <div className="p-6">
+            {/* Sub-header: stats bar — fixed, only in images tab */}
+            {nicheDetailTab === "images" && allImgs.length > 0 && (() => {
+                const catCount = allImgs.filter(img => img.catalogId).length;
+                const cloudCount = allImgs.filter(img => !img.catalogId).length;
+                return (
+                    <div className="flex items-center gap-3 px-6 py-2.5 border-b border-white/[0.06] bg-gradient-to-r from-violet-500/[0.04] via-transparent to-cyan-500/[0.03]">
+                        <div className="flex items-center gap-2 text-xs flex-1">
+                            <ImageIcon size={11} className="text-violet-400/70" />
+                            <span className="font-black text-white">{allImgs.length}</span>
+                            <span className="text-neutral-500">imagen{allImgs.length !== 1 ? "es" : ""}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {catCount > 0 && (
+                                <span className="text-[10px] font-black text-violet-300 bg-violet-500/15 px-2.5 py-1 rounded-full border border-violet-500/25">
+                                    {catCount} catálogo{catCount !== 1 ? "s" : ""}
+                                </span>
+                            )}
+                            {cloudCount > 0 && (
+                                <span className="text-[10px] font-black text-cyan-300 bg-cyan-500/15 px-2.5 py-1 rounded-full border border-cyan-500/25">
+                                    {cloudCount} cloud
+                                </span>
+                            )}
+                            {!nicheDetailSelectMode && (
+                                <button
+                                    onClick={() => { setNicheDetailSelectMode(true); setNicheDetailSelectedPids(new Set()); }}
+                                    className="text-[10px] font-black px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10 transition-all"
+                                >
+                                    Seleccionar
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Tab content — scrollable */}
+            <div className="p-6 overflow-y-auto flex-1">
                 {nicheDetailTab === "images" && (
                     <div className="space-y-4">
-                        {/* Stats bar */}
-                        {allImgs.length > 0 && (() => {
-                            const catCount = allImgs.filter(img => img.catalogId).length;
-                            const cloudCount = allImgs.filter(img => !img.catalogId).length;
-                            return (
-                                <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl border border-white/[0.07] bg-gradient-to-r from-violet-500/[0.06] via-transparent to-cyan-500/[0.04] backdrop-blur-sm">
-                                    <div className="flex items-center gap-2 text-xs flex-1">
-                                        <ImageIcon size={11} className="text-violet-400/70" />
-                                        <span className="font-black text-white">{allImgs.length}</span>
-                                        <span className="text-neutral-500">imagen{allImgs.length !== 1 ? "es" : ""}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {catCount > 0 && (
-                                            <span className="text-[10px] font-black text-violet-300 bg-violet-500/15 backdrop-blur-sm px-2.5 py-1 rounded-full border border-violet-500/25">
-                                                {catCount} catálogo{catCount !== 1 ? "s" : ""}
-                                            </span>
-                                        )}
-                                        {cloudCount > 0 && (
-                                            <span className="text-[10px] font-black text-cyan-300 bg-cyan-500/15 backdrop-blur-sm px-2.5 py-1 rounded-full border border-cyan-500/25">
-                                                {cloudCount} cloud
-                                            </span>
-                                        )}
-                                        <button
-                                            onClick={() => { setNicheDetailSelectMode(m => !m); setNicheDetailSelectedPids(new Set()); }}
-                                            className={`text-[10px] font-black px-2.5 py-1 rounded-full border transition-all ${nicheDetailSelectMode ? "text-rose-300 bg-rose-500/15 border-rose-500/30" : "text-neutral-400 bg-white/5 border-white/10 hover:text-white hover:bg-white/10"}`}
-                                        >
-                                            {nicheDetailSelectMode ? "Cancelar" : "Seleccionar"}
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })()}
 
                         {/* Grid or empty state */}
                         {allImgs.length === 0 ? (
@@ -334,31 +366,6 @@ const modalPortal = createPortal(
                                     })}
                                 </div>
 
-                                {/* Sticky bulk action bar */}
-                                {nicheDetailSelectMode && nicheDetailSelectedPids.size > 0 && (
-                                    <div className="sticky bottom-4 mt-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-rose-500/30 bg-neutral-950/90 backdrop-blur-xl shadow-xl shadow-rose-900/20">
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <span className="font-black text-rose-300">{nicheDetailSelectedPids.size}</span>
-                                            <span className="text-neutral-400">imagen{nicheDetailSelectedPids.size !== 1 ? "es" : ""} seleccionada{nicheDetailSelectedPids.size !== 1 ? "s" : ""}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => setNicheDetailSelectedPids(new Set(allImgs.map(i => i.publicId)))}
-                                                className="text-xs font-black text-neutral-400 hover:text-white px-3 py-1.5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"
-                                            >
-                                                Todas
-                                            </button>
-                                            <button
-                                                onClick={() => setShowBulkDeleteConfirm(true)}
-                                                disabled={isDeletingNicheImages}
-                                                className="flex items-center gap-1.5 text-xs font-black text-white bg-rose-500 hover:bg-rose-400 disabled:opacity-50 px-4 py-1.5 rounded-xl transition-all"
-                                            >
-                                                {isDeletingNicheImages ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
-                                                Eliminar {nicheDetailSelectedPids.size}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         )}
                     </div>
