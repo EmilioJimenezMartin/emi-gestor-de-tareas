@@ -19815,6 +19815,7 @@ POST-LANZAMIENTO:
                     defaultTextStyle={defaultTextStyle}
                     apiBaseUrl={API_BASE_URL}
                     nd={nd}
+                    setExplodeNicheId={setExplodeNicheId}
                 />
             )}
 

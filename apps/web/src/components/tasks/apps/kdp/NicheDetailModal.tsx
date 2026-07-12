@@ -6,7 +6,7 @@ import {
     X, Play, Loader2, ZoomIn, Trash2, Check, Sparkles, ChevronDown, ChevronLeft, ChevronRight,
     ImageIcon, BookOpen, FileText, Tag, Globe, Star, Eye, Copy, Save, Pencil, AlertTriangle,
     TrendingUp, Target, Bot, RotateCcw, ChevronUp, ExternalLink, Package, Plus,
-    Grid3x3, Library, Wand2, CheckCircle2,
+    Grid3x3, Library, Wand2, CheckCircle2, Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -75,6 +75,7 @@ interface NicheDetailModalProps {
     defaultTextStyle: () => PageTextStyle;
     apiBaseUrl: string;
     nd: (n: Pick<NicheFE, "name" | "nickname">) => string;
+    setExplodeNicheId: (id: string | null) => void;
 }
 
 export function NicheDetailModal(props: NicheDetailModalProps) {
@@ -89,6 +90,7 @@ export function NicheDetailModal(props: NicheDetailModalProps) {
         setSelectedCoverNicheId, setCoverTitle, runNichePipeline, deleteFromCloudinary,
         bulkDeleteNicheImages, launchPipelineSeo, saveListingEdit, deleteNicheListing,
         fetchNiches, guardedLoadBookDraft, changeTab, defaultTextStyle, apiBaseUrl, nd,
+        setExplodeNicheId,
     } = props;
 
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -240,12 +242,21 @@ const modalPortal = createPortal(
                                 </span>
                             )}
                             {!nicheDetailSelectMode && (
-                                <button
-                                    onClick={() => { setNicheDetailSelectMode(true); setNicheDetailSelectedPids(new Set()); }}
-                                    className="text-[10px] font-black px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10 transition-all"
-                                >
-                                    Seleccionar
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => { setNicheDetailId(null); setExplodeNicheId(nicheDetailId); }}
+                                        className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full border border-violet-500/25 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 hover:text-violet-200 transition-all"
+                                        title="Explosión IA: genera catálogos con situaciones distintas"
+                                    >
+                                        <Layers size={9} /> Explosión IA
+                                    </button>
+                                    <button
+                                        onClick={() => { setNicheDetailSelectMode(true); setNicheDetailSelectedPids(new Set()); }}
+                                        className="text-[10px] font-black px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10 transition-all"
+                                    >
+                                        Seleccionar
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
