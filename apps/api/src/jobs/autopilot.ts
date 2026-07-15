@@ -255,7 +255,7 @@ async function runDiscovery(
             if (aiCore) {
                 const wrappedDiscoveryPrompt = (niche.productType ?? "coloring-book") === "printable-poster"
                     ? buildPosterPrompt(aiCore, niche.styleCategory ?? "generic")
-                    : buildColoringBookPrompt(aiCore, niche.styleCategory ?? "generic");
+                    : buildColoringBookPrompt(aiCore, niche.styleCategory ?? "generic", niche.targetAudience as string | undefined);
                 _bgWrappedPrompt = wrappedDiscoveryPrompt;
                 sampleUrl = buildSampleUrl(visualCoreName, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book", aiCore);
                 await Niche.findByIdAndUpdate(niche._id, { $set: { discoveryImagePrompt: wrappedDiscoveryPrompt, generatedPrompt: aiCore } });
@@ -319,7 +319,7 @@ async function runDiscovery(
                 // Use the AI-enhanced wrapped prompt if available; fallback to niche name
                 const bgImageGenPrompt = _bgDiscoveryPrompt || (bgPt === "printable-poster"
                     ? buildPosterPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic")
-                    : buildColoringBookPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic"));
+                    : buildColoringBookPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic", _bgNiche.targetAudience as string | undefined));
 
                 const bgDiscoveryAiModel = await getAutopilotImageModel();
                 _bgIo?.emit("autopilot:log", { nicheId: String(_bgNiche._id), message: `🎨 Generando imagen con ${bgDiscoveryAiModel.name}…` });

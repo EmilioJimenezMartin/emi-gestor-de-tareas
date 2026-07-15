@@ -5992,12 +5992,16 @@ POST-LANZAMIENTO:
             }
         } catch { }
     };
-    const launchPipelineSeo = async (nicheId: string, annotation?: string) => {
+    const launchPipelineSeo = async (nicheId: string, annotation?: string, referenceUrl?: string) => {
         setPipelineSeoLoading(prev => ({ ...prev, [nicheId]: true }));
         try {
             const seoRes = await fetch(`${API_BASE_URL}/niches/${nicheId}/listings`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ generate: true, ...(annotation?.trim() ? { seoAnnotation: annotation.trim() } : {}) }),
+                body: JSON.stringify({
+                    generate: true,
+                    ...(annotation?.trim() ? { seoAnnotation: annotation.trim() } : {}),
+                    ...(referenceUrl?.trim() ? { referenceUrl: referenceUrl.trim() } : {}),
+                }),
             });
             if (!seoRes.ok) throw new Error((await seoRes.json()).error ?? "Error generando SEO");
             // Only advance phase if it's still in libro — don't downgrade if already seo/cover

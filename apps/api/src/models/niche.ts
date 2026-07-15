@@ -82,6 +82,7 @@ export interface INiche extends Document {
         opportunityScore: number;
     };
     saturationScannedAt?: Date;
+    targetAudience?: "children" | "teens" | "adults" | "all";
     createdAt: Date;
     updatedAt: Date;
 }

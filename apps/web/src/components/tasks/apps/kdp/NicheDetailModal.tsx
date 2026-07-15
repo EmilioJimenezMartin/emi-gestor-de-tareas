@@ -66,7 +66,7 @@ interface NicheDetailModalProps {
     runNichePipeline: (niche: NicheFE) => Promise<void>;
     deleteFromCloudinary: (publicId: string) => Promise<void>;
     bulkDeleteNicheImages: (allImgs: AllImg[]) => Promise<void>;
-    launchPipelineSeo: (nicheId: string, annotation?: string) => Promise<void>;
+    launchPipelineSeo: (nicheId: string, annotation?: string, referenceUrl?: string) => Promise<void>;
     saveListingEdit: (nicheId: string, listingId: string) => Promise<void>;
     deleteNicheListing: (nicheId: string, listingId: string) => Promise<void>;
     fetchNiches: () => Promise<void>;
@@ -94,6 +94,7 @@ export function NicheDetailModal(props: NicheDetailModalProps) {
     } = props;
 
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+    const [seoReferenceUrl, setSeoReferenceUrl] = useState("");
 
 const detailNiche = niches.find(n => n._id === nicheDetailId);
 if (!detailNiche) return null;
@@ -405,6 +406,30 @@ const modalPortal = createPortal(
                 )}
                 {nicheDetailTab === "seo" && (
                     <div className="space-y-3">
+                        {/* URL de referencia (bestseller Amazon) */}
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-3 space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-amber-500/70 flex items-center gap-1.5">
+                                <ExternalLink size={9} />
+                                URL de referencia Amazon (opcional)
+                            </label>
+                            <div className="flex gap-2 items-center">
+                                <input
+                                    type="url"
+                                    value={seoReferenceUrl}
+                                    onChange={e => setSeoReferenceUrl(e.target.value)}
+                                    placeholder="https://www.amazon.com/dp/XXXXXXXXXX"
+                                    className="flex-1 bg-white/[0.03] border border-white/8 rounded-lg px-3 py-2 text-xs text-neutral-300 placeholder-neutral-700 focus:outline-none focus:border-amber-500/40"
+                                />
+                                {seoReferenceUrl.trim() && (
+                                    <button onClick={() => setSeoReferenceUrl("")} className="text-neutral-600 hover:text-neutral-400 transition-colors shrink-0">
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                            <p className="text-[9px] text-neutral-600 leading-relaxed">
+                                Pega la URL de un bestseller de Amazon. La IA analizará su SEO (título, subtítulo, keywords, descripción) y replicará esa estrategia adaptada a tu nicho.
+                            </p>
+                        </div>
                         {/* Anotaciones — siempre visible en el tab SEO */}
                         <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-1.5">
                             <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
@@ -587,7 +612,7 @@ const modalPortal = createPortal(
                                 <FileText size={32} strokeWidth={1} className="text-neutral-600 opacity-30" />
                                 <p className="text-sm text-neutral-600 opacity-30">Sin listings SEO todavía</p>
                                 <button
-                                    onClick={() => void launchPipelineSeo(detailNiche._id, seoAnnotation)}
+                                    onClick={() => void launchPipelineSeo(detailNiche._id, seoAnnotation, seoReferenceUrl)}
                                     disabled={!!pipelineSeoLoading[detailNiche._id]}
                                     className="flex items-center gap-2 h-10 px-6 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-black hover:bg-amber-500/25 transition-all disabled:opacity-50"
                                 >
@@ -599,7 +624,7 @@ const modalPortal = createPortal(
                             <>
                             <div className="flex justify-end">
                                 <button
-                                    onClick={() => void launchPipelineSeo(detailNiche._id, seoAnnotation)}
+                                    onClick={() => void launchPipelineSeo(detailNiche._id, seoAnnotation, seoReferenceUrl)}
                                     disabled={!!pipelineSeoLoading[detailNiche._id]}
                                     className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-[11px] font-black hover:bg-amber-500/20 transition-all disabled:opacity-50"
                                 >

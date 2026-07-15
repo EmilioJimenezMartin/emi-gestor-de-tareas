@@ -577,6 +577,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             const body = request.body as {
                 title?: string; subtitle?: string; description?: string; keywords?: string[];
                 generate?: boolean; language?: "en" | "es"; seoAnnotation?: string;
+                referenceUrl?: string;
             };
             const listingLang = body.language ?? "es";
 
@@ -638,6 +639,27 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 // generatedPrompt = raw visual scene description (best source for what the book actually looks like)
                 const visualContext = (niche as any).generatedPrompt?.trim() ?? "";
 
+                // ── Reference URL scraping (Amazon bestseller to replicate SEO style) ──
+                let referenceSeoContext = "";
+                if (body.referenceUrl?.trim()) {
+                    try {
+                        const refUrl = body.referenceUrl.trim();
+                        const jinaUrl = `https://r.jina.ai/${refUrl}`;
+                        const refRes = await fetch(jinaUrl, {
+                            headers: { "Accept": "text/plain", "X-Return-Format": "text", "User-Agent": "Mozilla/5.0" },
+                            signal: AbortSignal.timeout(15_000),
+                        });
+                        if (refRes.ok) {
+                            const rawText = await refRes.text();
+                            // Extract the relevant portion (first 4000 chars covers title/description/keywords on Amazon)
+                            const snippet = rawText.slice(0, 4000).replace(/\s+/g, " ").trim();
+                            referenceSeoContext = `\n\n━━━ LIBRO DE REFERENCIA (URL ANALIZADA POR EL AUTOR) ━━━\nEl autor ha proporcionado este bestseller de Amazon como referencia de SEO. Analiza su estructura de título, subtítulo, descripción y keywords. REPLICA su estrategia SEO (longitud, tono, estructura, densidad de keywords, gancho emocional) pero adapta el contenido 100% al nicho del autor. NO copies texto literalmente.\n\nContenido extraído:\n${snippet}`;
+                        }
+                    } catch (e: any) {
+                        console.warn("[listings] Reference URL scraping failed:", e?.message);
+                    }
+                }
+
                 const sharedContext = [
                     body.seoAnnotation?.trim() ? `⚠ INSTRUCCIÓN MANUAL DEL AUTOR (PRIORIDAD MÁXIMA — aplica esto en todos los campos generados): ${body.seoAnnotation.trim()}` : "",
                     `Nicho: ${(niche as any).name}`,
@@ -650,6 +672,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                     (niche as any).notes?.trim() ? `Notas del autor: ${(niche as any).notes.trim()}` : "",
                     marketScan?.us?.resultCount ? `Mercado US: ${marketScan.us.resultCount} resultados, mediana ${marketScan.us.medianReviews ?? "?"} reviews` : "",
                     radarMarketContext,
+                    referenceSeoContext,
                 ].filter(Boolean).join("\n");
 
                 const listingLangRule = listingLang === "en"

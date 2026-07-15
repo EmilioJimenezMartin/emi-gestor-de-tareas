@@ -486,7 +486,19 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 }
                 if (productType === "coloring-book") {
                     const alreadyHasFormula = finalPrompt.includes("coloring book page") || finalPrompt.includes("black line art on white");
-                    if (!alreadyHasFormula) finalPrompt = buildColoringBookPrompt(finalPrompt, catalogStyle);
+                    if (!alreadyHasFormula) {
+                        // Fetch targetAudience from the first linked niche to enforce complexity level
+                        let _nicheAudience: string | undefined;
+                        const _nicheId = catalog.nicheIds?.[0];
+                        if (_nicheId) {
+                            try {
+                                const { Niche } = await import("../models/niche.js");
+                                const _n = await Niche.findById(_nicheId).select("targetAudience").lean();
+                                _nicheAudience = (_n as any)?.targetAudience as string | undefined;
+                            } catch { /* non-blocking */ }
+                        }
+                        finalPrompt = buildColoringBookPrompt(finalPrompt, catalogStyle, _nicheAudience);
+                    }
                     const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, solid fill, solid black, black fill, filled shapes, filled areas, black areas, heavy blacks, silhouette, black silhouette, ink wash, grayscale, charcoal, dark fill, dark foliage, shaded foliage, shaded rooftop, off-white, cream, beige, shading, shadow, shadows, soft shadow, drop shadow, inner shadow, cast shadow, gradient, gradients, color, colors, sepia, tones, halftone, texture, textures, rough texture, paper texture, canvas texture, crosshatching, stippling, hatching, watercolor, painterly, painting, illustrated, blur, blurry, soft focus, glow, bloom, soft edges, feathered edges, background pattern, noise, film grain, grain, vignette, fog, mist, ambient occlusion, depth of field, bokeh, watermark, signature, logo, frame, border decoration, 3d render, 3d, realistic, photo, photograph";
                     finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
                 } else if (productType === "printable-poster") {

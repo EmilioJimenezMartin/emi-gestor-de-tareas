@@ -67,13 +67,22 @@ export function isNonColoringIntent(prompt: string): boolean {
     return NON_COLORING_INTENT.test(prompt);
 }
 
-export function buildColoringBookPrompt(particulars: string, style = "generic"): string {
+// Audience complexity constraints injected directly into the image generation prompt.
+// These override the style modifier when the audience demands simpler or more complex imagery.
+const CB_AUDIENCE_CONSTRAINTS: Record<string, string> = {
+    children: "CHILD-FRIENDLY COMPLEXITY — MANDATORY: draw with very large round bold shapes only, thick cartoon outlines, minimal details per element, maximum 2-3 elements total in the scene, no fine patterns, no intricate backgrounds, no cross-hatching, no small details — the whole page must be easy to color for a 4-10 year old child",
+    teens:    "TEEN-FRIENDLY COMPLEXITY: moderate detail level, cool and stylish aesthetic, dynamic composition — not childish-simple, not overwhelming-complex",
+};
+
+export function buildColoringBookPrompt(particulars: string, style = "generic", targetAudience?: string): string {
     // Si el usuario menciona "funko" en su prompt, ese estilo manda sobre el seleccionado
     const effectiveStyle = /funko/i.test(particulars) ? "funko" : style;
     const modifier = CB_STYLE_MODIFIERS[effectiveStyle];
-    return modifier
+    const audienceConstraint = targetAudience && targetAudience !== "all" ? CB_AUDIENCE_CONSTRAINTS[targetAudience] : null;
+    const base = modifier
         ? `${CB_OPENER}, ${modifier}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`
         : `${CB_OPENER}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`;
+    return audienceConstraint ? `${base}, ${audienceConstraint}` : base;
 }
 
 // ── Poster prompts ────────────────────────────────────────────────────────────
@@ -379,11 +388,12 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                     } catch { /* fallback al nombre */ }
                 }
                 const sceneDesc = particulars || nicheName;
+                const _audience = (niche as any).targetAudience as string | undefined;
                 prompt = alreadyWrapped
                     ? sceneDesc
                     : productType === "printable-poster"
                         ? buildPosterPrompt(sceneDesc, style)
-                        : buildColoringBookPrompt(sceneDesc, style);
+                        : buildColoringBookPrompt(sceneDesc, style, _audience);
             }
 
             // Crear catálogo con el modelo y tamaño configurados del autopilot
@@ -485,11 +495,12 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             // Step 2: wrap the RAW scene description in the proven formula.
             // Use visualCoreName as fallback — never the full subtitle-heavy nicheName.
             const sceneDesc = particulars || visualCoreName;
+            const _discoverAudience = (niche as any).targetAudience as string | undefined;
             let samplePrompt: string;
             if (productType === "printable-poster") {
                 samplePrompt = buildPosterPrompt(sceneDesc, style);
             } else {
-                samplePrompt = buildColoringBookPrompt(sceneDesc, style);
+                samplePrompt = buildColoringBookPrompt(sceneDesc, style, _discoverAudience);
             }
 
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=flux`;
