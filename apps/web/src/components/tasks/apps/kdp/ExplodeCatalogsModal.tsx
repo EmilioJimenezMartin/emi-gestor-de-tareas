@@ -166,7 +166,7 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
                         </div>
                         {hints.length === 0 ? (
                             <p className="text-[10px] text-neutral-700 leading-relaxed">
-                                Sugiere sub-temas concretos para uno o varios catálogos — p.ej. <span className="text-neutral-500">"Superman"</span>, <span className="text-neutral-500">"escena de batalla nocturna"</span>. La IA los toma como punto de partida y construye un prompt experto alrededor de ellos.
+                                Sugiere sub-temas concretos — p.ej. <span className="text-neutral-500">"Superman"</span>, <span className="text-neutral-500">"escena de batalla nocturna"</span>. La IA aplica todas las sugerencias en <span className="text-neutral-500">todos</span> los catálogos generados, no solo en el primero.
                             </p>
                         ) : (
                             <div className="space-y-1.5">

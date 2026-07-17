@@ -860,7 +860,13 @@ export function KdpFactoryApp() {
     const [explosionCount, setExplosionCount] = useState(3);
     const [explosionImagination, setExplosionImagination] = useState(50);
     const [explosionVariation, setExplosionVariation] = useState(50);
-    const [explosionHint, setExplosionHint] = useState("");
+    const [explosionHint, setExplosionHint] = useState(() => {
+        try { return localStorage.getItem("explosion_hint") ?? ""; } catch { return ""; }
+    });
+    const updateExplosionHint = (v: string) => {
+        setExplosionHint(v);
+        try { if (v.trim()) localStorage.setItem("explosion_hint", v); else localStorage.removeItem("explosion_hint"); } catch {}
+    };
     type ExplosionSituation = { label: string; prompt: string };
     const [explosionSituations, setExplosionSituations] = useState<ExplosionSituation[]>([]);
     // modelId → situation index → status
@@ -19418,14 +19424,27 @@ POST-LANZAMIENTO:
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Sugerencias para los prompts <span className="text-neutral-700 normal-case font-normal">(opcional)</span></label>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Sugerencias para los prompts <span className="text-neutral-700 normal-case font-normal">(obligatorio para todos)</span></label>
+                                        {explosionHint.trim() && (
+                                            <button
+                                                onClick={() => updateExplosionHint("")}
+                                                className="text-[9px] text-rose-400/70 hover:text-rose-400 transition-colors"
+                                            >
+                                                Borrar
+                                            </button>
+                                        )}
+                                    </div>
                                     <textarea
                                         value={explosionHint}
-                                        onChange={e => setExplosionHint(e.target.value)}
+                                        onChange={e => updateExplosionHint(e.target.value)}
                                         placeholder="Ej: incluir escenas nocturnas, animales con sombreros, estilo japonés, evitar personajes humanos…"
                                         rows={2}
                                         className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-xs text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed"
                                     />
+                                    {explosionHint.trim() && (
+                                        <p className="text-[9px] text-violet-400/60">Guardado · se aplicará a cada prompt del próximo lanzamiento</p>
+                                    )}
                                 </div>
                                 <button
                                     onClick={() => void runExplosionComparison()}

@@ -1420,7 +1420,7 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
                 : "";
 
             const hintsBlock = hintList.length > 0
-                ? `\n\nMANDATORY FOCAL POINTS — the user has specified ${hintList.length} specific sub-topic(s) that MUST each appear as the central focus of one prompt. Treat each hint as a deep expert cue: you are a specialist who knows EXACTLY how "${hintList.join('" and "')}" relate to "${visualCoreName}". For each hinted slot, build a rich, specific prompt that puts that sub-topic at the absolute center:\n${hintList.map((h, i) => `  Slot ${i + 1}: "${h}" — write a prompt where this is the undeniable focal subject within the world of ${visualCoreName}`).join("\n")}\n\nThe remaining ${n - hintList.length} prompt(s) must be freely generated but must NOT overlap with the focal points above.`
+                ? `\n\n⚠️ MANDATORY USER CONSTRAINTS — apply to EVERY SINGLE ONE of the ${n} prompts, no exceptions, not just the first:\n${hintList.map(h => `- "${h}"`).join("\n")}\nYou are a specialist who knows EXACTLY how ${hintList.length > 1 ? "each of these sub-topics relates" : "this sub-topic relates"} to "${visualCoreName}". Every one of the ${n} prompts must weave in ${hintList.length > 1 ? "ALL of the above sub-topics together as" : "the above sub-topic as"} a central, undeniable element — vary the specific scene/composition/angle across the ${n} prompts, but never drop the constraint. Do NOT generate any prompt that ignores it.`
                 : "";
 
             const user = `You are an expert in "${visualCoreName}" as a visual art niche for coloring books. You know every sub-genre, iconic character type, signature scene, and distinctive motif that defines this niche.
@@ -1430,7 +1430,7 @@ Full title: "${niche.name}"
 Description: ${niche.description || "(none)"}
 Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${onTopicAnchorBlock}${alreadyUsedBlock}${hintsBlock}
 
-YOUR TASK: Generate exactly ${n} image prompts. Each prompt must describe something that lives 100% INSIDE the world of "${visualCoreName}" — not something generic that uses "${visualCoreName}" as a tag or backdrop.
+YOUR TASK: Generate exactly ${n} image prompts. Each prompt must describe something that lives 100% INSIDE the world of "${visualCoreName}" — not something generic that uses "${visualCoreName}" as a tag or backdrop.${hintList.length > 0 ? `\n\nREMINDER — EVERY one of the ${n} prompts MUST incorporate: ${hintList.map(h => `"${h}"`).join(", ")}. This applies to all ${n} prompts equally, not just the first one.` : ""}
 
 MENTAL STEP (do this first, don't output it): Think of the 6-8 most iconic, specific visual sub-categories, character archetypes, signature scenes, or motifs that are NATIVE to "${visualCoreName}". Use those as your source material.
 
@@ -1470,7 +1470,7 @@ ${discoveryPrompt
     : ""
 }
 
-Write each prompt in English, 25-55 words. No style keywords (added automatically).
+Write each prompt in English, 25-55 words. No style keywords (added automatically).${hintList.length > 0 ? `\n\nFINAL CHECK before outputting: go through ALL ${n} items one by one and verify EACH ONE incorporates ${hintList.map(h => `"${h}"`).join(" and ")}. If any of the ${n} items — including items 2, 3, 4… not just the first — is missing it or is generic, rewrite that item before returning.` : ""}
 
 Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
 
@@ -1484,6 +1484,18 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             catch { return reply.status(502).send({ error: "JSON de situaciones malformado" }); }
             situations = situations.filter(s => s?.situation && s?.prompt).slice(0, n);
             if (situations.length === 0) return reply.status(502).send({ error: "La IA no detectó situaciones" });
+
+            // Safety net: the LLM often only weaves the hint(s) into the first item
+            // despite the instructions above. Force every missing hint into every
+            // situation's prompt (not just the first) so every catalog reflects it.
+            if (hintList.length > 0) {
+                situations = situations.map(s => {
+                    const promptLower = s.prompt.toLowerCase();
+                    const missing = hintList.filter(h => !promptLower.includes(h.toLowerCase()));
+                    if (missing.length === 0) return s;
+                    return { situation: s.situation, prompt: `${missing.join(", ")} — ${s.prompt}` };
+                });
+            }
 
             // 2. Modelo: el elegido o el configurado en Ajustes
             const aiModel = (model?.provider && model?.modelId)
@@ -1584,14 +1596,18 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
                 ? audienceHint[niche.targetAudience] ?? ""
                 : "";
 
+            const hintBlock = hint
+                ? `\n\n⚠️ MANDATORY USER CONSTRAINTS — apply to EVERY single one of the ${n} prompts, no exceptions:\n"${hint}"\nDo NOT generate any prompt that ignores these constraints. They override everything else except the niche identity.`
+                : "";
+
             const user = `You are an expert in "${visualCoreName}" as a visual art niche for coloring books. You know every sub-genre, iconic character type, signature scene, and distinctive motif that defines this niche.
 
 Niche: "${visualCoreName}"
 Full title: "${niche.name}"
 Description: ${niche.description || "(none)"}
-Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${existingPromptsBlock}
+Style: ${style}${audience ? `\n${audience}` : ""}${hintBlock}${discoveryAnchorBlock}${existingPromptsBlock}
 
-YOUR TASK: Generate exactly ${n} image prompts. Each prompt must describe something that lives 100% INSIDE the world of "${visualCoreName}" — not something generic that uses "${visualCoreName}" as a tag or backdrop.
+YOUR TASK: Generate exactly ${n} image prompts. Each prompt must describe something that lives 100% INSIDE the world of "${visualCoreName}" — not something generic that uses "${visualCoreName}" as a tag or backdrop.${hint ? `\n\nREMINDER — every prompt MUST incorporate: "${hint}"` : ""}
 
 MENTAL STEP (do this first, don't output it): Think of the 6-8 most iconic, specific visual sub-categories, character archetypes, signature scenes, or motifs that are NATIVE to "${visualCoreName}". Use those as your source material, not generic concepts.
 
@@ -1631,8 +1647,8 @@ ${discoveryPrompt
     : ""
 }
 
-Write each prompt in English, 25-55 words, describing only the scene/subject — no style keywords (added automatically).
-${hint ? `\nUSER SUGGESTIONS (treat these as mandatory creative constraints — weave them into the prompts):\n"${hint}"\nAll ${n} situations MUST reflect these suggestions.` : ""}
+Write each prompt in English, 25-55 words, describing only the scene/subject — no style keywords (added automatically).${hint ? `\n\nFINAL CHECK before outputting: every prompt incorporates "${hint}". If any prompt does not → rewrite it.` : ""}
+
 Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
 
             const raw = await generateTextWithLLM(
@@ -1649,13 +1665,22 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             try { parsed = JSON.parse(clean.slice(start, end + 1)); }
             catch { return reply.status(502).send({ error: "Malformed JSON from AI" }); }
 
+            // Safety net: the LLM often only weaves the hint into the first item
+            // despite the instructions above. Force it into every situation's prompt
+            // (not just the first) so every generated image reflects the suggestion.
             const situations = parsed
                 .filter(s => s?.situation && s?.prompt)
                 .slice(0, n)
-                .map(s => ({
-                    label: s.situation,
-                    prompt: buildColoringBookPrompt(s.prompt.trim(), style),
-                }));
+                .map(s => {
+                    let scenePrompt = s.prompt.trim();
+                    if (hint && !scenePrompt.toLowerCase().includes(hint.toLowerCase())) {
+                        scenePrompt = `${hint} — ${scenePrompt}`;
+                    }
+                    return {
+                        label: s.situation,
+                        prompt: buildColoringBookPrompt(scenePrompt, style),
+                    };
+                });
 
             return reply.send({ situations });
         } catch (e: any) {
