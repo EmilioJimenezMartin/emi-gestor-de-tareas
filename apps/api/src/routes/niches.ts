@@ -1541,6 +1541,7 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             const n = Math.min(Math.max(2, Number(request.query?.count ?? 4)), 10);
             const imagination = Math.min(100, Math.max(0, Number(request.query?.imagination ?? 50)));
             const variation = Math.min(100, Math.max(0, Number(request.query?.variation ?? 50)));
+            const hint = typeof request.query?.hint === "string" ? request.query.hint.trim().slice(0, 500) : "";
             const niche = await Niche.findById(request.params.id).lean() as any;
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
@@ -1631,7 +1632,7 @@ ${discoveryPrompt
 }
 
 Write each prompt in English, 25-55 words, describing only the scene/subject — no style keywords (added automatically).
-
+${hint ? `\nUSER SUGGESTIONS (treat these as mandatory creative constraints — weave them into the prompts):\n"${hint}"\nAll ${n} situations MUST reflect these suggestions.` : ""}
 Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
 
             const raw = await generateTextWithLLM(

@@ -70,6 +70,7 @@ interface NicheDetailModalProps {
     saveListingEdit: (nicheId: string, listingId: string) => Promise<void>;
     deleteNicheListing: (nicheId: string, listingId: string) => Promise<void>;
     fetchNiches: () => Promise<void>;
+    deleteCatalog: (catalogId: string) => Promise<void>;
     guardedLoadBookDraft: (draft: BookDraft) => Promise<void>;
     changeTab: (tab: string) => void;
     defaultTextStyle: () => PageTextStyle;
@@ -89,11 +90,15 @@ export function NicheDetailModal(props: NicheDetailModalProps) {
         bookDrafts, setNicheDetailId, setNiches, setBookDrafts, setLightboxUrl, setConfirmDeleteImageInfo,
         setSelectedCoverNicheId, setCoverTitle, runNichePipeline, deleteFromCloudinary,
         bulkDeleteNicheImages, launchPipelineSeo, saveListingEdit, deleteNicheListing,
-        fetchNiches, guardedLoadBookDraft, changeTab, defaultTextStyle, apiBaseUrl, nd,
+        fetchNiches, deleteCatalog, guardedLoadBookDraft, changeTab, defaultTextStyle, apiBaseUrl, nd,
         setExplodeNicheId,
     } = props;
 
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+    const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
+    const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
+    const [showBulkDeleteEmptyCatsConfirm, setShowBulkDeleteEmptyCatsConfirm] = useState(false);
+    const [deletingEmptyCats, setDeletingEmptyCats] = useState(false);
     const [seoReferenceUrl, setSeoReferenceUrl] = useState("");
 
 const detailNiche = niches.find(n => n._id === nicheDetailId);
@@ -350,6 +355,32 @@ const modalPortal = createPortal(
                                                         <button
                                                             onClick={e => {
                                                                 e.stopPropagation();
+                                                                const image = new Image();
+                                                                image.crossOrigin = "anonymous";
+                                                                image.onload = () => {
+                                                                    const canvas = document.createElement("canvas");
+                                                                    canvas.width = image.naturalWidth;
+                                                                    canvas.height = image.naturalHeight;
+                                                                    canvas.getContext("2d")!.drawImage(image, 0, 0);
+                                                                    canvas.toBlob(async blob => {
+                                                                        if (!blob) { toast.error("No se pudo copiar la imagen"); return; }
+                                                                        try {
+                                                                            await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+                                                                            toast.success("Imagen copiada");
+                                                                        } catch { toast.error("Permiso de portapapeles denegado"); }
+                                                                    }, "image/png");
+                                                                };
+                                                                image.onerror = () => toast.error("No se pudo cargar la imagen");
+                                                                image.src = img.url + (img.url.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+                                                            }}
+                                                            className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30 hover:border-cyan-400/50 hover:scale-110 transition-all"
+                                                            title="Copiar imagen"
+                                                        >
+                                                            <Copy size={11} />
+                                                        </button>
+                                                        <button
+                                                            onClick={e => {
+                                                                e.stopPropagation();
                                                                 img.catalogId
                                                                     ? setConfirmDeleteImageInfo({ catalogId: img.catalogId, publicId: img.publicId })
                                                                     : void deleteFromCloudinary(img.publicId);
@@ -384,6 +415,25 @@ const modalPortal = createPortal(
                 )}
                 {nicheDetailTab === "catalogs" && (
                     <div className="space-y-3">
+                        {(() => {
+                            const emptyCats = linkedCats.filter(c => c.images.length === 0);
+                            if (emptyCats.length === 0) return null;
+                            return (
+                                <div className="flex items-center justify-between px-3 py-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.04]">
+                                    <span className="text-xs text-rose-300/70">
+                                        {emptyCats.length} catálogo{emptyCats.length !== 1 ? "s" : ""} sin imágenes
+                                    </span>
+                                    <button
+                                        onClick={() => setShowBulkDeleteEmptyCatsConfirm(true)}
+                                        disabled={deletingEmptyCats}
+                                        className="flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/50 transition-all disabled:opacity-40"
+                                    >
+                                        {deletingEmptyCats ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                                        Limpiar vacíos
+                                    </button>
+                                </div>
+                            );
+                        })()}
                         {linkedCats.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
                                 <Grid3x3 size={32} strokeWidth={1} className="text-neutral-600" />
@@ -391,14 +441,27 @@ const modalPortal = createPortal(
                             </div>
                         ) : linkedCats.map(cat => (
                             <div key={cat._id} className="flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02]">
-                                {cat.images[0] && <img src={cat.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />}
+                                {cat.images[0]
+                                    ? <img src={cat.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                                    : <div className="w-12 h-12 rounded-lg bg-white/[0.04] border border-white/8 flex items-center justify-center shrink-0"><Grid3x3 size={16} className="text-neutral-700" /></div>
+                                }
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-white truncate">{cat.name}</p>
-                                    <p className="text-sm text-neutral-600 truncate">{cat.prompt}</p>
+                                    <p className="text-xs text-neutral-600 truncate">{cat.prompt}</p>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-sm text-neutral-600">{cat.images.length} imgs</span>
-                                    <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
+                                    <span className="text-xs text-neutral-600">{cat.images.length} imgs</span>
+                                    <span className={`text-xs font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
+                                    {cat.images.length === 0 && (
+                                        <button
+                                            onClick={() => setConfirmDeleteCatalogId(cat._id)}
+                                            disabled={deletingCatalogId === cat._id}
+                                            className="p-1.5 rounded-lg border border-rose-500/25 text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/15 hover:border-rose-500/40 transition-all disabled:opacity-40"
+                                            title="Eliminar catálogo vacío"
+                                        >
+                                            {deletingCatalogId === cat._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -1169,6 +1232,42 @@ return (
             title={`¿Eliminar ${nicheDetailSelectedPids.size} imagen${nicheDetailSelectedPids.size !== 1 ? "es" : ""}?`}
             description="Se eliminarán de Cloudinary y de sus catálogos permanentemente. Esta acción no se puede deshacer."
             confirmLabel={`Eliminar ${nicheDetailSelectedPids.size}`}
+            variant="danger"
+            icon={<Trash2 size={24} className="text-red-400" />}
+            zIndex={9200}
+        />
+        <ConfirmModal
+            open={!!confirmDeleteCatalogId}
+            onClose={() => setConfirmDeleteCatalogId(null)}
+            onConfirm={async () => {
+                const id = confirmDeleteCatalogId!;
+                setConfirmDeleteCatalogId(null);
+                setDeletingCatalogId(id);
+                await deleteCatalog(id);
+                setDeletingCatalogId(null);
+            }}
+            title="¿Eliminar catálogo vacío?"
+            description={`"${linkedCats.find(c => c._id === confirmDeleteCatalogId)?.name ?? ""}" no tiene imágenes. Se eliminará permanentemente.`}
+            confirmLabel="Eliminar catálogo"
+            variant="danger"
+            icon={<Trash2 size={24} className="text-red-400" />}
+            zIndex={9200}
+        />
+        <ConfirmModal
+            open={showBulkDeleteEmptyCatsConfirm}
+            onClose={() => setShowBulkDeleteEmptyCatsConfirm(false)}
+            onConfirm={async () => {
+                setShowBulkDeleteEmptyCatsConfirm(false);
+                const emptyCats = linkedCats.filter(c => c.images.length === 0);
+                setDeletingEmptyCats(true);
+                for (const cat of emptyCats) {
+                    await deleteCatalog(cat._id);
+                }
+                setDeletingEmptyCats(false);
+            }}
+            title={`¿Eliminar ${linkedCats.filter(c => c.images.length === 0).length} catálogos vacíos?`}
+            description="Se eliminarán todos los catálogos sin imágenes de este nicho. Esta acción no se puede deshacer."
+            confirmLabel={`Eliminar ${linkedCats.filter(c => c.images.length === 0).length} catálogos`}
             variant="danger"
             icon={<Trash2 size={24} className="text-red-400" />}
             zIndex={9200}

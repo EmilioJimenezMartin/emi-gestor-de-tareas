@@ -2164,39 +2164,135 @@ Return ONLY a JSON object:
         };
         if (!imageUrl?.trim()) return reply.status(400).send({ error: "imageUrl required" });
 
-        const token = getPollinationsToken();
         const fullPrompt = `${prompt}, ${style}`.trim().replace(/,\s*,/g, ",");
         const seed = Math.floor(Math.random() * 2_147_483_647);
 
+        // ── Provider 1: Kontext via gen.pollinations.ai (image-to-image, requires pollen) ──
         const kontextUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(fullPrompt)}?model=kontext&image=${encodeURIComponent(imageUrl)}&seed=${seed}&nologo=true`;
-
+        let lastError = "";
         try {
             const res = await pollinationsFetch(kontextUrl, { signal: AbortSignal.timeout(90_000) });
-            if (!res.ok) {
-                const errText = await res.text().catch(() => "");
-                return reply.status(502).send({ error: `Kontext error ${res.status}: ${errText.slice(0, 200)}` });
-            }
-            const buf = Buffer.from(await res.arrayBuffer());
-            reply.header("Content-Type", "image/jpeg");
-            reply.header("Cache-Control", "no-store");
-            return reply.send(buf);
-        } catch (e: any) {
-            app.log.warn(`[ai/colorize] kontext failed (${e?.message?.slice(0, 80)}), trying flux fallback`);
-            try {
-                const fluxUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(fullPrompt)}?model=flux&image=${encodeURIComponent(imageUrl)}&seed=${seed}&nologo=true`;
-                const res2 = await pollinationsFetch(fluxUrl, { signal: AbortSignal.timeout(90_000) });
-                if (!res2.ok) {
-                    const errText = await res2.text().catch(() => "");
-                    return reply.status(502).send({ error: `Flux fallback error ${res2.status}: ${errText.slice(0, 200)}` });
-                }
-                const buf2 = Buffer.from(await res2.arrayBuffer());
+            if (res.ok) {
+                const buf = Buffer.from(await res.arrayBuffer());
                 reply.header("Content-Type", "image/jpeg");
                 reply.header("Cache-Control", "no-store");
-                return reply.send(buf2);
-            } catch (e2: any) {
-                return reply.status(502).send({ error: `Colorize failed: ${e2?.message ?? "Unknown error"}` });
+                return reply.send(buf);
+            }
+            const errText = await res.text().catch(() => "");
+            lastError = `Kontext ${res.status}: ${errText.slice(0, 120)}`;
+            app.log.warn(`[ai/colorize] ${lastError} — trying Gemini fallback`);
+        } catch (e: any) {
+            lastError = e?.message?.slice(0, 80) ?? "network error";
+            app.log.warn(`[ai/colorize] kontext threw (${lastError}) — trying Gemini fallback`);
+        }
+
+        // ── Provider 2: Google Gemini image editing (true image-to-image, no pollen needed) ──
+        const googleKey = process.env.GOOGLE_API_KEY
+            || String((await Settings.findOne({ key: "GOOGLE_API_KEY" }).lean() as any)?.value ?? "");
+        if (googleKey) {
+            // Fetch source image once, reuse across model attempts
+            let imgB64 = "";
+            let mimeType = "image/jpeg";
+            try {
+                const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
+                if (!imgRes.ok) throw new Error(`fetch source image: ${imgRes.status}`);
+                imgB64 = Buffer.from(await imgRes.arrayBuffer()).toString("base64");
+                mimeType = (imgRes.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim() || "image/jpeg";
+            } catch (e: any) {
+                lastError += ` | Gemini: could not fetch source (${e?.message?.slice(0, 60)})`;
+            }
+
+            if (imgB64) {
+                const colorizePrompt = `You are an expert colorist. Apply vibrant, beautiful colors to this coloring book line art image. ${fullPrompt}. Keep all the original lines and shapes exactly as they are — only add color. Output the colorized image.`;
+                const geminiModel = "gemini-2.5-flash-image";
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`;
+                const geminiBody = {
+                    contents: [{ parts: [
+                        { inlineData: { mimeType, data: imgB64 } },
+                        { text: colorizePrompt },
+                    ]}],
+                    generationConfig: { responseModalities: ["IMAGE"] },
+                };
+
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    if (attempt > 0) await new Promise(r => setTimeout(r, 3000));
+                    try {
+                        const geminiResp = await axios({
+                            url: geminiUrl,
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "x-goog-api-key": googleKey.trim() },
+                            data: geminiBody,
+                            timeout: 60_000,
+                        });
+                        const parts = geminiResp.data?.candidates?.[0]?.content?.parts ?? [];
+                        const inline = parts.find((p: any) => p?.inlineData?.data) ?? null;
+                        const dataB64 = inline?.inlineData?.data;
+                        if (typeof dataB64 === "string" && dataB64.length > 0) {
+                            app.log.info(`[ai/colorize] Gemini OK (attempt ${attempt + 1})`);
+                            const buf = Buffer.from(dataB64, "base64");
+                            reply.header("Content-Type", inline?.inlineData?.mimeType ?? "image/png");
+                            reply.header("Cache-Control", "no-store");
+                            return reply.send(buf);
+                        }
+                        lastError += ` | Gemini: no image in response`;
+                        break;
+                    } catch (e: any) {
+                        const status = e?.response?.status;
+                        const detail = e?.response?.data ? JSON.stringify(e.response.data).slice(0, 100) : e?.message?.slice(0, 80);
+                        app.log.warn(`[ai/colorize] Gemini attempt ${attempt + 1} failed (${status}): ${detail}`);
+                        lastError += ` | Gemini(${status ?? "err"})`;
+                        if (status !== 429) break; // solo reintenta en rate limit
+                    }
+                }
             }
         }
+
+        // ── Provider 3: HuggingFace instruct-pix2pix via axios ──
+        const hfKey = process.env.HUGGINGFACE_API_KEY
+            || String((await Settings.findOne({ key: "HUGGINGFACE_API_KEY" }).lean() as any)?.value ?? "");
+        if (hfKey) {
+            let hfImgBuf: Buffer | null = null;
+            try {
+                const r = await axios({ url: imageUrl, method: "GET", responseType: "arraybuffer", timeout: 30_000 });
+                hfImgBuf = Buffer.from(r.data);
+            } catch (e: any) {
+                lastError += ` | HF-fetch(${e?.message?.slice(0, 40)})`;
+            }
+
+            if (hfImgBuf) {
+                const hfInstruction = `colorize this black and white line art with vibrant colors: ${fullPrompt}`;
+                try {
+                    const hfResp = await axios({
+                        url: "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix",
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${hfKey.trim()}`,
+                            "Content-Type": "application/json",
+                            "x-use-cache": "false",
+                        },
+                        data: {
+                            inputs: hfImgBuf.toString("base64"),
+                            parameters: { prompt: hfInstruction, num_inference_steps: 20, strength: 0.8, guidance_scale: 7.5 },
+                        },
+                        responseType: "arraybuffer",
+                        timeout: 120_000,
+                    });
+                    if (hfResp.status === 200 && hfResp.data?.byteLength > 0) {
+                        app.log.info("[ai/colorize] HuggingFace instruct-pix2pix OK");
+                        reply.header("Content-Type", hfResp.headers["content-type"] ?? "image/jpeg");
+                        reply.header("Cache-Control", "no-store");
+                        return reply.send(Buffer.from(hfResp.data));
+                    }
+                    lastError += ` | HF(${hfResp.status})`;
+                } catch (e: any) {
+                    const status = e?.response?.status;
+                    const detail = status === 503 ? "modelo cargando" : e?.message?.slice(0, 60);
+                    lastError += ` | HF(${status ?? "err"}:${detail})`;
+                }
+            }
+        }
+
+        return reply.status(502).send({ error: `Colorize no disponible. Recarga saldo en pollinations.ai o añade una clave fal.ai. Detalle: ${lastError}` });
     });
 
     // GET /assistant/history — last N messages from shared conversation

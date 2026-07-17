@@ -101,6 +101,7 @@ import {
     Dna,
     FlaskConical,
     Square,
+    Clipboard as ClipboardIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -859,6 +860,7 @@ export function KdpFactoryApp() {
     const [explosionCount, setExplosionCount] = useState(3);
     const [explosionImagination, setExplosionImagination] = useState(50);
     const [explosionVariation, setExplosionVariation] = useState(50);
+    const [explosionHint, setExplosionHint] = useState("");
     type ExplosionSituation = { label: string; prompt: string };
     const [explosionSituations, setExplosionSituations] = useState<ExplosionSituation[]>([]);
     // modelId → situation index → status
@@ -1134,7 +1136,8 @@ export function KdpFactoryApp() {
         setExplosionSituations([]);
         setExplosionResults(new Map());
         try {
-            const res = await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/situations?count=${explosionCount}&imagination=${explosionImagination}&variation=${explosionVariation}`);
+            const hintParam = explosionHint.trim() ? `&hint=${encodeURIComponent(explosionHint.trim())}` : "";
+            const res = await fetch(`${API_BASE_URL}/niches/${modelCompareNiche._id}/situations?count=${explosionCount}&imagination=${explosionImagination}&variation=${explosionVariation}${hintParam}`);
             if (!res.ok) throw new Error((await res.json()).error);
             const { situations } = await res.json() as { situations: ExplosionSituation[] };
             setExplosionSituations(situations);
@@ -6193,11 +6196,26 @@ POST-LANZAMIENTO:
                 backCoverUrl: n.backCoverUrl,
                 pipelineHasCover: n.pipelineHasCover ?? false,
                 lifecycleStage: n.lifecycleStage,
+                createdAt: n.createdAt,
+                marketScore: (n.marketScan as any)?.score ?? -1,
             };
         });
 
+        const sortPipelineNiches = (arr: typeof pipelineNiches) => {
+            const dir = nicheSortDir === "asc" ? 1 : -1;
+            return [...arr].sort((a, b) => {
+                if (nicheSortBy === "score")    return dir * ((a.score ?? -1) - (b.score ?? -1));
+                if (nicheSortBy === "market")   return dir * (a.marketScore - b.marketScore);
+                if (nicheSortBy === "date")     return dir * (new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+                if (nicheSortBy === "name")     return dir * a.name.localeCompare(b.name, "es");
+                if (nicheSortBy === "catalogs") return dir * (a.catalogs.total - b.catalogs.total);
+                if (nicheSortBy === "images")   return dir * (a.catalogs.imgsDone - b.catalogs.imgsDone);
+                return 0;
+            });
+        };
+
         const byPhase: Record<string, typeof pipelineNiches> = {};
-        PHASES.forEach(p => { byPhase[p.id] = pipelineNiches.filter(n => n.phase === p.id); });
+        PHASES.forEach(p => { byPhase[p.id] = sortPipelineNiches(pipelineNiches.filter(n => n.phase === p.id)); });
 
         // Smart stuck detection: context-aware by phase
         const computeIsStuck = (n: (typeof pipelineNiches)[number]) => {
@@ -15318,7 +15336,7 @@ POST-LANZAMIENTO:
                                         ["colorize", "🎨 Colorizar", "Colorea una imagen de líneas existente"],
                                         ["upload",   "↑ Subir",     "Pega o arrastra tu propia imagen"],
                                     ] as const).map(([id, label, desc]) => (
-                                        <button key={id} onClick={() => { setCoverMode(id); if (id !== "colorize") setColorizeSourceUrl(null); }} title={desc}
+                                        <button key={id} onClick={() => { setCoverMode(id); if (id !== "colorize") setColorizeSourceUrl(null); if (id === "upload") setUploadBrowseSource("niches"); }} title={desc}
                                             className={`flex-1 h-8 rounded-lg text-[11px] font-black transition-all ${coverMode === id ? "bg-fuchsia-500/25 border border-fuchsia-500/35 text-fuchsia-300 shadow-[0_0_12px_rgba(192,38,211,0.2)]" : "text-neutral-500 hover:text-neutral-300"}`}>
                                             {label}
                                         </button>
@@ -15630,64 +15648,172 @@ POST-LANZAMIENTO:
                                     pendingCoverBlobRef.current = null;
                                     setCoverStep(2);
                                 };
-                                // Images available per source
-                                const browseNicheId = uploadBrowseNicheId || niches.filter(n => n.status !== "archived")[0]?._id || "";
-                                const nicheImgs = iaCatalogs
-                                    .filter(c => c.status === "completed" && (browseNicheId ? c.nicheIds?.includes(browseNicheId) : true))
+                                // Images available per source — ALL images of the niche, no status filter
+                                const browseNicheId = uploadBrowseNicheId || selectedCoverNicheId || niches.filter(n => n.status !== "archived")[0]?._id || "";
+                                const browseNiche = niches.find(n => n._id === browseNicheId);
+                                const nicheCatalogUrls = iaCatalogs
+                                    .filter(c => browseNicheId
+                                        ? (c.nicheIds?.includes(browseNicheId) || (browseNiche?.catalogIds ?? []).includes(c._id))
+                                        : true)
                                     .flatMap(c => c.images.map((img: any) => img.url as string));
+                                const nicheCloudUrls = cloudinaryImages
+                                    .filter(img => img.nicheId === browseNicheId || (img.nicheIds ?? []).includes(browseNicheId))
+                                    .map(img => img.url);
+                                const nicheImgs = [...new Set([...nicheCatalogUrls, ...nicheCloudUrls])];
                                 return (
-                                    <div className="space-y-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/60">Imagen de portada</p>
-                                        {/* Drop zone */}
-                                        <div
-                                            className="relative flex items-center gap-3 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.02] transition-all cursor-pointer px-4 py-3"
-                                            onClick={() => {
-                                                const inp = document.createElement("input");
-                                                inp.type = "file"; inp.accept = "image/*";
-                                                inp.onchange = () => { const f = inp.files?.[0]; if (f) loadFile(f); };
-                                                inp.click();
-                                            }}
-                                            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add("border-fuchsia-500/60"); }}
-                                            onDragLeave={e => e.currentTarget.classList.remove("border-fuchsia-500/60")}
-                                            onDrop={e => {
-                                                e.preventDefault();
-                                                e.currentTarget.classList.remove("border-fuchsia-500/60");
-                                                const f = e.dataTransfer.files?.[0];
-                                                if (f?.type.startsWith("image/")) loadFile(f);
-                                            }}
-                                            onPaste={e => {
-                                                const f = Array.from(e.clipboardData.items).find(i => i.type.startsWith("image/"))?.getAsFile();
-                                                if (f) loadFile(f);
-                                            }}
-                                            tabIndex={0}
-                                        >
-                                            <Upload size={18} className="text-fuchsia-400/50 shrink-0" />
-                                            <div>
-                                                <p className="text-sm font-black text-neutral-400">Arrastra, pega (Ctrl+V) o haz clic</p>
-                                                <p className="text-[10px] text-neutral-700">JPG · PNG · WEBP</p>
+                                    <div className="space-y-4">
+
+                                        {/* ── Paso 1: imágenes del nicho ── */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-[8px] font-black text-cyan-400 shrink-0">1</span>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-cyan-400/80">Copia la imagen que quieras editar</p>
                                             </div>
-                                            {generatedCoverUrl && <Check size={14} className="text-emerald-400 ml-auto shrink-0" />}
+                                            <select
+                                                value={browseNicheId}
+                                                onChange={e => setUploadBrowseNicheId(e.target.value)}
+                                                className="w-full h-8 px-2 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white focus:outline-none focus:border-cyan-500/40 transition-all">
+                                                {niches.filter(n => n.status !== "archived").map(n => (
+                                                    <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>
+                                                ))}
+                                            </select>
+                                            {nicheImgs.length > 0 ? (
+                                                <div className="grid grid-cols-5 gap-1.5 max-h-44 overflow-y-auto">
+                                                    {nicheImgs.map((url, i) => (
+                                                        <div key={i} className="group relative aspect-square rounded-lg overflow-hidden bg-white/[0.02]">
+                                                            <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            {/* Hover overlay */}
+                                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const img = new Image();
+                                                                        img.crossOrigin = "anonymous";
+                                                                        img.onload = () => {
+                                                                            const canvas = document.createElement("canvas");
+                                                                            canvas.width = img.naturalWidth;
+                                                                            canvas.height = img.naturalHeight;
+                                                                            canvas.getContext("2d")!.drawImage(img, 0, 0);
+                                                                            canvas.toBlob(async blob => {
+                                                                                if (!blob) { toast.error("No se pudo copiar la imagen"); return; }
+                                                                                try {
+                                                                                    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+                                                                                    toast.success("Imagen copiada — pégala en tu editor externo");
+                                                                                } catch { toast.error("Permiso de portapapeles denegado"); }
+                                                                            }, "image/png");
+                                                                        };
+                                                                        img.onerror = () => toast.error("No se pudo cargar la imagen");
+                                                                        img.src = url + (url.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+                                                                    }}
+                                                                    className="w-7 h-7 rounded-lg bg-cyan-500/80 hover:bg-cyan-400 text-white flex items-center justify-center transition-all"
+                                                                    title="Copiar imagen"
+                                                                >
+                                                                    <Copy size={12} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => loadUrl(url)}
+                                                                    className="w-7 h-7 rounded-lg bg-fuchsia-500/80 hover:bg-fuchsia-400 text-white flex items-center justify-center transition-all"
+                                                                    title="Usar directamente"
+                                                                >
+                                                                    <Check size={12} />
+                                                                </button>
+                                                            </div>
+                                                            {generatedCoverUrl === url && (
+                                                                <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-fuchsia-500 flex items-center justify-center">
+                                                                    <Check size={7} className="text-white" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-[10px] text-neutral-700 text-center py-3">Sin imágenes completadas en este nicho</p>
+                                            )}
                                         </div>
 
-                                        {/* Source browser */}
+                                        {/* ── Divisor ── */}
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex-1 h-px bg-white/[0.06]" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Edita externamente y vuelve aquí</span>
+                                            <div className="flex-1 h-px bg-white/[0.06]" />
+                                        </div>
+
+                                        {/* ── Paso 2: pegar/subir ── */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-4 h-4 rounded-full bg-fuchsia-500/20 border border-fuchsia-500/40 flex items-center justify-center text-[8px] font-black text-fuchsia-400 shrink-0">2</span>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/80">Pega o sube tu imagen editada</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <div
+                                                    className="relative flex-1 flex items-center gap-3 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.02] transition-all cursor-pointer px-4 py-3"
+                                                    onClick={() => {
+                                                        const inp = document.createElement("input");
+                                                        inp.type = "file"; inp.accept = "image/*";
+                                                        inp.onchange = () => { const f = inp.files?.[0]; if (f) loadFile(f); };
+                                                        inp.click();
+                                                    }}
+                                                    onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add("border-fuchsia-500/60"); }}
+                                                    onDragLeave={e => e.currentTarget.classList.remove("border-fuchsia-500/60")}
+                                                    onDrop={e => {
+                                                        e.preventDefault();
+                                                        e.currentTarget.classList.remove("border-fuchsia-500/60");
+                                                        const f = e.dataTransfer.files?.[0];
+                                                        if (f?.type.startsWith("image/")) loadFile(f);
+                                                    }}
+                                                    onPaste={e => {
+                                                        const f = Array.from(e.clipboardData.items).find(i => i.type.startsWith("image/"))?.getAsFile();
+                                                        if (f) loadFile(f);
+                                                    }}
+                                                    tabIndex={0}
+                                                >
+                                                    <Upload size={16} className="text-fuchsia-400/50 shrink-0" />
+                                                    <div>
+                                                        <p className="text-sm font-black text-neutral-400">Arrastra, pega (Ctrl+V) o haz clic</p>
+                                                        <p className="text-[10px] text-neutral-700">JPG · PNG · WEBP</p>
+                                                    </div>
+                                                    {generatedCoverUrl && <Check size={14} className="text-emerald-400 ml-auto shrink-0" />}
+                                                </div>
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            const items = await navigator.clipboard.read();
+                                                            let blob: Blob | null = null;
+                                                            for (const item of items) {
+                                                                const t = item.types.find(t => t.startsWith("image/"));
+                                                                if (t) { blob = await item.getType(t); break; }
+                                                            }
+                                                            if (!blob) { toast.error("No hay imagen en el portapapeles"); return; }
+                                                            loadFile(new File([blob], "pasted.png", { type: blob.type }));
+                                                        } catch { toast.error("No hay imagen en el portapapeles"); }
+                                                    }}
+                                                    className="shrink-0 flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-cyan-500/30 bg-cyan-500/[0.03] hover:border-cyan-400/60 hover:bg-cyan-500/[0.06] text-cyan-400/60 hover:text-cyan-300 transition-all px-3 py-3"
+                                                    title="Pegar imagen del portapapeles"
+                                                >
+                                                    <ClipboardIcon size={18} />
+                                                    <span className="text-[9px] font-black uppercase tracking-widest">Pegar</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* ── Otras fuentes ── */}
+                                        {(vaultImages.length > 0 || cloudinaryImages.length > 0) && (
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-1">
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mr-1">O desde:</span>
-                                                {([
-                                                    ["vault",  "Vault",  vaultImages.length],
-                                                    ["cloud",  "Nube",   cloudinaryImages.length],
-                                                    ["niches", "Nichos", nicheImgs.length],
-                                                ] as const).map(([src, label, count]) => count > 0 && (
-                                                    <button key={src}
-                                                        onClick={() => setUploadBrowseSource(uploadBrowseSource === src ? null : src)}
-                                                        className={`h-6 px-2.5 rounded-lg text-[10px] font-black transition-all border ${uploadBrowseSource === src ? "bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-neutral-300 hover:border-white/15"}`}>
-                                                        {label} <span className="opacity-50">({count})</span>
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mr-1">O usar directamente desde:</span>
+                                                {vaultImages.length > 0 && (
+                                                    <button onClick={() => setUploadBrowseSource(uploadBrowseSource === "vault" ? null : "vault")}
+                                                        className={`h-6 px-2.5 rounded-lg text-[10px] font-black transition-all border ${uploadBrowseSource === "vault" ? "bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-neutral-300 hover:border-white/15"}`}>
+                                                        Vault <span className="opacity-50">({vaultImages.length})</span>
                                                     </button>
-                                                ))}
+                                                )}
+                                                {cloudinaryImages.length > 0 && (
+                                                    <button onClick={() => setUploadBrowseSource(uploadBrowseSource === "cloud" ? null : "cloud")}
+                                                        className={`h-6 px-2.5 rounded-lg text-[10px] font-black transition-all border ${uploadBrowseSource === "cloud" ? "bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-neutral-300 hover:border-white/15"}`}>
+                                                        Nube <span className="opacity-50">({cloudinaryImages.length})</span>
+                                                    </button>
+                                                )}
                                             </div>
-
-                                            {/* Vault grid */}
-                                            {uploadBrowseSource === "vault" && vaultImages.length > 0 && (
+                                            {uploadBrowseSource === "vault" && (
                                                 <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto">
                                                     {vaultImages.map((v, i) => (
                                                         <button key={i} onClick={() => loadUrl(v.url)}
@@ -15698,9 +15824,7 @@ POST-LANZAMIENTO:
                                                     ))}
                                                 </div>
                                             )}
-
-                                            {/* Cloud (Cloudinary) grid */}
-                                            {uploadBrowseSource === "cloud" && cloudinaryImages.length > 0 && (
+                                            {uploadBrowseSource === "cloud" && (
                                                 <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto">
                                                     {cloudinaryImages.map((c, i) => (
                                                         <button key={i} onClick={() => loadUrl(c.url)}
@@ -15711,34 +15835,8 @@ POST-LANZAMIENTO:
                                                     ))}
                                                 </div>
                                             )}
-
-                                            {/* Niches browser */}
-                                            {uploadBrowseSource === "niches" && (
-                                                <div className="space-y-2">
-                                                    <select
-                                                        value={browseNicheId}
-                                                        onChange={e => setUploadBrowseNicheId(e.target.value)}
-                                                        className="w-full h-8 px-2 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white focus:outline-none focus:border-fuchsia-500/40 transition-all">
-                                                        {niches.filter(n => n.status !== "archived").map(n => (
-                                                            <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>
-                                                        ))}
-                                                    </select>
-                                                    {nicheImgs.length > 0 ? (
-                                                        <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto">
-                                                            {nicheImgs.map((url, i) => (
-                                                                <button key={i} onClick={() => loadUrl(url)}
-                                                                    className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${generatedCoverUrl === url ? "border-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.4)]" : "border-transparent hover:border-white/25"}`}>
-                                                                    <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                                                                    {generatedCoverUrl === url && <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-fuchsia-500 flex items-center justify-center"><Check size={6} className="text-white" /></div>}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-[10px] text-neutral-700 text-center py-3">Sin imágenes completadas en este nicho</p>
-                                                    )}
-                                                </div>
-                                            )}
                                         </div>
+                                        )}
                                     </div>
                                 );
                             })()}
@@ -19319,6 +19417,16 @@ POST-LANZAMIENTO:
                                         </p>
                                     </div>
                                 </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Sugerencias para los prompts <span className="text-neutral-700 normal-case font-normal">(opcional)</span></label>
+                                    <textarea
+                                        value={explosionHint}
+                                        onChange={e => setExplosionHint(e.target.value)}
+                                        placeholder="Ej: incluir escenas nocturnas, animales con sombreros, estilo japonés, evitar personajes humanos…"
+                                        rows={2}
+                                        className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-xs text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed"
+                                    />
+                                </div>
                                 <button
                                     onClick={() => void runExplosionComparison()}
                                     disabled={explosionLoadingPrompts || modelCompareRunning || modelCompareActive.length === 0}
@@ -19814,6 +19922,7 @@ POST-LANZAMIENTO:
                     saveListingEdit={saveListingEdit}
                     deleteNicheListing={deleteNicheListing}
                     fetchNiches={fetchNiches}
+                    deleteCatalog={deleteCatalogConfirmed}
                     guardedLoadBookDraft={guardedLoadBookDraft}
                     changeTab={tab => changeTab(tab as any)}
                     defaultTextStyle={defaultTextStyle}

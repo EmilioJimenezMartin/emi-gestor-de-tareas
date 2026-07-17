@@ -3,7 +3,7 @@
 import React from "react";
 import {
     ImageIcon, Plus, Search, ArrowDownNarrowWide, ArrowUpNarrowWide,
-    ZoomIn, Download, Star, Pencil, Trash2,
+    ZoomIn, Download, Star, Pencil, Trash2, Clipboard,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { NicheFE, NicheStyle } from "./types";
@@ -57,6 +57,47 @@ export function CoverFactoryPanel({
     setCoverStep, setCoverModalTab, setNiches, setLightboxUrl,
     setConfirmDeleteCandGallery, downloadFile, nicheStyleToCover, nicheStyleModel, apiBaseUrl,
 }: CoverFactoryPanelProps) {
+    const [pastingNicheId, setPastingNicheId] = React.useState<string | null>(null);
+
+    const pasteCoverForNiche = async (nicheId: string, currentCandidates: string[]) => {
+        try {
+            setPastingNicheId(nicheId);
+            const clipItems = await navigator.clipboard.read();
+            let blob: Blob | null = null;
+            for (const item of clipItems) {
+                const imageType = item.types.find(t => t.startsWith("image/"));
+                if (imageType) { blob = await item.getType(imageType); break; }
+            }
+            if (!blob) { toast.error("No hay imagen en el portapapeles"); return; }
+
+            const dataUrl = await new Promise<string>((res, rej) => {
+                const reader = new FileReader();
+                reader.onload = () => res(reader.result as string);
+                reader.onerror = rej;
+                reader.readAsDataURL(blob!);
+            });
+
+            const resp = await fetch(`${apiBaseUrl}/cloudinary/upload`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dataUrl }),
+            });
+            if (!resp.ok) throw new Error("Error subiendo imagen");
+            const { image } = await resp.json();
+
+            const newCandidates = [...currentCandidates, image.url];
+            await fetch(`${apiBaseUrl}/niches/${nicheId}`, {
+                method: "PATCH", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ coverCandidates: newCandidates, coverUrl: image.url, pipelineHasCover: true }),
+            });
+            setNiches(prev => prev.map(x => x._id === nicheId ? { ...x, coverCandidates: newCandidates, coverUrl: image.url, pipelineHasCover: true } : x));
+            toast.success("Portada pegada y guardada");
+        } catch (e: any) {
+            toast.error(e?.message ?? "Error al pegar portada");
+        } finally {
+            setPastingNicheId(null);
+        }
+    };
+
     const allWithCovers = niches.filter(n => n.coverUrl || (n.coverCandidates?.length ?? 0) > 0 || n.backCoverUrl);
 
     const q = coverFactorySearch.trim().toLowerCase();
@@ -300,6 +341,15 @@ export function CoverFactoryPanel({
                                                 title="Nueva portada">
                                                 <Plus size={12} />
                                             </button>
+                                            {/* Pegar desde portapapeles */}
+                                            <button
+                                                onClick={() => void pasteCoverForNiche(n._id, candidates)}
+                                                disabled={pastingNicheId === n._id}
+                                                className="shrink-0 rounded-lg border border-dashed border-white/15 hover:border-cyan-500/40 hover:bg-cyan-500/5 text-white/30 hover:text-cyan-400 flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-wait"
+                                                style={{ width: 44, aspectRatio: "1600/2560" }}
+                                                title="Pegar imagen del portapapeles">
+                                                <Clipboard size={12} />
+                                            </button>
                                         </div>
                                     </div>
                                     );
@@ -309,6 +359,13 @@ export function CoverFactoryPanel({
                                 <div className="px-2 py-1.5 flex items-center justify-between gap-1">
                                     <p className="text-xs font-black text-white truncate flex-1">{n.nickname?.trim() || n.name}</p>
                                     <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => void pasteCoverForNiche(n._id, n.coverCandidates ?? [])}
+                                            disabled={pastingNicheId === n._id}
+                                            className="h-6 w-6 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-400 flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-wait"
+                                            title="Pegar portada del portapapeles">
+                                            <Clipboard size={10} />
+                                        </button>
                                         <button onClick={openEdit}
                                             className="h-6 w-6 rounded-lg bg-fuchsia-500/15 hover:bg-fuchsia-500/30 text-fuchsia-400 flex items-center justify-center transition-all"
                                             title="Editar">
