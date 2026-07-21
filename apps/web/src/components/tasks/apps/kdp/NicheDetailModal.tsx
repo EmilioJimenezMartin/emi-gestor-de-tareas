@@ -108,6 +108,10 @@ const linkedCats = iaCatalogs.filter(c =>
     (c.nicheIds ?? []).includes(nicheDetailId) ||
     (detailNiche.catalogIds ?? []).includes(c._id)
 );
+// "Vacío" = sin imágenes Y sin posibilidad de generarlas (no en cola/pendiente/corriendo).
+// Un catálogo queued/pending/running con 0 imágenes aún NO es basura — está a punto de generar.
+const isDeletableEmptyCatalog = (c: (typeof linkedCats)[number]) =>
+    c.images.length === 0 && !["queued", "pending", "running"].includes(c.status);
 const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId || (img.nicheIds ?? []).includes(nicheDetailId ?? ""));
 // Index ALL iaCatalogs images by URL so fallback images resolve to real publicId+catalogId
 const urlToCatalogImg = new Map<string, { publicId: string; catalogId: string; width?: number; height?: number }>();
@@ -416,7 +420,7 @@ const modalPortal = createPortal(
                 {nicheDetailTab === "catalogs" && (
                     <div className="space-y-3">
                         {(() => {
-                            const emptyCats = linkedCats.filter(c => c.images.length === 0);
+                            const emptyCats = linkedCats.filter(isDeletableEmptyCatalog);
                             if (emptyCats.length === 0) return null;
                             return (
                                 <div className="flex items-center justify-between px-3 py-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.04]">
@@ -452,7 +456,7 @@ const modalPortal = createPortal(
                                 <div className="flex items-center gap-2 shrink-0">
                                     <span className="text-xs text-neutral-600">{cat.images.length} imgs</span>
                                     <span className={`text-xs font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
-                                    {cat.images.length === 0 && (
+                                    {isDeletableEmptyCatalog(cat) && (
                                         <button
                                             onClick={() => setConfirmDeleteCatalogId(cat._id)}
                                             disabled={deletingCatalogId === cat._id}
@@ -1258,16 +1262,16 @@ return (
             onClose={() => setShowBulkDeleteEmptyCatsConfirm(false)}
             onConfirm={async () => {
                 setShowBulkDeleteEmptyCatsConfirm(false);
-                const emptyCats = linkedCats.filter(c => c.images.length === 0);
+                const emptyCats = linkedCats.filter(isDeletableEmptyCatalog);
                 setDeletingEmptyCats(true);
                 for (const cat of emptyCats) {
                     await deleteCatalog(cat._id);
                 }
                 setDeletingEmptyCats(false);
             }}
-            title={`¿Eliminar ${linkedCats.filter(c => c.images.length === 0).length} catálogos vacíos?`}
-            description="Se eliminarán todos los catálogos sin imágenes de este nicho. Esta acción no se puede deshacer."
-            confirmLabel={`Eliminar ${linkedCats.filter(c => c.images.length === 0).length} catálogos`}
+            title={`¿Eliminar ${linkedCats.filter(isDeletableEmptyCatalog).length} catálogos vacíos?`}
+            description="Se eliminarán todos los catálogos sin imágenes de este nicho (en cola o generando no cuentan). Esta acción no se puede deshacer."
+            confirmLabel={`Eliminar ${linkedCats.filter(isDeletableEmptyCatalog).length} catálogos`}
             variant="danger"
             icon={<Trash2 size={24} className="text-red-400" />}
             zIndex={9200}

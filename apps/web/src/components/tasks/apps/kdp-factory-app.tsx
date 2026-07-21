@@ -5293,8 +5293,6 @@ POST-LANZAMIENTO:
             shuffled.forEach((img, i) => {
                 pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${nicheName} #${i + 1}` }, text: defaultTextStyle() });
                 pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
-                if ((i + 1) % pending.imagesPerCatalog === 0 && i + 1 < shuffled.length)
-                    pages.push({ id: `pipe-ct-${i}-${ts}`, type: "owner", text: defaultTextStyle() });
             });
             const newDraft = { id: `pipeline-${nicheId}-${ts}`, fileName: `${nicheName} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId };
             // Save to MongoDB and use the returned _id as the draft's id
@@ -6287,6 +6285,13 @@ POST-LANZAMIENTO:
                                 </button>
                             ))}
                         </div>
+                        {/* Bulk select toggle — same selectedNicheIds state as la vista Nichos */}
+                        <button
+                            onClick={() => { setBulkNicheMode(v => !v); if (bulkNicheMode) setSelectedNicheIds(new Set()); }}
+                            className={`flex items-center gap-1.5 h-7 px-2.5 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${bulkNicheMode ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/[0.03] border-white/10 text-neutral-500 hover:text-violet-300 hover:border-violet-500/30"}`}>
+                            {bulkNicheMode ? <X size={11} /> : <CheckCheck size={11} />}
+                            {bulkNicheMode ? "Salir" : "Selección"}
+                        </button>
                         <button
                             onClick={async () => {
                                 setPipelineLoading(true);
@@ -6385,9 +6390,21 @@ POST-LANZAMIENTO:
                                 const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
                                 const nicheRoyalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
                                 const nicheUnits    = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.unitsSold, 0);
+                                const isSelected = selectedNicheIds.has(n.id);
                                 return (
-                                    <Card key={n.id} variant="glass" className={`p-4 border-white/5 bg-white/[0.01] space-y-3 ${isStuck ? "border-amber-500/20 bg-amber-500/[0.02]" : ""}`}>
+                                    <Card key={n.id} variant="glass" className={`relative p-4 border-white/5 bg-white/[0.01] space-y-3 ${isStuck ? "border-amber-500/20 bg-amber-500/[0.02]" : ""} ${isSelected ? "border-violet-500/50 shadow-[0_0_16px_rgba(139,92,246,0.15)]" : ""}`}>
                                         <div className="flex items-start gap-3">
+                                            {bulkNicheMode && (
+                                                <button
+                                                    onClick={() => setSelectedNicheIds(prev => {
+                                                        const next = new Set(prev);
+                                                        next.has(n.id) ? next.delete(n.id) : next.add(n.id);
+                                                        return next;
+                                                    })}
+                                                    className={`shrink-0 mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "bg-violet-500 border-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.5)]" : "bg-black/40 border-white/30 hover:border-violet-400"}`}>
+                                                    {isSelected && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="2,5 4,7.5 8,3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                                </button>
+                                            )}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="font-black text-white text-sm truncate">{n.nickname?.trim() || n.name?.trim() || <span className="text-neutral-600 italic font-normal">Sin nombre</span>}</span>
@@ -6488,13 +6505,26 @@ POST-LANZAMIENTO:
                                                 const isStuck = computeIsStuck(n);
                                                 const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
                                                 const royalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
+                                                const isSelected = selectedNicheIds.has(n.id);
                                                 return (
                                                     <div key={n.id} title={n.lastError ?? (n.nickname?.trim() || n.name?.trim() || "Sin nombre")}
-                                                        className={`rounded-xl border p-3 space-y-2 transition-all
-                                                            ${isStuck     ? "bg-amber-500/[0.06] border-amber-500/25" :
+                                                        className={`relative rounded-xl border p-3 space-y-2 transition-all
+                                                            ${isSelected  ? "bg-violet-500/[0.08] border-violet-500/50 shadow-[0_0_12px_rgba(139,92,246,0.15)]" :
+                                                              isStuck     ? "bg-amber-500/[0.06] border-amber-500/25" :
                                                               n.lastError ? "bg-rose-500/[0.06]  border-rose-500/25"  :
                                                                             "bg-white/[0.02] border-white/8"}`}>
-                                                        <p className="text-[11px] font-black leading-tight line-clamp-2">{n.nickname?.trim() || n.name?.trim() || <span className="text-neutral-600 italic font-normal">Sin nombre</span>}</p>
+                                                        {bulkNicheMode && (
+                                                            <button
+                                                                onClick={() => setSelectedNicheIds(prev => {
+                                                                    const next = new Set(prev);
+                                                                    next.has(n.id) ? next.delete(n.id) : next.add(n.id);
+                                                                    return next;
+                                                                })}
+                                                                className={`absolute top-2 right-2 z-10 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "bg-violet-500 border-violet-400 shadow-[0_0_6px_rgba(139,92,246,0.5)]" : "bg-black/40 border-white/30 hover:border-violet-400"}`}>
+                                                                {isSelected && <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><polyline points="2,5 4,7.5 8,3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                                            </button>
+                                                        )}
+                                                        <p className="text-[11px] font-black leading-tight line-clamp-2 pr-4">{n.nickname?.trim() || n.name?.trim() || <span className="text-neutral-600 italic font-normal">Sin nombre</span>}</p>
                                                         <div className="flex items-center gap-1 flex-wrap">
                                                             {isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-400"><AlertTriangle size={8} /> Atascado</span>}
                                                             {n.lastError && !isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-rose-400"><AlertTriangle size={8} /> Error</span>}
@@ -6576,6 +6606,7 @@ POST-LANZAMIENTO:
                     )}
 
                 </div>
+                {renderNicheBulkBar()}
             </div>
         );
     };
@@ -12454,6 +12485,140 @@ POST-LANZAMIENTO:
             );
         };
 
+    // Bulk action bar + Absorb/Merge modals for niche multi-selection.
+    // Shared between Studio (Nichos grid) and Pipeline views — both drive the
+    // same bulkNicheMode/selectedNicheIds state, so the selection carries over.
+    const renderNicheBulkBar = () => (
+        <>
+            {/* ── Bulk action bar ── */}
+            {selectedNicheIds.size > 0 && (
+                <ModalPortal>
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none" style={{ animationName: "nicheCardIn", animationDuration: "0.3s", animationFillMode: "both" }}>
+                        <div className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[rgba(18,18,22,0.92)] backdrop-blur-xl border border-violet-500/30 shadow-[0_8px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(139,92,246,0.1),0_0_30px_rgba(139,92,246,0.15)]">
+                            <div className="flex items-center gap-2 pr-3 border-r border-white/10">
+                                <div className="w-5 h-5 rounded-full bg-violet-500/30 flex items-center justify-center">
+                                    <span className="text-[10px] font-black text-violet-300">{selectedNicheIds.size}</span>
+                                </div>
+                                <span className="text-sm font-black text-neutral-300">seleccionados</span>
+                            </div>
+                            {/* Change phase */}
+                            {([
+                                { phase: "niche"    as const, label: "Nicho",    color: "text-sky-400 hover:bg-sky-500/15 hover:border-sky-500/30" },
+                                { phase: "catalog"  as const, label: "Catálogos",color: "text-blue-400 hover:bg-blue-500/15 hover:border-blue-500/30" },
+                                { phase: "libro"    as const, label: "Libro",    color: "text-indigo-400 hover:bg-indigo-500/15 hover:border-indigo-500/30" },
+                                { phase: "seo"      as const, label: "SEO",      color: "text-violet-400 hover:bg-violet-500/15 hover:border-violet-500/30" },
+                                { phase: "cover"    as const, label: "Portada",  color: "text-fuchsia-400 hover:bg-fuchsia-500/15 hover:border-fuchsia-500/30" },
+                                { phase: "published"as const, label: "Publicado",color: "text-emerald-400 hover:bg-emerald-500/15 hover:border-emerald-500/30" },
+                            ]).map(opt => (
+                                <button key={opt.phase}
+                                    onClick={() => {
+                                        const ids = [...selectedNicheIds];
+                                        ids.forEach(id => {
+                                            fetch(`${API_BASE_URL}/niches/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: opt.phase }) }).catch(() => {});
+                                        });
+                                        setNiches(prev => prev.map(n => selectedNicheIds.has(n._id) ? { ...n, phase: opt.phase } : n));
+                                        setSelectedNicheIds(new Set());
+                                        setBulkNicheMode(false);
+                                    }}
+                                    className={`h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black transition-all ${opt.color}`}>
+                                    {opt.label}
+                                </button>
+                            ))}
+                            <div className="h-4 w-px bg-white/10 mx-1" />
+                            {/* Fusionar / Absorber — solo disponible con 2+ seleccionados */}
+                            {selectedNicheIds.size >= 2 && (<>
+                                <button
+                                    onClick={() => {
+                                        const first = niches.find(n => selectedNicheIds.has(n._id));
+                                        setMergeInitialName(first?.name ?? "");
+                                        setMergeModalOpen(true);
+                                    }}
+                                    className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-amber-400 hover:bg-amber-500/15 hover:border-amber-500/30 transition-all flex items-center gap-1">
+                                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 2.5h3.5l1 6h3.5M5.5 8.5L8.5 5.5M5.5 8.5L8.5 11.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="1.5" cy="2.5" r="1" fill="currentColor"/><circle cx="9.5" cy="5.5" r="1" fill="currentColor"/></svg>
+                                    Fusionar
+                                </button>
+                                <button
+                                    onClick={() => setAbsorbModalOpen(true)}
+                                    className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-sky-400 hover:bg-sky-500/15 hover:border-sky-500/30 transition-all flex items-center gap-1">
+                                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.3"/><path d="M5.5 3v2.5l2 1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                                    Absorber
+                                </button>
+                            </>)}
+                            {/* Hard delete */}
+                            <button
+                                onClick={() => {
+                                    const ids = [...selectedNicheIds];
+                                    if (!window.confirm(`¿Eliminar ${ids.length} nicho${ids.length > 1 ? "s" : ""} permanentemente? Esta acción no se puede deshacer.`)) return;
+                                    ids.forEach(id => {
+                                        fetch(`${API_BASE_URL}/niches/${id}`, { method: "DELETE" }).catch(() => {});
+                                    });
+                                    setNiches(prev => prev.filter(n => !selectedNicheIds.has(n._id)));
+                                    setSelectedNicheIds(new Set());
+                                    setBulkNicheMode(false);
+                                    toast.success(`${ids.length} nicho${ids.length > 1 ? "s" : ""} eliminado${ids.length > 1 ? "s" : ""}`);
+                                }}
+                                className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 transition-all">
+                                Eliminar
+                            </button>
+                            {/* Dismiss */}
+                            <button onClick={() => { setSelectedNicheIds(new Set()); setBulkNicheMode(false); }}
+                                className="w-6 h-6 rounded-full bg-white/8 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/15 transition-all ml-1">
+                                <X size={11} />
+                            </button>
+                        </div>
+                    </div>
+                </ModalPortal>
+            )}
+
+            {/* ── Absorb niches modal ── */}
+            {absorbModalOpen && (
+                <AbsorbNichesModal
+                    selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
+                    stats={Object.fromEntries([...selectedNicheIds].map(id => {
+                        const cats = catsForNiche(niches.find(n => n._id === id)!);
+                        return [id, { cats: cats.length, imgs: cats.reduce((s, c) => s + c.images.length, 0) + cloudinaryImages.filter(img => img.nicheId === id || (img.nicheIds ?? []).includes(id)).length }];
+                    }))}
+                    onClose={() => setAbsorbModalOpen(false)}
+                    onAbsorbed={(hostNiche, catalogCount) => {
+                        setNiches(prev => [hostNiche, ...prev.filter(n => n._id !== hostNiche._id && !selectedNicheIds.has(n._id))]);
+                        setSelectedNicheIds(new Set());
+                        setBulkNicheMode(false);
+                        setAbsorbModalOpen(false);
+                        toast.success(`"${hostNiche.name}" absorbió ${catalogCount} catálogos`);
+                        void fetchNiches();
+                        void fetchCatalogs();
+                        void fetchBookDrafts();
+                        void fetchCloudinaryImages();
+                    }}
+                />
+            )}
+
+            {/* ── Merge niches modal ── */}
+            {mergeModalOpen && (
+                <MergeNichesModal
+                    selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
+                    initialName={mergeInitialName}
+                    stats={Object.fromEntries([...selectedNicheIds].map(id => {
+                        const cats = catsForNiche(niches.find(n => n._id === id)!);
+                        return [id, { cats: cats.length, imgs: cats.reduce((s, c) => s + c.images.length, 0) + cloudinaryImages.filter(img => img.nicheId === id || (img.nicheIds ?? []).includes(id)).length }];
+                    }))}
+                    onClose={() => setMergeModalOpen(false)}
+                    onMerged={(mergedNiche, catalogCount) => {
+                        setNiches(prev => [mergedNiche, ...prev.filter(n => !selectedNicheIds.has(n._id))]);
+                        setSelectedNicheIds(new Set());
+                        setBulkNicheMode(false);
+                        setMergeModalOpen(false);
+                        toast.success(`Fusión completada → "${mergedNiche.name}" (${catalogCount} catálogos)`);
+                        void fetchNiches();
+                        void fetchCatalogs();
+                        void fetchBookDrafts();
+                        void fetchCloudinaryImages();
+                    }}
+                />
+            )}
+        </>
+    );
+
     const renderStudio = () => {
         const STUDIO_TABS: KdpTabDef<"niches" | "intelligence" | "calendar">[] = [
             { id: "niches",       label: "Nichos",       icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"          },
@@ -14053,132 +14218,7 @@ POST-LANZAMIENTO:
                         );
                     })()}
 
-                    {/* ── Bulk action bar ── */}
-                    {selectedNicheIds.size > 0 && (
-                        <ModalPortal>
-                            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none" style={{ animationName: "nicheCardIn", animationDuration: "0.3s", animationFillMode: "both" }}>
-                                <div className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[rgba(18,18,22,0.92)] backdrop-blur-xl border border-violet-500/30 shadow-[0_8px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(139,92,246,0.1),0_0_30px_rgba(139,92,246,0.15)]">
-                                    <div className="flex items-center gap-2 pr-3 border-r border-white/10">
-                                        <div className="w-5 h-5 rounded-full bg-violet-500/30 flex items-center justify-center">
-                                            <span className="text-[10px] font-black text-violet-300">{selectedNicheIds.size}</span>
-                                        </div>
-                                        <span className="text-sm font-black text-neutral-300">seleccionados</span>
-                                    </div>
-                                    {/* Change phase */}
-                                    {([
-                                        { phase: "niche"    as const, label: "Nicho",    color: "text-sky-400 hover:bg-sky-500/15 hover:border-sky-500/30" },
-                                        { phase: "catalog"  as const, label: "Catálogos",color: "text-blue-400 hover:bg-blue-500/15 hover:border-blue-500/30" },
-                                        { phase: "libro"    as const, label: "Libro",    color: "text-indigo-400 hover:bg-indigo-500/15 hover:border-indigo-500/30" },
-                                        { phase: "seo"      as const, label: "SEO",      color: "text-violet-400 hover:bg-violet-500/15 hover:border-violet-500/30" },
-                                        { phase: "cover"    as const, label: "Portada",  color: "text-fuchsia-400 hover:bg-fuchsia-500/15 hover:border-fuchsia-500/30" },
-                                        { phase: "published"as const, label: "Publicado",color: "text-emerald-400 hover:bg-emerald-500/15 hover:border-emerald-500/30" },
-                                    ]).map(opt => (
-                                        <button key={opt.phase}
-                                            onClick={() => {
-                                                const ids = [...selectedNicheIds];
-                                                ids.forEach(id => {
-                                                    fetch(`${API_BASE_URL}/niches/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: opt.phase }) }).catch(() => {});
-                                                });
-                                                setNiches(prev => prev.map(n => selectedNicheIds.has(n._id) ? { ...n, phase: opt.phase } : n));
-                                                setSelectedNicheIds(new Set());
-                                                setBulkNicheMode(false);
-                                            }}
-                                            className={`h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black transition-all ${opt.color}`}>
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                    <div className="h-4 w-px bg-white/10 mx-1" />
-                                    {/* Fusionar / Absorber — solo disponible con 2+ seleccionados */}
-                                    {selectedNicheIds.size >= 2 && (<>
-                                        <button
-                                            onClick={() => {
-                                                const first = niches.find(n => selectedNicheIds.has(n._id));
-                                                setMergeInitialName(first?.name ?? "");
-                                                setMergeModalOpen(true);
-                                            }}
-                                            className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-amber-400 hover:bg-amber-500/15 hover:border-amber-500/30 transition-all flex items-center gap-1">
-                                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 2.5h3.5l1 6h3.5M5.5 8.5L8.5 5.5M5.5 8.5L8.5 11.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="1.5" cy="2.5" r="1" fill="currentColor"/><circle cx="9.5" cy="5.5" r="1" fill="currentColor"/></svg>
-                                            Fusionar
-                                        </button>
-                                        <button
-                                            onClick={() => setAbsorbModalOpen(true)}
-                                            className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-sky-400 hover:bg-sky-500/15 hover:border-sky-500/30 transition-all flex items-center gap-1">
-                                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.3"/><path d="M5.5 3v2.5l2 1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                                            Absorber
-                                        </button>
-                                    </>)}
-                                    {/* Hard delete */}
-                                    <button
-                                        onClick={() => {
-                                            const ids = [...selectedNicheIds];
-                                            if (!window.confirm(`¿Eliminar ${ids.length} nicho${ids.length > 1 ? "s" : ""} permanentemente? Esta acción no se puede deshacer.`)) return;
-                                            ids.forEach(id => {
-                                                fetch(`${API_BASE_URL}/niches/${id}`, { method: "DELETE" }).catch(() => {});
-                                            });
-                                            setNiches(prev => prev.filter(n => !selectedNicheIds.has(n._id)));
-                                            setSelectedNicheIds(new Set());
-                                            setBulkNicheMode(false);
-                                            toast.success(`${ids.length} nicho${ids.length > 1 ? "s" : ""} eliminado${ids.length > 1 ? "s" : ""}`);
-                                        }}
-                                        className="h-7 px-2.5 rounded-xl border border-transparent text-[11px] font-black text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 transition-all">
-                                        Eliminar
-                                    </button>
-                                    {/* Dismiss */}
-                                    <button onClick={() => { setSelectedNicheIds(new Set()); setBulkNicheMode(false); }}
-                                        className="w-6 h-6 rounded-full bg-white/8 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/15 transition-all ml-1">
-                                        <X size={11} />
-                                    </button>
-                                </div>
-                            </div>
-                        </ModalPortal>
-                    )}
-
-                    {/* ── Absorb niches modal ── */}
-                    {absorbModalOpen && (
-                        <AbsorbNichesModal
-                            selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
-                            stats={Object.fromEntries([...selectedNicheIds].map(id => {
-                                const cats = catsForNiche(niches.find(n => n._id === id)!);
-                                return [id, { cats: cats.length, imgs: cats.reduce((s, c) => s + c.images.length, 0) + cloudinaryImages.filter(img => img.nicheId === id || (img.nicheIds ?? []).includes(id)).length }];
-                            }))}
-                            onClose={() => setAbsorbModalOpen(false)}
-                            onAbsorbed={(hostNiche, catalogCount) => {
-                                setNiches(prev => [hostNiche, ...prev.filter(n => n._id !== hostNiche._id && !selectedNicheIds.has(n._id))]);
-                                setSelectedNicheIds(new Set());
-                                setBulkNicheMode(false);
-                                setAbsorbModalOpen(false);
-                                toast.success(`"${hostNiche.name}" absorbió ${catalogCount} catálogos`);
-                                void fetchNiches();
-                                void fetchCatalogs();
-                                void fetchBookDrafts();
-                                void fetchCloudinaryImages();
-                            }}
-                        />
-                    )}
-
-                    {/* ── Merge niches modal ── */}
-                    {mergeModalOpen && (
-                        <MergeNichesModal
-                            selectedNiches={niches.filter(n => selectedNicheIds.has(n._id))}
-                            initialName={mergeInitialName}
-                            stats={Object.fromEntries([...selectedNicheIds].map(id => {
-                                const cats = catsForNiche(niches.find(n => n._id === id)!);
-                                return [id, { cats: cats.length, imgs: cats.reduce((s, c) => s + c.images.length, 0) + cloudinaryImages.filter(img => img.nicheId === id || (img.nicheIds ?? []).includes(id)).length }];
-                            }))}
-                            onClose={() => setMergeModalOpen(false)}
-                            onMerged={(mergedNiche, catalogCount) => {
-                                setNiches(prev => [mergedNiche, ...prev.filter(n => !selectedNicheIds.has(n._id))]);
-                                setSelectedNicheIds(new Set());
-                                setBulkNicheMode(false);
-                                setMergeModalOpen(false);
-                                toast.success(`Fusión completada → "${mergedNiche.name}" (${catalogCount} catálogos)`);
-                                void fetchNiches();
-                                void fetchCatalogs();
-                                void fetchBookDrafts();
-                                void fetchCloudinaryImages();
-                            }}
-                        />
-                    )}
+                    {renderNicheBulkBar()}
 
                     {/* ── Table view ── */}
                     {!isLoadingNiches && nicheViewMode === "table" && (() => {
