@@ -1474,7 +1474,10 @@ Write each prompt in English, 25-55 words. No style keywords (added automaticall
 
 Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"<scene prompt in English>"}]`;
 
-            const raw = await generateTextWithLLM(system, user);
+            // Scale the token budget with n — the default 1500 cap was truncating the
+            // JSON mid-prompt once count/hints pushed output past a few items, leaving
+            // an invalid array and a "La IA no devolvió JSON válido" error.
+            const raw = await generateTextWithLLM(system, user, Math.min(8000, 800 + n * 350));
             const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
             const start = clean.indexOf("[");
             const end = clean.lastIndexOf("]");
@@ -1653,7 +1656,8 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
 
             const raw = await generateTextWithLLM(
                 `You are an expert visual content creator for coloring book publishing. Reply ONLY with a valid JSON array. No markdown, no explanations, no extra text.`,
-                user
+                user,
+                Math.min(6000, 800 + n * 350)
             );
 
             const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();

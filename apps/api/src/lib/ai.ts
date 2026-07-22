@@ -292,7 +292,7 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
  * Generic text generation using the configured LLM.
  * Returns the raw text response. Throws if no provider is available.
  */
-export async function generateTextWithLLM(systemPrompt: string, userPrompt: string): Promise<string> {
+export async function generateTextWithLLM(systemPrompt: string, userPrompt: string, maxOutputTokens = 1500): Promise<string> {
     const config = await getConfig();
     const jsonStrip = (s: string) => s.replace(/^```(?:json|html|xml|)?\s*/i, "").replace(/```\s*$/i, "").trim();
     const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences (```), no backticks, no explanations. Start with { and end with }.";
@@ -314,7 +314,7 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
                 config: {
                     systemInstruction: systemPrompt,
                     thinkingConfig: { thinkingBudget: 0 },
-                    maxOutputTokens: 1500,
+                    maxOutputTokens,
                     temperature: 0.4,
                 } as any,
             });
@@ -336,7 +336,7 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
             const raw = await groqChat(config.groqKey, modelFor("groq", "llama-3.3-70b-versatile"), [
                 { role: "system", content: systemPrompt + jsonEnforcement },
                 { role: "user", content: userPrompt },
-            ], 1500, 0.4);
+            ], maxOutputTokens, 0.4);
             const text = jsonStrip(raw);
             if (text) { recordLLM("groq", true, Date.now() - t0); console.log("[ai] Usó fallback: Groq"); return text; }
             recordLLM("groq", false, Date.now() - t0, "respuesta vacía");
@@ -355,7 +355,7 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
             const raw = await openrouterChat(config.openrouterKey, modelFor("openrouter", "google/gemini-2.5-flash"), [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },
-            ], 1500, 0.4);
+            ], maxOutputTokens, 0.4);
             const text = jsonStrip(raw);
             if (text) { recordLLM("openrouter", true, Date.now() - t0); console.log("[ai] Usó fallback: OpenRouter"); return text; }
             recordLLM("openrouter", false, Date.now() - t0, "respuesta vacía");
@@ -379,7 +379,7 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
                     { role: "system", content: systemPrompt + jsonEnforcement },
                     { role: "user", content: userPrompt },
                 ],
-                max_tokens: 1500,
+                max_tokens: maxOutputTokens,
                 temperature: 0.4,
             });
             const raw = (response.choices[0].message.content ?? "").trim();
