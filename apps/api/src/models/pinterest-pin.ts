@@ -28,11 +28,15 @@ const PinterestPinSchema = new Schema<IPinterestPin>({
     nicheName:        { type: String, required: true },
     imageUrl:         { type: String, required: true },
     title:            { type: String, required: true },
-    description:      { type: String, required: true },
+    // Optional — a pin can be saved as a draft before it has a description, an
+    // Amazon link, or a board decided. Mongoose treats "" as failing `required`
+    // for String paths, so these must NOT be required or saving a fresh draft
+    // (via the "Guardar" button, before connecting Pinterest / picking a board) fails.
+    description:      { type: String, default: "" },
     hashtags:         [{ type: String }],
-    amazonUrl:        { type: String, required: true },
+    amazonUrl:        { type: String, default: "" },
     boardId:          { type: String },
-    boardSuggestion:  { type: String, required: true },
+    boardSuggestion:  { type: String, default: "" },
     pinType:          { type: String, enum: ["cover", "sample"], required: true },
     status:           { type: String, enum: ["pending", "posted", "skipped", "scheduled", "failed"], default: "pending" },
     scheduledFor:     { type: Date },

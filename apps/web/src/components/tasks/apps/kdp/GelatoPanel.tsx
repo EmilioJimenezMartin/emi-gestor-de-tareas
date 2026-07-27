@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
     ExternalLink, BookOpen, Plus, Type, ImageIcon, Layers, FileText, Tag,
-    ChevronDown, Lightbulb, Trash2, Archive, FolderArchive, Box, Cloud,
+    ChevronDown, Lightbulb, Trash2, Archive, FolderArchive, Box, Cloud, Search, Link2Off,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,16 @@ export function GelatoPanel({
     setNiches, setBookDrafts, openKdpTemplateSelector, newBookDraft,
     guardedLoadBookDraft, apiBaseUrl,
 }: GelatoPanelProps) {
+    const [draftSearch, setDraftSearch] = useState("");
+    const [onlyUnlinked, setOnlyUnlinked] = useState(false);
+    const nicheNameById = new Map(niches.map(n => [n._id, n.nickname?.trim() || n.name]));
+    const filteredDrafts = bookDrafts.filter(draft => {
+        if (onlyUnlinked && draft.nicheId) return false;
+        const q = draftSearch.trim().toLowerCase();
+        if (!q) return true;
+        const nicheName = draft.nicheId ? (nicheNameById.get(draft.nicheId) ?? "") : "";
+        return (draft.fileName || "").toLowerCase().includes(q) || nicheName.toLowerCase().includes(q);
+    });
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
 
@@ -116,7 +126,32 @@ export function GelatoPanel({
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    {bookDrafts.map(draft => (
+                                    {bookDrafts.length > 6 && (
+                                        <div className="flex items-center gap-2">
+                                            <div className="relative flex-1 min-w-[160px]">
+                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" />
+                                                <input
+                                                    value={draftSearch}
+                                                    onChange={e => setDraftSearch(e.target.value)}
+                                                    placeholder="Buscar por nombre o nicho…"
+                                                    className="w-full h-9 pl-8 pr-3 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-amber-500/40 transition-all"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={() => setOnlyUnlinked(v => !v)}
+                                                title="Solo sin nicho vinculado"
+                                                className={`h-9 px-3 rounded-xl border text-sm font-black uppercase tracking-widest flex items-center gap-1.5 transition-all shrink-0 ${onlyUnlinked ? "bg-amber-500/15 border-amber-500/40 text-amber-300" : "bg-white/[0.03] border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
+                                            >
+                                                <Link2Off size={11} /> Sin nicho
+                                            </button>
+                                            <span className="text-sm text-neutral-600 shrink-0 tabular-nums">{filteredDrafts.length}/{bookDrafts.length}</span>
+                                        </div>
+                                    )}
+                                    {filteredDrafts.length === 0 ? (
+                                        <p className="text-sm text-neutral-600 py-4 text-center">Ningún borrador coincide con la búsqueda.</p>
+                                    ) : (
+                                    <div className={`space-y-2 ${bookDrafts.length > 6 ? "max-h-[480px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" : ""}`}>
+                                    {filteredDrafts.map(draft => (
                                         <div key={draft.id} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${activeDraftId === draft.id ? "border-amber-500/30 bg-amber-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/14"}`}>
                                             <div className="flex gap-1 shrink-0">
                                                 {draft.pages.slice(0, 4).map((page, idx) => (
@@ -181,6 +216,8 @@ export function GelatoPanel({
                                             </div>
                                         </div>
                                     ))}
+                                    </div>
+                                    )}
                                 </div>
                             )}
 

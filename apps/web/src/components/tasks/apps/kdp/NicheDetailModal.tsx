@@ -986,7 +986,7 @@ const modalPortal = createPortal(
                                                         const updatedDrafts = bookDrafts.map(x => x.id === d.id ? linked : x);
                                                         setBookDrafts(updatedDrafts);
                                                         await Promise.all([
-                                                            fetch(`${apiBaseUrl}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
+                                                            fetch(`${apiBaseUrl}/book-drafts/${d.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nicheId: nicheDetailId }) }),
                                                             fetch(`${apiBaseUrl}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }) }),
                                                         ]).catch(() => {});
                                                         setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro", pipelineHasPdf: true } : n));
@@ -1031,14 +1031,26 @@ const modalPortal = createPortal(
                                                             pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${detailNiche.name} #${i + 1}` }, text: defaultTextStyle() });
                                                             pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
                                                         });
-                                                        const draftId = `pipeline-${nicheDetailId}-${ts}`;
-                                                        const newDraft = { id: draftId, fileName: `${detailNiche.name} — Libro`, pages, savedAt: new Date().toISOString(), nicheId: nicheDetailId! };
+                                                        const fileName = `${detailNiche.name} — Libro`;
+                                                        const savedAt = new Date().toISOString();
+                                                        // Persist to the real book-drafts collection (not the legacy Settings blob)
+                                                        // so the nicheId link survives a reload — fetchBookDrafts() only reads from here.
+                                                        let draftId = `pipeline-${nicheDetailId}-${ts}`;
+                                                        try {
+                                                            const res = await fetch(`${apiBaseUrl}/book-drafts`, {
+                                                                method: "POST",
+                                                                headers: { "Content-Type": "application/json" },
+                                                                body: JSON.stringify({ fileName, pages, nicheId: nicheDetailId, savedAt }),
+                                                            });
+                                                            if (res.ok) {
+                                                                const data = await res.json();
+                                                                if (data?.draft?._id) draftId = String(data.draft._id);
+                                                            }
+                                                        } catch { /* keep local id — niche PATCH below still marks it as having a PDF */ }
+                                                        const newDraft = { id: draftId, fileName, pages, savedAt, nicheId: nicheDetailId! };
                                                         const updatedDrafts = [newDraft, ...bookDrafts.filter(d => !d.id.startsWith(`pipeline-${nicheDetailId}`) && d.nicheId !== nicheDetailId)];
                                                         setBookDrafts(updatedDrafts);
-                                                        await Promise.all([
-                                                            fetch(`${apiBaseUrl}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
-                                                            fetch(`${apiBaseUrl}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }) }),
-                                                        ]).catch(() => {});
+                                                        await fetch(`${apiBaseUrl}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }) }).catch(() => {});
                                                         setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro", pipelineHasPdf: true } : n));
                                                         toast.success(`Libro creado · ${shuffled.length} imágenes (${catImgs.length} catálogo + ${cloudImgsSrc.length} almacén)`);
                                                     }}

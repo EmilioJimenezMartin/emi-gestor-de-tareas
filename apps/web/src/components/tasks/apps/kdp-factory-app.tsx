@@ -13168,11 +13168,26 @@ POST-LANZAMIENTO:
                             <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 items-start">
                                 {PHASES.map(col => {
                                     // "pdf" is the legacy name for "seo" — show both in the seo column
-                                    const colNiches = niches.filter(n => {
-                                        const p = nicheComputedPhases.get(n._id) ?? "niche";
-                                        if (p !== col.id) return false;
-                                        return nicheMatchesFilters(n);
-                                    });
+                                    const colNiches = niches
+                                        .filter(n => {
+                                            const p = nicheComputedPhases.get(n._id) ?? "niche";
+                                            if (p !== col.id) return false;
+                                            return nicheMatchesFilters(n);
+                                        })
+                                        .sort((a, b) => {
+                                            const dir = nicheSortDir === "asc" ? 1 : -1;
+                                            if (nicheSortBy === "score") return dir * (nicheScore(a) - nicheScore(b));
+                                            if (nicheSortBy === "market") return dir * ((a.marketScan?.score ?? -1) - (b.marketScan?.score ?? -1));
+                                            if (nicheSortBy === "date") return dir * (new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+                                            if (nicheSortBy === "name") return dir * a.name.localeCompare(b.name, "es");
+                                            if (nicheSortBy === "catalogs") return dir * (catsForNiche(a).length - catsForNiche(b).length);
+                                            if (nicheSortBy === "images") {
+                                                const ai = catsForNiche(a).reduce((s, c) => s + c.images.length, 0);
+                                                const bi = catsForNiche(b).reduce((s, c) => s + c.images.length, 0);
+                                                return dir * (ai - bi);
+                                            }
+                                            return 0;
+                                        });
                                     const colImgs = colNiches.reduce((sum, n) => sum + catsForNiche(n).reduce((s, c) => s + c.images.length, 0), 0);
                                     return (
                                         <div key={col.id} className={`rounded-2xl border ${col.colBg} flex flex-col`}>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Copy, Check, Send, Sparkles, X, Download } from "lucide-react";
+import { Copy, Check, Send, Sparkles, X, Download, Trash2, Loader2, ChevronDown } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -20,6 +20,27 @@ interface PinDraft {
     generating: boolean;
     copied: boolean;
 }
+interface QueuedPin {
+    _id: string;
+    nicheId: string;
+    nicheName: string;
+    imageUrl: string;
+    title: string;
+    status: "pending" | "posted" | "skipped" | "scheduled" | "failed";
+    boardSuggestion: string;
+    error?: string;
+    createdAt: string;
+}
+const STATUS_LABEL: Record<QueuedPin["status"], string> = {
+    pending: "Pendiente", posted: "Publicado", skipped: "Omitido", scheduled: "Programado", failed: "Fallido",
+};
+const STATUS_CLASS: Record<QueuedPin["status"], string> = {
+    pending:   "bg-amber-500/15 text-amber-400 border-amber-500/25",
+    posted:    "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
+    skipped:   "bg-zinc-500/15 text-zinc-400 border-zinc-500/25",
+    scheduled: "bg-sky-500/15 text-sky-400 border-sky-500/25",
+    failed:    "bg-rose-500/15 text-rose-400 border-rose-500/25",
+};
 
 export function PinterestPanel() {
     const [niches, setNiches] = useState<Niche[]>([]);
@@ -36,8 +57,20 @@ export function PinterestPanel() {
     const [connected, setConnected] = useState(false);
     const [selectedBoard, setSelectedBoard] = useState("");
     const [publishing, setPublishing] = useState<string | null>(null);
+    const [saving, setSaving] = useState<string | null>(null);
+    const [queuedPins, setQueuedPins] = useState<QueuedPin[]>([]);
+    const [loadingQueue, setLoadingQueue] = useState(true);
+    const [deletingPin, setDeletingPin] = useState<string | null>(null);
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-    // Load niches + Pinterest status
+    const fetchQueue = useCallback(async () => {
+        try {
+            const r = await fetch(`${API}/pinterest/queue?limit=200`);
+            if (r.ok) { const d = await r.json(); setQueuedPins(d.pins ?? []); }
+        } finally { setLoadingQueue(false); }
+    }, []);
+
+    // Load niches + Pinterest status + saved pins queue
     useEffect(() => {
         const load = async () => {
             try {
@@ -54,7 +87,8 @@ export function PinterestPanel() {
             } finally { setLoadingNiches(false); }
         };
         void load();
-    }, []);
+        void fetchQueue();
+    }, [fetchQueue]);
 
     // Load catalogs when niche changes
     useEffect(() => {
@@ -138,20 +172,81 @@ export function PinterestPanel() {
         });
     };
 
+    // Persist the draft to the queue (PinterestPin collection) — independent of
+    // whether the Pinterest API is connected, so nothing is lost if the user
+    // just wants to prepare pins and post them manually later.
+    const saveDraft = async (draft: PinDraft): Promise<string | null> => {
+        const hashtags = draft.hashtags.split(/[\s,]+/).map(t => t.startsWith("#") ? t : `#${t}`).filter(t => t.length > 1);
+        const r = await fetch(`${API}/pinterest/queue`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nicheName: draft.nicheName, imageUrl: draft.imageUrl, title: draft.title, description: draft.description, hashtags, amazonUrl: "", boardSuggestion: selectedBoard, pinType: "cover" }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        return d.pin?._id ? String(d.pin._id) : null;
+    };
+
+    const savePin = async (draft: PinDraft) => {
+        setSaving(draft.imageUrl);
+        try {
+            await saveDraft(draft);
+            toast.success("Pin guardado");
+            removeDraft(draft.imageUrl);
+            void fetchQueue();
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally { setSaving(null); }
+    };
+
+    const deletePin = async (pin: QueuedPin) => {
+        setDeletingPin(pin._id);
+        try {
+            const r = await fetch(`${API}/pinterest/pins/${pin._id}`, { method: "DELETE" });
+            if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
+            setQueuedPins(p => p.filter(x => x._id !== pin._id));
+            toast.success("Pin eliminado");
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally { setDeletingPin(null); }
+    };
+
+    const publishQueuedPin = async (pin: QueuedPin) => {
+        if (!connected) { toast.error("Conecta Pinterest API primero"); return; }
+        if (!selectedBoard) { toast.error("Selecciona un board arriba primero"); return; }
+        setPublishing(pin._id);
+        try {
+            const pr = await fetch(`${API}/pinterest/pins/${pin._id}/publish`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ boardId: selectedBoard }),
+            });
+            const pd = await pr.json();
+            if (!pr.ok) throw new Error(pd.error);
+            toast.success("Pin publicado en Pinterest");
+            void fetchQueue();
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally { setPublishing(null); }
+    };
+
     const publishPin = async (draft: PinDraft) => {
         if (!connected) { toast.error("Conecta Pinterest API primero"); return; }
         if (!selectedBoard) { toast.error("Selecciona un board"); return; }
         setPublishing(draft.imageUrl);
         try {
-            const hashtags = draft.hashtags.split(/[\s,]+/).map(t => t.startsWith("#") ? t : `#${t}`).filter(t => t.length > 1);
-            const r = await fetch(`${API}/pinterest/queue`, {
+            const pinId = await saveDraft(draft);
+            if (!pinId) throw new Error("No se pudo guardar el pin antes de publicar");
+            const pr = await fetch(`${API}/pinterest/pins/${pinId}/publish`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ nicheName: draft.nicheName, imageUrl: draft.imageUrl, title: draft.title, description: draft.description, hashtags, amazonUrl: "", boardSuggestion: selectedBoard, pinType: "cover" }),
+                body: JSON.stringify({ boardId: selectedBoard }),
             });
-            if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
+            const pd = await pr.json();
+            if (!pr.ok) throw new Error(pd.error);
             toast.success("Pin publicado en Pinterest");
             removeDraft(draft.imageUrl);
+            void fetchQueue();
         } catch (e: any) {
             toast.error(e.message);
         } finally { setPublishing(null); }
@@ -166,6 +261,20 @@ export function PinterestPanel() {
     const filteredNiches = niches.filter(n => {
         const q = nicheSearch.toLowerCase();
         return (n.nickname?.toLowerCase().includes(q) || n.name.toLowerCase().includes(q));
+    });
+
+    // Group saved/queued pins by niche so it scales past a handful of pins.
+    const pinGroups = new Map<string, QueuedPin[]>();
+    for (const pin of queuedPins) {
+        const key = pin.nicheName || "Sin nicho";
+        if (!pinGroups.has(key)) pinGroups.set(key, []);
+        pinGroups.get(key)!.push(pin);
+    }
+    const sortedGroups = [...pinGroups.entries()].sort((a, b) => b[1].length - a[1].length);
+    const toggleGroup = (name: string) => setCollapsedGroups(prev => {
+        const next = new Set(prev);
+        next.has(name) ? next.delete(name) : next.add(name);
+        return next;
     });
 
     if (loadingNiches) return <div className="flex items-center justify-center h-32 text-zinc-500 text-sm">Cargando...</div>;
@@ -323,6 +432,12 @@ export function PinterestPanel() {
                                         {draft.copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
                                         {draft.copied ? "Copiado" : "Todo"}
                                     </button>
+                                    <button onClick={() => void savePin(draft)} disabled={!draft.title || saving === draft.imageUrl}
+                                        title="Guarda el pin en la cola aunque no publiques ahora"
+                                        className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-400 text-xs border border-emerald-600/30 transition disabled:opacity-30">
+                                        <Check size={11} />
+                                        {saving === draft.imageUrl ? "Guardando..." : "Guardar"}
+                                    </button>
                                     {connected && (
                                         <button onClick={() => void publishPin(draft)} disabled={!draft.title || publishing === draft.imageUrl}
                                             className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs border border-red-600/30 transition disabled:opacity-30">
@@ -336,6 +451,66 @@ export function PinterestPanel() {
                     ))}
                 </div>
             )}
+
+            {/* Step 4 — saved/queued pins, grouped by niche */}
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+                        4. Pins guardados {queuedPins.length > 0 && <span className="text-zinc-600">({queuedPins.length})</span>}
+                    </p>
+                    {loadingQueue && <Loader2 size={13} className="animate-spin text-zinc-600" />}
+                </div>
+
+                {!loadingQueue && queuedPins.length === 0 && (
+                    <p className="text-sm text-zinc-600 py-2">Todavía no has guardado ningún pin.</p>
+                )}
+
+                {sortedGroups.length > 0 && (
+                    <div className="space-y-2">
+                        {sortedGroups.map(([nicheName, pins]) => {
+                            const collapsed = collapsedGroups.has(nicheName);
+                            return (
+                                <div key={nicheName} className="rounded-xl border border-white/8 bg-white/[0.02] overflow-hidden">
+                                    <button onClick={() => toggleGroup(nicheName)}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.03] transition text-left">
+                                        <ChevronDown size={13} className={`text-zinc-600 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                                        <span className="text-sm font-semibold text-white truncate flex-1">{nicheName}</span>
+                                        <span className="text-xs text-zinc-500 shrink-0">{pins.length} pin{pins.length !== 1 ? "s" : ""}</span>
+                                    </button>
+                                    {!collapsed && (
+                                        <div className="border-t border-white/8 divide-y divide-white/[0.05]">
+                                            {pins.map(pin => (
+                                                <div key={pin._id} className="flex items-center gap-3 px-3 py-2.5">
+                                                    <img src={pin.imageUrl} alt="" className="w-10 h-10 object-cover rounded-lg flex-shrink-0 border border-white/10" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-white truncate">{pin.title}</p>
+                                                        <p className="text-xs text-zinc-600">{new Date(pin.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full border shrink-0 ${STATUS_CLASS[pin.status]}`} title={pin.error}>
+                                                        {STATUS_LABEL[pin.status]}
+                                                    </span>
+                                                    {connected && pin.status !== "posted" && (
+                                                        <button onClick={() => void publishQueuedPin(pin)} disabled={publishing === pin._id}
+                                                            title="Publicar en Pinterest"
+                                                            className="h-7 w-7 rounded-lg bg-red-600/15 hover:bg-red-600/25 text-red-400 border border-red-600/25 transition disabled:opacity-30 flex items-center justify-center shrink-0">
+                                                            {publishing === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                                                        </button>
+                                                    )}
+                                                    <button onClick={() => void deletePin(pin)} disabled={deletingPin === pin._id}
+                                                        title="Eliminar"
+                                                        className="h-7 w-7 rounded-lg hover:bg-white/10 text-zinc-600 hover:text-rose-400 transition disabled:opacity-30 flex items-center justify-center shrink-0">
+                                                        {deletingPin === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
 
             {/* Pinterest API connection */}
             {!connected && (
