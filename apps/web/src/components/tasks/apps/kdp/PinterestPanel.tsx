@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Copy, Check, Send, Sparkles, X, Download, Trash2, Loader2, ChevronDown } from "lucide-react";
+import { Copy, Check, Send, Sparkles, X, Download, Trash2, Loader2, ChevronDown, Pencil, Save } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -26,6 +26,9 @@ interface QueuedPin {
     nicheName: string;
     imageUrl: string;
     title: string;
+    description: string;
+    hashtags: string[];
+    amazonUrl: string;
     status: "pending" | "posted" | "skipped" | "scheduled" | "failed";
     boardSuggestion: string;
     error?: string;
@@ -62,6 +65,17 @@ export function PinterestPanel() {
     const [loadingQueue, setLoadingQueue] = useState(true);
     const [deletingPin, setDeletingPin] = useState<string | null>(null);
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+
+    // Inline editor for a saved/queued pin — lets you see & edit everything
+    // (title, description, hashtags), not just the title.
+    const [expandedPinId, setExpandedPinId] = useState<string | null>(null);
+    const [editTitle, setEditTitle] = useState("");
+    const [editDescription, setEditDescription] = useState("");
+    const [editHashtags, setEditHashtags] = useState("");
+    const [editGenerating, setEditGenerating] = useState(false);
+    const [editSaving, setEditSaving] = useState(false);
+    const [editCopied, setEditCopied] = useState(false);
 
     const fetchQueue = useCallback(async () => {
         try {
@@ -165,6 +179,19 @@ export function PinterestPanel() {
         }
     };
 
+    const copyImageToClipboard = async (url: string) => {
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+            toast.success("Imagen copiada al portapapeles");
+        } catch {
+            // fallback: open in new tab so user can copy manually
+            window.open(url, "_blank");
+            toast.info("Abre la imagen y cópiala manualmente");
+        }
+    };
+
     const copyPin = (draft: PinDraft) => {
         navigator.clipboard.writeText([draft.title, "", draft.description, "", draft.hashtags].join("\n")).then(() => {
             updateDraft(draft.imageUrl, { copied: true });
@@ -198,6 +225,39 @@ export function PinterestPanel() {
             toast.error(e.message);
         } finally { setSaving(null); }
     };
+
+    const updatePinStatus = async (pin: QueuedPin, status: QueuedPin["status"]) => {
+        if (status === pin.status) return;
+        setUpdatingStatus(pin._id);
+        try {
+            const r = await fetch(`${API}/pinterest/pins/${pin._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error);
+            setQueuedPins(prev => prev.map(p => p._id === pin._id ? { ...p, status } : p));
+            toast.success(`Estado → ${STATUS_LABEL[status]}`);
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally { setUpdatingStatus(null); }
+    };
+
+    const renderStatusSelect = (pin: QueuedPin) => (
+        <select
+            value={pin.status}
+            onChange={e => void updatePinStatus(pin, e.target.value as QueuedPin["status"])}
+            disabled={updatingStatus === pin._id}
+            onClick={e => e.stopPropagation()}
+            title="Cambiar estado"
+            className={`text-[10px] font-bold uppercase tracking-wide pl-2 pr-1 py-1 rounded-full border shrink-0 focus:outline-none cursor-pointer disabled:opacity-50 ${STATUS_CLASS[pin.status]}`}
+        >
+            {(Object.keys(STATUS_LABEL) as QueuedPin["status"][]).map(s => (
+                <option key={s} value={s} className="bg-zinc-900 text-white normal-case">{STATUS_LABEL[s]}</option>
+            ))}
+        </select>
+    );
 
     const deletePin = async (pin: QueuedPin) => {
         setDeletingPin(pin._id);
@@ -250,6 +310,69 @@ export function PinterestPanel() {
         } catch (e: any) {
             toast.error(e.message);
         } finally { setPublishing(null); }
+    };
+
+    const openPinEditor = (pin: QueuedPin) => {
+        setExpandedPinId(pin._id);
+        setEditTitle(pin.title);
+        setEditDescription(pin.description);
+        setEditHashtags(pin.hashtags.join(" "));
+    };
+    const closePinEditor = () => setExpandedPinId(null);
+
+    const generateEditText = async (pin: QueuedPin) => {
+        setEditGenerating(true);
+        try {
+            const r = await fetch(`${API}/ai/generate-text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "full-listing",
+                    niche: pin.nicheName,
+                    productType: "coloring-book",
+                    language: "en",
+                    extras: `Format: pinterest pin. Return a title (max 100 chars), description (max 500 chars) and 10 hashtags separated by spaces.`,
+                }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error);
+            const text: string = typeof d.result === "string" ? d.result : JSON.stringify(d.result);
+            const titleM = text.match(/title[^:]*:\s*["']?(.{10,120})["']?/i);
+            const descM  = text.match(/description[^:]*:\s*["']?(.{20,600})["']?/i);
+            const tagsM  = text.match(/(?:hashtags?|tags?)[^:]*:\s*(.{5,400})/i);
+            setEditTitle(titleM?.[1]?.replace(/["'\n]/g, "").trim() ?? "");
+            setEditDescription(descM?.[1]?.replace(/["'\n]/g, "").trim() ?? "");
+            setEditHashtags(tagsM?.[1]?.replace(/["\[\]{}\n]/g, "").trim() ?? "");
+            toast.success("Texto generado");
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally { setEditGenerating(false); }
+    };
+
+    const saveEditedPin = async (pin: QueuedPin) => {
+        setEditSaving(true);
+        try {
+            const hashtags = editHashtags.split(/[\s,]+/).map(t => t.startsWith("#") ? t : `#${t}`).filter(t => t.length > 1);
+            const r = await fetch(`${API}/pinterest/pins/${pin._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: editTitle, description: editDescription, hashtags }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error);
+            setQueuedPins(prev => prev.map(p => p._id === pin._id ? { ...p, title: editTitle, description: editDescription, hashtags } : p));
+            toast.success("Pin actualizado");
+            setExpandedPinId(null);
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally { setEditSaving(false); }
+    };
+
+    const copyEditedAll = () => {
+        navigator.clipboard.writeText([editTitle, "", editDescription, "", editHashtags].join("\n")).then(() => {
+            setEditCopied(true);
+            setTimeout(() => setEditCopied(false), 2000);
+        });
     };
 
     useEffect(() => {
@@ -402,18 +525,8 @@ export function PinterestPanel() {
                                     placeholder="Hashtags (se generan con ✦)..."
                                     className="w-full h-7 px-2.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-400 placeholder:text-zinc-600 focus:outline-none" />
                                 <div className="flex gap-2 flex-wrap">
-                                    <button onClick={async () => {
-                                        try {
-                                            const res = await fetch(draft.imageUrl);
-                                            const blob = await res.blob();
-                                            await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-                                            toast.success("Imagen copiada al portapapeles");
-                                        } catch {
-                                            // fallback: open in new tab so user can copy manually
-                                            window.open(draft.imageUrl, "_blank");
-                                            toast.info("Abre la imagen y cópiala manualmente");
-                                        }
-                                    }} className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition">
+                                    <button onClick={() => void copyImageToClipboard(draft.imageUrl)}
+                                        className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition">
                                         <Copy size={11} />
                                         Imagen
                                     </button>
@@ -479,30 +592,102 @@ export function PinterestPanel() {
                                     </button>
                                     {!collapsed && (
                                         <div className="border-t border-white/8 divide-y divide-white/[0.05]">
-                                            {pins.map(pin => (
-                                                <div key={pin._id} className="flex items-center gap-3 px-3 py-2.5">
-                                                    <img src={pin.imageUrl} alt="" className="w-10 h-10 object-cover rounded-lg flex-shrink-0 border border-white/10" />
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm text-white truncate">{pin.title}</p>
-                                                        <p className="text-xs text-zinc-600">{new Date(pin.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                                                    </div>
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full border shrink-0 ${STATUS_CLASS[pin.status]}`} title={pin.error}>
-                                                        {STATUS_LABEL[pin.status]}
-                                                    </span>
-                                                    {connected && pin.status !== "posted" && (
-                                                        <button onClick={() => void publishQueuedPin(pin)} disabled={publishing === pin._id}
-                                                            title="Publicar en Pinterest"
-                                                            className="h-7 w-7 rounded-lg bg-red-600/15 hover:bg-red-600/25 text-red-400 border border-red-600/25 transition disabled:opacity-30 flex items-center justify-center shrink-0">
-                                                            {publishing === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                                            {pins.map(pin => {
+                                                const isExpanded = expandedPinId === pin._id;
+                                                if (!isExpanded) return (
+                                                    <div key={pin._id} className="flex items-center gap-3 px-3 py-2.5">
+                                                        <img src={pin.imageUrl} alt="" className="w-10 h-10 object-cover rounded-lg flex-shrink-0 border border-white/10" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm text-white truncate">{pin.title}</p>
+                                                            <p className="text-xs text-zinc-600">{new Date(pin.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                                        </div>
+                                                        {renderStatusSelect(pin)}
+                                                        <button onClick={() => openPinEditor(pin)}
+                                                            title="Ver / editar todo"
+                                                            className="h-7 w-7 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition flex items-center justify-center shrink-0">
+                                                            <Pencil size={11} />
                                                         </button>
-                                                    )}
-                                                    <button onClick={() => void deletePin(pin)} disabled={deletingPin === pin._id}
-                                                        title="Eliminar"
-                                                        className="h-7 w-7 rounded-lg hover:bg-white/10 text-zinc-600 hover:text-rose-400 transition disabled:opacity-30 flex items-center justify-center shrink-0">
-                                                        {deletingPin === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
-                                                    </button>
-                                                </div>
-                                            ))}
+                                                        {connected && pin.status !== "posted" && (
+                                                            <button onClick={() => void publishQueuedPin(pin)} disabled={publishing === pin._id}
+                                                                title="Publicar en Pinterest"
+                                                                className="h-7 w-7 rounded-lg bg-red-600/15 hover:bg-red-600/25 text-red-400 border border-red-600/25 transition disabled:opacity-30 flex items-center justify-center shrink-0">
+                                                                {publishing === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                                                            </button>
+                                                        )}
+                                                        <button onClick={() => void deletePin(pin)} disabled={deletingPin === pin._id}
+                                                            title="Eliminar"
+                                                            className="h-7 w-7 rounded-lg hover:bg-white/10 text-zinc-600 hover:text-rose-400 transition disabled:opacity-30 flex items-center justify-center shrink-0">
+                                                            {deletingPin === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                                        </button>
+                                                    </div>
+                                                );
+                                                return (
+                                                    <div key={pin._id} className="p-3 space-y-2.5 bg-white/[0.015]">
+                                                        <div className="flex items-center justify-between">
+                                                            {renderStatusSelect(pin)}
+                                                            <button onClick={closePinEditor}
+                                                                className="h-7 w-7 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white transition flex items-center justify-center">
+                                                                <X size={13} />
+                                                            </button>
+                                                        </div>
+                                                        {pin.error && (
+                                                            <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-2.5 py-1.5">{pin.error}</p>
+                                                        )}
+                                                        <img src={pin.imageUrl} alt="" className="w-full max-h-72 object-contain rounded-lg border border-white/10 bg-black/20" />
+                                                        <div className="flex gap-2">
+                                                            <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                                                                placeholder="Título del pin..."
+                                                                className="flex-1 h-8 px-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-rose-500/40" />
+                                                            <button onClick={() => void generateEditText(pin)} disabled={editGenerating} title="Generar con IA"
+                                                                className="h-8 w-8 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 border border-violet-600/30 transition disabled:opacity-40 flex items-center justify-center shrink-0">
+                                                                <Sparkles size={13} className={editGenerating ? "animate-pulse" : ""} />
+                                                            </button>
+                                                        </div>
+                                                        <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)}
+                                                            placeholder="Descripción (se genera con ✦)..." rows={3}
+                                                            className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none resize-none" />
+                                                        <input value={editHashtags} onChange={e => setEditHashtags(e.target.value)}
+                                                            placeholder="Hashtags (se generan con ✦)..."
+                                                            className="w-full h-7 px-2.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-400 placeholder:text-zinc-600 focus:outline-none" />
+                                                        <div className="flex gap-2 flex-wrap">
+                                                            <button onClick={() => void copyImageToClipboard(pin.imageUrl)}
+                                                                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition">
+                                                                <Copy size={11} /> Imagen
+                                                            </button>
+                                                            <a href={pin.imageUrl} download target="_blank" rel="noopener noreferrer"
+                                                                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition">
+                                                                <Download size={11} /> Descargar
+                                                            </a>
+                                                            <button onClick={() => { navigator.clipboard.writeText(editTitle); toast.success("Título copiado"); }} disabled={!editTitle}
+                                                                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition disabled:opacity-30">
+                                                                <Copy size={11} /> Título
+                                                            </button>
+                                                            <button onClick={copyEditedAll} disabled={!editTitle}
+                                                                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 text-xs border border-white/10 transition disabled:opacity-30">
+                                                                {editCopied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                                                {editCopied ? "Copiado" : "Todo"}
+                                                            </button>
+                                                            <button onClick={() => void saveEditedPin(pin)} disabled={!editTitle || editSaving}
+                                                                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-400 text-xs border border-emerald-600/30 transition disabled:opacity-30">
+                                                                {editSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                                                                {editSaving ? "Guardando..." : "Guardar cambios"}
+                                                            </button>
+                                                            {connected && pin.status !== "posted" && (
+                                                                <button onClick={() => void publishQueuedPin(pin)} disabled={publishing === pin._id}
+                                                                    className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs border border-red-600/30 transition disabled:opacity-30">
+                                                                    {publishing === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                                                                    {publishing === pin._id ? "Publicando..." : "Publicar"}
+                                                                </button>
+                                                            )}
+                                                            <button onClick={() => void deletePin(pin)} disabled={deletingPin === pin._id}
+                                                                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-white/5 hover:bg-rose-500/15 text-zinc-500 hover:text-rose-400 text-xs border border-white/10 hover:border-rose-500/30 transition disabled:opacity-30 ml-auto">
+                                                                {deletingPin === pin._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                                                Eliminar
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>

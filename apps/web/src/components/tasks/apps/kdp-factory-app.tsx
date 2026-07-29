@@ -798,6 +798,37 @@ export function KdpFactoryApp() {
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
     const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string; filename?: string; urls?: string[]; meta?: { catalogId?: string; publicId?: string }[]; index?: number } | null>(null);
+    const [sendingLightboxToTelegram, setSendingLightboxToTelegram] = useState(false);
+    const sendLightboxImageToTelegram = async (url: string) => {
+        setSendingLightboxToTelegram(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/telegram/send-photo`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageUrl: url }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error enviando a Telegram");
+            toast.success("Imagen enviada a Telegram");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error enviando a Telegram");
+        } finally { setSendingLightboxToTelegram(false); }
+    };
+    const [lightboxImgBroken, setLightboxImgBroken] = useState(false);
+    useEffect(() => { setLightboxImgBroken(false); }, [lightboxUrl?.url]);
+    const [copyingLightboxImage, setCopyingLightboxImage] = useState(false);
+    const copyLightboxImageToClipboard = async (url: string) => {
+        setCopyingLightboxImage(true);
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+            toast.success("Imagen copiada al portapapeles");
+        } catch {
+            window.open(url, "_blank");
+            toast.info("Abre la imagen y cópiala manualmente");
+        } finally { setCopyingLightboxImage(false); }
+    };
     const [explodeNicheId, setExplodeNicheId] = useState<string | null>(null);
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban" | "table">("kanban");
@@ -1794,6 +1825,9 @@ export function KdpFactoryApp() {
 
     // --- Favorites (persisted to MongoDB via /settings as FavoriteImage[]) ---
     const [favorites, setFavorites] = useState<Map<string, FavoriteImage>>(new Map());
+    // Guards against firing the prune fetch more than once per broken favorite
+    // (onError can retry/re-fire on re-render before state settles).
+    const prunedFavoritesRef = useRef<Set<string>>(new Set());
 
     // --- PDF drag-to-reorder (desktop) + touch-reorder (mobile) ---
     const [bookDragIdx, setBookDragIdx] = useState<number | null>(null);
@@ -3330,6 +3364,14 @@ export function KdpFactoryApp() {
             }).catch(() => { });
             return next;
         });
+    };
+
+    // A favorited image whose source (catalog/cloudinary image) was deleted
+    // renders broken (404) — auto-unfavorite it instead of leaving dead entries.
+    const pruneBrokenFavorite = (url: string) => {
+        if (prunedFavoritesRef.current.has(url)) return;
+        prunedFavoritesRef.current.add(url);
+        toggleFavorite(url);
     };
 
     const handleBookDragStart = (idx: number) => setBookDragIdx(idx);
@@ -10896,6 +10938,24 @@ POST-LANZAMIENTO:
         const orphanCloudinary = cloudinaryImages.filter(img => img.nicheId && !nicheSet.has(img.nicheId));
         const totalOrphans = orphanCatalogs.reduce((s, c) => s + c.images.length, 0) + orphanCloudinary.length;
 
+        // Favoritos — most recent first, with the niche resolved (if any) so it can
+        // be shown on each tile: via the catalog's nicheIds, or the cloudinary image's own.
+        const favArray = [...favorites.values()].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+        const resolveFavoriteNicheName = (fav: FavoriteImage): string | null => {
+            if (fav.catalogId) {
+                const cat = iaCatalogs.find(c => c._id === fav.catalogId);
+                const n = cat?.nicheIds?.[0] ? niches.find(x => x._id === cat.nicheIds![0]) : undefined;
+                if (n) return n.nickname?.trim() || n.name;
+            }
+            const cimg = cloudinaryImages.find(c => c.url === fav.url);
+            const nid = cimg?.nicheId ?? cimg?.nicheIds?.[0];
+            if (nid) {
+                const n = niches.find(x => x._id === nid);
+                if (n) return n.nickname?.trim() || n.name;
+            }
+            return null;
+        };
+
         const handleUploadFiles = async (files: FileList | File[]) => {
             const arr = Array.from(files).filter(f => f.type.startsWith("image/"));
             if (!arr.length) return;
@@ -11283,6 +11343,58 @@ POST-LANZAMIENTO:
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+
+                {/* ── Favoritos ── */}
+                <div className="rounded-3xl border border-rose-500/15 bg-rose-500/[0.02] backdrop-blur-xl overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-rose-500/50 via-pink-400/25 to-transparent" />
+                    <div className="px-6 py-5 space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center shrink-0">
+                                <Heart size={18} className="text-rose-400" fill="currentColor" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-white uppercase tracking-widest">Favoritos</h3>
+                                <p className="text-xs text-neutral-500">{favArray.length} imagen{favArray.length !== 1 ? "es" : ""} marcada{favArray.length !== 1 ? "s" : ""}</p>
+                            </div>
+                        </div>
+                        {favArray.length === 0 ? (
+                            <p className="text-sm text-neutral-600 py-4 text-center">Marca imágenes con ❤️ para verlas aquí.</p>
+                        ) : (
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                {favArray.map((fav, idx) => {
+                                    const nicheName = resolveFavoriteNicheName(fav);
+                                    return (
+                                        <div key={fav.url}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => setLightboxUrl({
+                                                url: fav.url,
+                                                catalogId: fav.catalogId,
+                                                urls: favArray.map(f => f.url),
+                                                index: idx,
+                                                filename: `${fav.label || "favorito"}.jpg`,
+                                            })}
+                                            className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10 hover:border-rose-500/40 transition-all cursor-zoom-in"
+                                        >
+                                            <img src={fav.url} alt="" className="w-full h-full object-cover" onError={() => pruneBrokenFavorite(fav.url)} />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                                            <span className="absolute bottom-1 left-1 right-1 text-[9px] font-black text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {nicheName ?? "Sin nicho"}
+                                            </span>
+                                            <button
+                                                onClick={e => { e.stopPropagation(); toggleFavorite(fav.url); }}
+                                                title="Quitar de favoritos"
+                                                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-rose-400 hover:text-rose-300 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                                            >
+                                                <Heart size={10} fill="currentColor" />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -18590,19 +18702,50 @@ POST-LANZAMIENTO:
                         </button>
                     )}
                     <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
-                        <img
-                            key={lightboxUrl.url}
-                            src={lightboxUrl.url}
-                            alt="Portada ampliada"
-                            className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain border border-white/10"
-                        />
+                        {lightboxImgBroken ? (
+                            <div className="w-[70vw] max-w-md h-[50vh] max-h-96 rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] flex flex-col items-center justify-center gap-3 text-center px-6">
+                                <ImageIcon size={32} className="text-rose-400/60" />
+                                <div>
+                                    <p className="text-sm font-black text-white">Imagen no disponible</p>
+                                    <p className="text-xs text-neutral-500 mt-1">Parece que fue eliminada del origen (Cloudinary/catálogo).</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <img
+                                key={lightboxUrl.url}
+                                src={lightboxUrl.url}
+                                alt="Portada ampliada"
+                                className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain border border-white/10"
+                                onError={() => {
+                                    setLightboxImgBroken(true);
+                                    if (favorites.has(lightboxUrl.url)) pruneBrokenFavorite(lightboxUrl.url);
+                                }}
+                            />
+                        )}
                         <div className="absolute top-3 right-3 flex gap-2">
                             <button
                                 onClick={e => { e.stopPropagation(); void downloadFile(lightboxUrl.url, lightboxUrl.filename ?? "imagen.jpg"); }}
-                                className="p-2 rounded-xl bg-black/60 border border-white/10 text-neutral-400 hover:text-white hover:bg-black/80 transition-all"
+                                disabled={lightboxImgBroken}
+                                className="p-2 rounded-xl bg-black/60 border border-white/10 text-neutral-400 hover:text-white hover:bg-black/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                                 title="Descargar"
                             >
                                 <Download size={14} />
+                            </button>
+                            <button
+                                onClick={e => { e.stopPropagation(); void copyLightboxImageToClipboard(lightboxUrl.url); }}
+                                disabled={copyingLightboxImage || lightboxImgBroken}
+                                className="p-2 rounded-xl bg-black/60 border border-white/10 text-neutral-400 hover:text-white hover:bg-black/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Copiar imagen"
+                            >
+                                {copyingLightboxImage ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+                            </button>
+                            <button
+                                onClick={e => { e.stopPropagation(); void sendLightboxImageToTelegram(lightboxUrl.url); }}
+                                disabled={sendingLightboxToTelegram || lightboxImgBroken}
+                                className="p-2 rounded-xl bg-black/60 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20 hover:text-sky-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Enviar a Telegram"
+                            >
+                                {sendingLightboxToTelegram ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                             </button>
                             {lightboxUrl.publicId && (
                                 <button

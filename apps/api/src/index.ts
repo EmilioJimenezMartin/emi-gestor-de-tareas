@@ -41,6 +41,7 @@ import { registerAutoCloneRoutes } from "./routes/auto-clone.js";
 import { registerPromptDNARoutes } from "./routes/prompt-dna.js";
 import { registerViralNicheRoutes } from "./routes/viral-niches.js";
 import { registerPinterestRoutes } from "./routes/pinterest.js";
+import { registerTelegramRoutes } from "./routes/telegram.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerJwtMiddleware } from "./lib/jwt-middleware.js";
@@ -163,6 +164,7 @@ await registerAutoCloneRoutes(app, deps);
 await registerPromptDNARoutes(app);
 await registerViralNicheRoutes(app, deps);
 await registerPinterestRoutes(app);
+await registerTelegramRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

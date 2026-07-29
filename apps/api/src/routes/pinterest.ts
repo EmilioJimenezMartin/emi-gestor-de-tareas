@@ -36,12 +36,15 @@ export async function registerPinterestRoutes(app: FastifyInstance) {
     app.patch("/pinterest/pins/:id", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { status, boardId, title, description, scheduledFor } = request.body ?? {};
+            const { status, boardId, title, description, hashtags, amazonUrl, boardSuggestion, scheduledFor } = request.body ?? {};
             const update: any = {};
             if (status) update.status = status;
             if (boardId !== undefined) update.boardId = boardId;
             if (title) update.title = title;
-            if (description) update.description = description;
+            if (description !== undefined) update.description = description;
+            if (Array.isArray(hashtags)) update.hashtags = hashtags;
+            if (amazonUrl !== undefined) update.amazonUrl = amazonUrl;
+            if (boardSuggestion !== undefined) update.boardSuggestion = boardSuggestion;
             if (scheduledFor) update.scheduledFor = new Date(scheduledFor);
             if (status === "posted") update.postedAt = new Date();
             const pin = await PinterestPin.findByIdAndUpdate(request.params.id, { $set: update }, { new: true });
