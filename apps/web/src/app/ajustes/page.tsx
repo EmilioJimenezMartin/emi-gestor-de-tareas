@@ -72,6 +72,9 @@ export default function AjustesPage() {
     const [openrouterApiKey, setOpenrouterApiKey] = useState("");
     const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
 
+    const [githubModelsToken, setGithubModelsToken] = useState("");
+    const [showGithubModelsToken, setShowGithubModelsToken] = useState(false);
+
     const [hfInferenceKey, setHfInferenceKey] = useState("");
     const [showHfInferenceKey, setShowHfInferenceKey] = useState(false);
     const [siliconflowApiKey, setSiliconflowApiKey] = useState("");
@@ -194,6 +197,7 @@ export default function AjustesPage() {
                 if (map.has("GOOGLE_API_KEY")) setGoogleApiKey(map.get("GOOGLE_API_KEY"));
                 if (map.has("GROQ_API_KEY")) setGroqApiKey(map.get("GROQ_API_KEY"));
                 if (map.has("OPENROUTER_API_KEY")) setOpenrouterApiKey(map.get("OPENROUTER_API_KEY"));
+                if (map.has("GITHUB_MODELS_TOKEN")) setGithubModelsToken(map.get("GITHUB_MODELS_TOKEN"));
                 if (map.has("HUGGINGFACE_API_KEY")) setHfInferenceKey(map.get("HUGGINGFACE_API_KEY"));
                 if (map.has("SILICONFLOW_API_KEY")) setSiliconflowApiKey(map.get("SILICONFLOW_API_KEY")!);
                 if (map.has("SEGMIND_API_KEY")) setSegmindApiKey(map.get("SEGMIND_API_KEY")!);
@@ -362,6 +366,7 @@ export default function AjustesPage() {
                 { key: "GOOGLE_API_KEY", value: googleApiKey },
                 { key: "GROQ_API_KEY", value: groqApiKey },
                 { key: "OPENROUTER_API_KEY", value: openrouterApiKey },
+                { key: "GITHUB_MODELS_TOKEN", value: githubModelsToken },
                 { key: "HUGGINGFACE_API_KEY", value: hfInferenceKey },
                 { key: "SILICONFLOW_API_KEY", value: siliconflowApiKey },
                 { key: "SEGMIND_API_KEY", value: segmindApiKey },
@@ -927,6 +932,66 @@ export default function AjustesPage() {
                                     <li>Pulsa <span className="text-neutral-300">Create Key</span>, dale un nombre</li>
                                     <li>Copia la key (empieza por <span className="font-mono text-violet-300">sk-or-v1-</span>)</li>
                                     <li>Los modelos marcados (free) son gratis sin necesidad de añadir créditos</li>
+                                </ol>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* GitHub Models Token — último fallback de texto */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">GitHub Models</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-neutral-500/10 text-neutral-400 border-neutral-500/20">ÚLTIMO FALLBACK</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-neutral-600 to-neutral-800 flex items-center justify-center text-white shadow-lg shadow-neutral-500/20">
+                                    <Terminal size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">GitHub Models · GPT-4o mini gratis</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Se usa solo si todos los demás proveedores fallan</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">GITHUB_MODELS_TOKEN</label>
+                                <div className="relative">
+                                    <input
+                                        type={showGithubModelsToken ? "text" : "password"}
+                                        value={githubModelsToken}
+                                        onChange={(e) => setGithubModelsToken(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-neutral-400/40 transition-all"
+                                        placeholder="ghp_..."
+                                    />
+                                    <button type="button" onClick={() => setShowGithubModelsToken((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showGithubModelsToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">
+                                    Un token de acceso personal de GitHub normal sirve — no necesita ningún permiso ("scope") especial marcado.
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-neutral-500/10 bg-neutral-500/[0.03] p-4 space-y-2 max-w-xl">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cómo obtener tu token</p>
+                                <ol className="text-[10px] text-neutral-500 space-y-1 list-decimal list-inside leading-relaxed">
+                                    <li>
+                                        Abre{" "}
+                                        <a href="https://github.com/settings/tokens/new" target="_blank" rel="noreferrer" className="text-sky-400 underline hover:text-sky-300">
+                                            github.com/settings/tokens/new
+                                        </a>{" "}
+                                        (inicia sesión si hace falta)
+                                    </li>
+                                    <li>Ponle un nombre (p. ej. "GitHub Models") y una expiración</li>
+                                    <li>No hace falta marcar ningún scope — pulsa <span className="text-neutral-300">Generate token</span> directamente</li>
+                                    <li>Copia el token (empieza por <span className="font-mono text-neutral-300">ghp_</span>) y pégalo arriba</li>
+                                    <li>Pulsa <span className="text-neutral-300">Guardar</span> abajo — se guarda en MongoDB y en el <span className="font-mono text-neutral-300">.env</span> del servidor</li>
                                 </ol>
                             </div>
                             <div className="flex justify-end border-t border-white/5 pt-4">

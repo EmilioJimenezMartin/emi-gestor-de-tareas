@@ -1,19 +1,20 @@
 import mongoose from "mongoose";
 import { Settings } from "../models/settings.js";
 
-type LLMProvider = "google" | "huggingface" | "groq" | "openrouter";
+type LLMProvider = "google" | "huggingface" | "groq" | "openrouter" | "github";
 
-async function getConfig(): Promise<{ provider: LLMProvider; model: string; googleKey: string; hfKey: string; groqKey: string; openrouterKey: string }> {
+async function getConfig(): Promise<{ provider: LLMProvider; model: string; googleKey: string; hfKey: string; groqKey: string; openrouterKey: string; githubKey: string }> {
     let provider: LLMProvider = "google";
     let model = "gemini-2.5-flash";
     let googleKey = process.env.GOOGLE_API_KEY ?? "";
     let hfKey = process.env.HUGGINGFACE_API_KEY ?? "";
     let groqKey = process.env.GROQ_API_KEY ?? "";
     let openrouterKey = process.env.OPENROUTER_API_KEY ?? "";
+    let githubKey = process.env.GITHUB_MODELS_TOKEN ?? "";
 
     if (mongoose.connection.readyState === 1) {
         try {
-            const rows = await Settings.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY", "HUGGINGFACE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"] } });
+            const rows = await Settings.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY", "HUGGINGFACE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "GITHUB_MODELS_TOKEN"] } });
             const map = new Map(rows.map(r => [r.key, r.value]));
             if (map.has("DEFAULT_LLM_PROVIDER")) provider = map.get("DEFAULT_LLM_PROVIDER") as LLMProvider;
             if (map.has("DEFAULT_LLM_MODEL")) model = map.get("DEFAULT_LLM_MODEL");
@@ -21,12 +22,13 @@ async function getConfig(): Promise<{ provider: LLMProvider; model: string; goog
             if (map.has("HUGGINGFACE_API_KEY") && map.get("HUGGINGFACE_API_KEY")) hfKey = map.get("HUGGINGFACE_API_KEY");
             if (map.has("GROQ_API_KEY") && map.get("GROQ_API_KEY")) groqKey = map.get("GROQ_API_KEY");
             if (map.has("OPENROUTER_API_KEY") && map.get("OPENROUTER_API_KEY")) openrouterKey = map.get("OPENROUTER_API_KEY");
+            if (map.has("GITHUB_MODELS_TOKEN") && map.get("GITHUB_MODELS_TOKEN")) githubKey = map.get("GITHUB_MODELS_TOKEN");
         } catch {
             // Fallback to env
         }
     }
 
-    return { provider, model, googleKey, hfKey, groqKey, openrouterKey };
+    return { provider, model, googleKey, hfKey, groqKey, openrouterKey, githubKey };
 }
 
 async function groqChat(groqKey: string, model: string, messages: Array<{ role: string; content: string }>, maxTokens = 1024, temperature = 0.4, jsonMode = false): Promise<string> {
@@ -64,6 +66,23 @@ async function openrouterChat(openrouterKey: string, model: string, messages: Ar
     return (data.choices[0]?.message?.content ?? "").trim();
 }
 
+// GitHub Models (models.github.ai) — free tier via a GitHub token, OpenAI-compatible.
+// Kept as the very last fallback: free-tier rate limits are low (a handful to
+// ~50 req/day depending on model without a paid Copilot plan).
+async function githubModelsChat(token: string, model: string, messages: Array<{ role: string; content: string }>, maxTokens = 1024, temperature = 0.4): Promise<string> {
+    const res = await fetch("https://models.github.ai/inference/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: model || "openai/gpt-4o-mini", messages, max_tokens: maxTokens, temperature }),
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`GitHub Models API error ${res.status}: ${err}`);
+    }
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    return (data.choices[0]?.message?.content ?? "").trim();
+}
+
 export interface AIExtractedItem {
     id: string;
     title: string;
@@ -92,7 +111,7 @@ Rules:
 Raw content (truncated to 4000 chars):
 ${rawText.substring(0, 4000)}`;
 
-    const hasAnyKey = config.googleKey || config.groqKey || config.openrouterKey || config.hfKey;
+    const hasAnyKey = config.googleKey || config.groqKey || config.openrouterKey || config.hfKey || config.githubKey;
     if (hasAnyKey) {
         const jsonNote = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks. Start with [ and end with ].";
         try {
@@ -235,6 +254,12 @@ async function chatWithFallback(
                 });
                 return (response.choices[0]?.message?.content ?? "").trim();
             },
+        },
+        {
+            // Last of the last resorts — appended after the sort below, so it only
+            // moves to the front if explicitly configured as the default provider.
+            name: "github", available: !!config.githubKey,
+            call: () => githubModelsChat(config.githubKey, config.provider === "github" ? config.model : "openai/gpt-4o-mini", messages, maxTokens, temperature),
         },
     ];
 
@@ -389,6 +414,23 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
         } catch (err: any) {
             recordLLM("huggingface", false, Date.now() - t0, err?.message);
             errors.push(`HuggingFace: ${err.message ?? err}`);
+        }
+    }
+
+    // ── GitHub Models (el último de los últimos) ─────────────────────────────
+    if (config.githubKey) {
+        const t0 = Date.now();
+        try {
+            const raw = await githubModelsChat(config.githubKey, modelFor("github", "openai/gpt-4o-mini"), [
+                { role: "system", content: systemPrompt + jsonEnforcement },
+                { role: "user", content: userPrompt },
+            ], maxOutputTokens, 0.4);
+            const text = jsonStrip(raw);
+            if (text) { recordLLM("github", true, Date.now() - t0); console.log("[ai] Usó fallback: GitHub Models"); return text; }
+            recordLLM("github", false, Date.now() - t0, "respuesta vacía");
+        } catch (err: any) {
+            recordLLM("github", false, Date.now() - t0, err?.message);
+            errors.push(`GitHub Models: ${err.message ?? err}`);
         }
     }
 
