@@ -1943,7 +1943,7 @@ Estructura exacta:
 
                     const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
                     const compLabel = clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta";
-                    const captionFull = [
+                    const captionLines = [
                         `🎯 <b>Clone Engine — Nicho candidato</b>`,
                         ``,
                         `📚 <b>${clone.nicheName}</b>`,
@@ -1955,9 +1955,24 @@ Estructura exacta:
                         ``,
                         `${compEmoji} Competencia: <b>${compLabel}</b>`,
                         ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 70)}</i>`] : []),
-                    ].join("\n");
-                    // Telegram limita caption de sendPhoto a 1024 chars
-                    const caption = captionFull.length > 1020 ? captionFull.slice(0, 1017) + "..." : captionFull;
+                    ];
+                    const captionFull = captionLines.join("\n");
+                    // Telegram limita el caption de sendPhoto a 1024 chars. Cortar por
+                    // carácter puede partir una etiqueta HTML a medias (<i> sin cierre) →
+                    // Telegram rechaza el sendPhoto ENTERO con 400 "can't parse entities"
+                    // y se pierde la imagen (cae al fallback de solo texto). En vez de eso,
+                    // quitamos líneas completas desde el final — cada línea es HTML válido
+                    // por sí sola, así el resultado nunca deja una etiqueta a medias.
+                    let caption = captionFull;
+                    if (caption.length > 1020) {
+                        const kept = [...captionLines];
+                        while (kept.length > 1 && kept.join("\n").length > 1020) kept.pop();
+                        caption = kept.join("\n");
+                        if (caption.length > 1020) {
+                            // Red de seguridad última: sin etiquetas, un corte a medias ya no rompe el parseo.
+                            caption = caption.replace(/<[^>]+>/g, "").slice(0, 1020);
+                        }
+                    }
 
                     const rows = [[
                         { text: "✅ Crear nicho", callback_data: `continuar:${String(action._id)}` },

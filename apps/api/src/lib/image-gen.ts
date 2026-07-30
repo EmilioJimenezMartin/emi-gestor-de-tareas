@@ -78,8 +78,7 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
         await res.body?.cancel();
         console.warn(`[image-gen] Pollinations ${res.status}`);
     } catch (e: any) {
-        if (e?.name === "AbortError") return null;
-        console.warn(`[image-gen] Pollinations error: ${e.message}`);
+        console.warn(`[image-gen] Pollinations ${e?.name === "AbortError" ? "timeout" : "error"}: ${e.message}`);
     }
 
     // ── Cloudflare Workers AI (gratis ~10k neurons/día) ──────────────────────
@@ -110,8 +109,7 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
             }
         }
     } catch (e: any) {
-        if (e?.name === "AbortError") return null;
-        console.warn(`[image-gen] Cloudflare error: ${e.message}`);
+        console.warn(`[image-gen] Cloudflare ${e?.name === "AbortError" ? "timeout" : "error"}: ${e.message}`);
     }
 
     // ── SiliconFlow (FLUX.1-schnell gratis) ───────────────────────────────────
@@ -142,8 +140,7 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
             }
         }
     } catch (e: any) {
-        if (e?.name === "AbortError") return null;
-        console.warn(`[image-gen] SiliconFlow error: ${e.message}`);
+        console.warn(`[image-gen] SiliconFlow ${e?.name === "AbortError" ? "timeout" : "error"}: ${e.message}`);
     }
 
     // ── Segmind ───────────────────────────────────────────────────────────────
@@ -166,8 +163,7 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
             const err = await segRes.text().catch(() => "");
             console.warn(`[image-gen] Segmind ${segRes.status}: ${err.slice(0, 100)}`);
         } catch (e: any) {
-            if (e?.name === "AbortError") return null;
-            console.warn(`[image-gen] Segmind error: ${e.message}`);
+            console.warn(`[image-gen] Segmind ${e?.name === "AbortError" ? "timeout" : "error"}: ${e.message}`);
         }
     }
 
@@ -202,8 +198,7 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
             }
             break;
         } catch (e: any) {
-            if (e?.name === "AbortError") return null;
-            console.warn(`[image-gen] HF ${modelName} error: ${e.message}`);
+            console.warn(`[image-gen] HF ${modelName} ${e?.name === "AbortError" ? "timeout" : "error"}: ${e.message}`);
             break;
         }
     }

@@ -2605,6 +2605,13 @@ async function poll(): Promise<void> {
                 await action.save();
                 await Niche.findByIdAndUpdate(action.nicheId, { $set: { phase: action.targetPhase } });
                 await sendTelegram(`⏱️ <b>Auto-aprobado</b> (24h sin respuesta)\n<b>${action.nicheName}</b> → ${action.targetPhase}`);
+            } else {
+                // Any other type (e.g. "clone-decision") has no auto-resolution rule —
+                // without this, it never leaves status "pending" and matches this same
+                // query forever, re-logging "expired" every 3s indefinitely.
+                action.status = "expired";
+                action.resolvedAt = new Date();
+                await action.save();
             }
             console.log(`[telegram-poll] Expired action handled: ${action.nicheName}`);
         }
