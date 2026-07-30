@@ -4516,9 +4516,23 @@ POST-LANZAMIENTO:
                 const totalW = squareCount * squareSize + (squareCount - 1) * squareGap;
                 const squareStartX = cx - totalW / 2;
                 const squareY = pageHeight * 0.128;
-                const colorTestLabel = "Prueba tus colores aquí  ·  Test your colors here";
-                const colorLabelSize = Math.max(5, 7.5 * (pageHeight / 841.89));
-                pg.drawText(colorTestLabel, { x: cx - font.widthOfTextAtSize(colorTestLabel, colorLabelSize) / 2, y: squareY + squareSize + 10, size: colorLabelSize, font, color: grayMid });
+                const colorTestLabel = "PRUEBA TUS COLORES AQUÍ  ·  TEST YOUR COLORS HERE";
+                const colorLabelSize = Math.max(6.5, 10 * (pageHeight / 841.89));
+                const colorLabelY = squareY + squareSize + 14;
+                pg.drawText(colorTestLabel, { x: cx - font.widthOfTextAtSize(colorTestLabel, colorLabelSize) / 2, y: colorLabelY, size: colorLabelSize, font, color: rgb(0.2, 0.2, 0.2) });
+
+                // Warning above the swatches — thin paper lets ink bleed through and stain
+                // the next drawing, so testing colors here first is worth calling out clearly.
+                const warnColor = rgb(0.6, 0.15, 0.15);
+                const warnEs = "⚠ La tinta puede traspasar el papel y manchar la página siguiente — pruébalos aquí primero";
+                const warnEn = "⚠ Ink may bleed through the paper and stain the next page — test your colors here first";
+                const warnSizeEs = Math.max(6, 8.5 * (pageHeight / 841.89));
+                const warnSizeEn = Math.max(5.5, 8 * (pageHeight / 841.89));
+                const warnEsY = colorLabelY + colorLabelSize + 12;
+                const warnEnY = warnEsY + warnSizeEs + 5;
+                pg.drawText(warnEs, { x: cx - font.widthOfTextAtSize(warnEs, warnSizeEs) / 2, y: warnEsY, size: warnSizeEs, font, color: warnColor });
+                pg.drawText(warnEn, { x: cx - font.widthOfTextAtSize(warnEn, warnSizeEn) / 2, y: warnEnY, size: warnSizeEn, font, color: warnColor });
+
                 pg.drawRectangle({ x: squareStartX - 6, y: squareY - 6, width: totalW + 12, height: squareSize + 12, borderColor: grayVeryLight, borderWidth: 0.5, color: rgb(1, 1, 1) });
                 for (let i = 0; i < squareCount; i++) {
                     pg.drawRectangle({ x: squareStartX + i * (squareSize + squareGap), y: squareY, width: squareSize, height: squareSize, borderColor: grayLight, borderWidth: 0.6, color: rgb(1, 1, 1) });
