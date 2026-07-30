@@ -473,7 +473,8 @@ function MergeNichesModal({ selectedNiches, initialName, stats, onClose, onMerge
     return (
         <ModalPortal>
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => !merging && onClose()}>
-                <div className="w-full max-w-sm rounded-3xl bg-[rgba(14,14,18,0.97)] border border-amber-500/25 shadow-[0_20px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(245,158,11,0.1)] p-6 space-y-5" onClick={e => e.stopPropagation()}>
+                <div className="w-full max-w-sm max-h-[85vh] rounded-3xl bg-[rgba(14,14,18,0.97)] border border-amber-500/25 shadow-[0_20px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(245,158,11,0.1)] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
                     <div className="text-center space-y-1.5">
                         <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center mx-auto mb-3">
                             <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 4h5l2 10h7M9 14l5-5M9 14l5 5" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="2.5" cy="4" r="1.5" fill="#f59e0b"/><circle cx="15.5" cy="9" r="1.5" fill="#f59e0b"/></svg>
@@ -505,7 +506,9 @@ function MergeNichesModal({ selectedNiches, initialName, stats, onClose, onMerge
                             className="w-full h-11 px-4 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 focus:bg-amber-500/5 transition-all"
                         />
                     </div>
-                    <div className="flex gap-2">
+                    </div>
+
+                    <div className="shrink-0 flex gap-2 p-6 pt-4 border-t border-white/8">
                         <button onClick={onClose} disabled={merging}
                             className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all disabled:opacity-50">
                             Cancelar
@@ -556,7 +559,8 @@ function AbsorbNichesModal({ selectedNiches, stats, onClose, onAbsorbed }: {
     return (
         <ModalPortal>
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => !absorbing && onClose()}>
-                <div className="w-full max-w-sm rounded-3xl bg-[rgba(14,14,18,0.97)] border border-sky-500/25 shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-6 space-y-5" onClick={e => e.stopPropagation()}>
+                <div className="w-full max-w-sm max-h-[85vh] rounded-3xl bg-[rgba(14,14,18,0.97)] border border-sky-500/25 shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
                     <div className="text-center space-y-1.5">
                         <div className="w-10 h-10 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center mx-auto mb-3">
                             <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="#38bdf8" strokeWidth="1.8"/><path d="M9 5v4l3 2" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round"/><path d="M5 9h4M9 5v4" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round"/><path d="M6 6l6 6M12 6l-6 6" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -597,8 +601,9 @@ function AbsorbNichesModal({ selectedNiches, stats, onClose, onAbsorbed }: {
                             </p>
                         </div>
                     )}
+                    </div>
 
-                    <div className="flex gap-2">
+                    <div className="shrink-0 flex gap-2 p-6 pt-4 border-t border-white/8">
                         <button onClick={onClose} disabled={absorbing}
                             className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all disabled:opacity-50">
                             Cancelar
@@ -3775,7 +3780,7 @@ export function KdpFactoryApp() {
     const [spinePaperType, setSpinePaperType] = useState<"white" | "cream" | "premium-color">("white");
     const [showCoverModal, setShowCoverModal] = useState(false);
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
-    const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize" | "upload">("ai");
+    const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize" | "upload" | "photos">("ai");
     const [coverStep, setCoverStep] = useState<1 | 2>(1);
     const [coverFactorySearch, setCoverFactorySearch] = useState("");
     const [coverFactorySort, setCoverFactorySort] = useState<"newest" | "oldest">("newest");
@@ -3794,6 +3799,11 @@ export function KdpFactoryApp() {
     const [coverColoringStyle, setCoverColoringStyle] = useState<"full-color" | "half-left" | "half-right">("full-color");
     const pendingCoverBlobRef = React.useRef<Blob | null>(null);
     const pendingBackCoverBlobRef = React.useRef<Blob | null>(null);
+
+    // Back cover — custom background photo + real B&W niche images scattered on top
+    const [backPhotoBgUrl, setBackPhotoBgUrl] = useState<string | null>(null);
+    const [selectedBackPhotos, setSelectedBackPhotos] = useState<Set<string>>(new Set());
+    const [isComposingBackPhotos, setIsComposingBackPhotos] = useState(false);
 
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
@@ -11823,6 +11833,96 @@ POST-LANZAMIENTO:
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingBackCover(false); }
     };
 
+    // Scatter layout (position/size/rotation as % of canvas) for 1-4 photos, tuned
+    // to look like real Polaroids fanned out over the background. Beyond 4, falls
+    // back to a loose grid further down.
+    const BACK_PHOTO_LAYOUTS: Record<number, Array<{ x: number; y: number; w: number; rot: number }>> = {
+        1: [{ x: 0.5, y: 0.5, w: 0.5, rot: 0 }],
+        2: [{ x: 0.36, y: 0.42, w: 0.40, rot: -7 }, { x: 0.66, y: 0.60, w: 0.42, rot: 6 }],
+        3: [{ x: 0.30, y: 0.30, w: 0.36, rot: -8 }, { x: 0.70, y: 0.38, w: 0.40, rot: 7 }, { x: 0.50, y: 0.72, w: 0.38, rot: -4 }],
+        4: [{ x: 0.28, y: 0.28, w: 0.34, rot: -8 }, { x: 0.72, y: 0.30, w: 0.36, rot: 7 }, { x: 0.30, y: 0.70, w: 0.32, rot: 5 }, { x: 0.72, y: 0.72, w: 0.34, rot: -6 }],
+    };
+
+    const drawPolaroidPhoto = (ctx: CanvasRenderingContext2D, img: HTMLImageElement, centerX: number, centerY: number, photoW: number, rotationDeg: number) => {
+        const aspect = img.height / img.width;
+        const photoH = photoW * aspect;
+        const border = Math.round(photoW * 0.045);
+        const bottomBorder = Math.round(photoW * 0.09);
+        const frameW = photoW + border * 2;
+        const frameH = photoH + border + bottomBorder;
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate((rotationDeg * Math.PI) / 180);
+        ctx.shadowColor = "rgba(0,0,0,0.4)";
+        ctx.shadowBlur = frameW * 0.05;
+        ctx.shadowOffsetX = frameW * 0.015;
+        ctx.shadowOffsetY = frameW * 0.025;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(-frameW / 2, -frameH / 2, frameW, frameH);
+        ctx.shadowColor = "transparent";
+        ctx.drawImage(img, -photoW / 2, -frameH / 2 + border, photoW, photoH);
+        ctx.restore();
+    };
+
+    const composeBackCoverPhotos = async () => {
+        if (!backPhotoBgUrl) { toast.error("Sube primero una imagen de fondo"); return; }
+        if (selectedBackPhotos.size === 0) { toast.error("Selecciona al menos una imagen del nicho"); return; }
+        setIsComposingBackPhotos(true);
+        setGeneratedBackCoverUrl(null);
+        try {
+            const loadImg = (src: string, cors = true) => new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                if (cors) img.crossOrigin = "anonymous";
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = src;
+            });
+
+            const bgImg = await loadImg(backPhotoBgUrl, false);
+            const photoUrls = [...selectedBackPhotos];
+            const photoImgs = (await Promise.allSettled(photoUrls.map(u => loadImg(u))))
+                .flatMap(r => r.status === "fulfilled" ? [r.value] : []);
+            if (photoImgs.length === 0) { toast.error("No se pudieron cargar las imágenes seleccionadas"); return; }
+
+            const [dimW, dimH] = coverImgDims.split("x").map(Number);
+            const W = dimW || 1024, H = dimH || 1024;
+            const canvas = document.createElement("canvas");
+            canvas.width = W; canvas.height = H;
+            const ctx = canvas.getContext("2d")!;
+
+            // Background — cover-fill crop
+            const ia = bgImg.width / bgImg.height, ca = W / H;
+            let sx = 0, sy = 0, sw = bgImg.width, sh = bgImg.height;
+            if (ia > ca) { sw = bgImg.height * ca; sx = (bgImg.width - sw) / 2; }
+            else { sh = bgImg.width / ca; sy = (bgImg.height - sh) / 2; }
+            ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, W, H);
+
+            // Scattered photos on top
+            const layout = BACK_PHOTO_LAYOUTS[photoImgs.length] ?? photoImgs.map((_, i, arr) => {
+                const cols = Math.ceil(Math.sqrt(arr.length));
+                const rows = Math.ceil(arr.length / cols);
+                const col = i % cols, row = Math.floor(i / cols);
+                return { x: (col + 0.5) / cols, y: (row + 0.5) / rows, w: 0.85 / cols, rot: (i % 2 === 0 ? -1 : 1) * 5 };
+            });
+            photoImgs.forEach((img, i) => {
+                const pos = layout[i];
+                if (!pos) return;
+                drawPolaroidPhoto(ctx, img, pos.x * W, pos.y * H, pos.w * W, pos.rot);
+            });
+
+            const composedBlob = await new Promise<Blob | null>(resolve => canvas.toBlob(b => resolve(b), "image/jpeg", 0.95));
+            if (!composedBlob) { toast.error("Error exportando la contraportada"); return; }
+            const finalBlob = await applyKdpPadding(composedBlob).catch(() => composedBlob);
+            pendingBackCoverBlobRef.current = finalBlob;
+            setGeneratedBackCoverUrl(URL.createObjectURL(finalBlob));
+            setCoverStep(2);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error componiendo la contraportada");
+        } finally {
+            setIsComposingBackPhotos(false);
+        }
+    };
+
     // Fetch ALL catalogs for the selected niche when entering colorize mode.
     // iaCatalogs only holds the 200 most recent catalogs globally, so older catalogs
     // linked to this niche might be missing. This ensures we show every image available.
@@ -15475,7 +15575,7 @@ POST-LANZAMIENTO:
                         {/* Tabs */}
                         <div className="shrink-0 border-b border-white/6 px-5 flex gap-1 pt-3 pb-0">
                             {([["front", "Portada"], ["back", "Contraportada"]] as const).map(([id, label]) => (
-                                <button key={id} onClick={() => { setCoverModalTab(id); if (id !== coverModalTab) setCoverStep(1); }}
+                                <button key={id} onClick={() => { setCoverModalTab(id); if (id !== coverModalTab) { setCoverStep(1); setCoverMode("ai"); } }}
                                     className={`px-4 py-2 text-sm font-black uppercase tracking-widest rounded-t-xl transition-all border-b-2 ${coverModalTab === id ? "text-fuchsia-300 border-fuchsia-500/60 bg-fuchsia-500/[0.06]" : "text-neutral-600 border-transparent hover:text-neutral-400"}`}>
                                     {label}
                                     {id === "front" && generatedCoverUrl && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-fuchsia-400 inline-block" />}
@@ -15514,7 +15614,7 @@ POST-LANZAMIENTO:
                             {/* ── Left: controls ── */}
                             <div className={`${coverStep !== 1 ? "w-[260px] shrink-0" : "flex-1"} min-h-0 p-5 space-y-4 overflow-y-auto border-r border-white/6`} style={{ minWidth: 0 }}>
 
-                            {/* Mode selector (step 1 front only) */}
+                            {/* Mode selector (step 1 only) */}
                             {coverModalTab === "front" && coverStep === 1 && (
                                 <div className="flex gap-1 p-1 bg-white/[0.04] rounded-xl border border-white/8">
                                     {([
@@ -15524,6 +15624,19 @@ POST-LANZAMIENTO:
                                         ["upload",   "↑ Subir",     "Pega o arrastra tu propia imagen"],
                                     ] as const).map(([id, label, desc]) => (
                                         <button key={id} onClick={() => { setCoverMode(id); if (id !== "colorize") setColorizeSourceUrl(null); if (id === "upload") setUploadBrowseSource("niches"); }} title={desc}
+                                            className={`flex-1 h-8 rounded-lg text-[11px] font-black transition-all ${coverMode === id ? "bg-fuchsia-500/25 border border-fuchsia-500/35 text-fuchsia-300 shadow-[0_0_12px_rgba(192,38,211,0.2)]" : "text-neutral-500 hover:text-neutral-300"}`}>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {coverModalTab === "back" && coverStep === 1 && (
+                                <div className="flex gap-1 p-1 bg-white/[0.04] rounded-xl border border-white/8">
+                                    {([
+                                        ["ai",     "✦ IA",           "Genera imagen con IA generativa"],
+                                        ["photos", "🖼 Fondo + fotos", "Sube un fondo y superpón imágenes reales del nicho"],
+                                    ] as const).map(([id, label, desc]) => (
+                                        <button key={id} onClick={() => setCoverMode(id)} title={desc}
                                             className={`flex-1 h-8 rounded-lg text-[11px] font-black transition-all ${coverMode === id ? "bg-fuchsia-500/25 border border-fuchsia-500/35 text-fuchsia-300 shadow-[0_0_12px_rgba(192,38,211,0.2)]" : "text-neutral-500 hover:text-neutral-300"}`}>
                                             {label}
                                         </button>
@@ -15589,7 +15702,7 @@ POST-LANZAMIENTO:
                             </div>
 
                             {/* ── AI-mode fields ── */}
-                            {(coverMode === "ai" || coverModalTab === "back") && (<>
+                            {coverMode === "ai" && (<>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                         <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
@@ -15607,7 +15720,7 @@ POST-LANZAMIENTO:
                                     </div>
                                 </div>
                                 {/* Cover style — AI mode (front + back) */}
-                                {(coverModalTab === "front" ? coverMode === "ai" : true) && (() => {
+                                {coverMode === "ai" && (() => {
                                     return (
                                         <div className="space-y-1.5">
                                             <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Estilo portada</label>
@@ -15713,6 +15826,107 @@ POST-LANZAMIENTO:
                                                 </button>
                                             ))}
                                         </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* ── Back cover: custom background photo + real B&W niche photos ── */}
+                            {coverMode === "photos" && coverModalTab === "back" && (() => {
+                                const selectedNicheObj = niches.find(n => n._id === selectedCoverNicheId);
+                                const nicheImgUrls = selectedNicheObj
+                                    ? [
+                                        ...catsForNiche(selectedNicheObj)
+                                            .filter((c: any) => c.status === "completed")
+                                            .flatMap((c: any) => c.images.map((img: any) => img.url)),
+                                        ...cloudinaryImages
+                                            .filter(img => img.nicheId === selectedCoverNicheId || (img.nicheIds ?? []).includes(selectedCoverNicheId!))
+                                            .map(img => img.url),
+                                      ].filter((u, i, arr) => arr.indexOf(u) === i)
+                                    : [];
+                                const loadBgFile = (file: File) => {
+                                    const reader = new FileReader();
+                                    reader.onload = () => setBackPhotoBgUrl(reader.result as string);
+                                    reader.readAsDataURL(file);
+                                };
+                                return (
+                                    <div className="space-y-4">
+                                        {/* Paso 1: fondo a color */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-4 h-4 rounded-full bg-fuchsia-500/20 border border-fuchsia-500/40 flex items-center justify-center text-[8px] font-black text-fuchsia-400 shrink-0">1</span>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/80">Sube la imagen de fondo (a color)</p>
+                                            </div>
+                                            <div
+                                                className="relative flex items-center gap-3 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.02] transition-all cursor-pointer px-4 py-3"
+                                                onClick={() => {
+                                                    const inp = document.createElement("input");
+                                                    inp.type = "file"; inp.accept = "image/*";
+                                                    inp.onchange = () => { const f = inp.files?.[0]; if (f) loadBgFile(f); };
+                                                    inp.click();
+                                                }}
+                                                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add("border-fuchsia-500/60"); }}
+                                                onDragLeave={e => e.currentTarget.classList.remove("border-fuchsia-500/60")}
+                                                onDrop={e => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.classList.remove("border-fuchsia-500/60");
+                                                    const f = e.dataTransfer.files?.[0];
+                                                    if (f?.type.startsWith("image/")) loadBgFile(f);
+                                                }}
+                                                onPaste={e => {
+                                                    const f = Array.from(e.clipboardData.items).find(i => i.type.startsWith("image/"))?.getAsFile();
+                                                    if (f) loadBgFile(f);
+                                                }}
+                                                tabIndex={0}
+                                            >
+                                                {backPhotoBgUrl ? (
+                                                    <img src={backPhotoBgUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 border border-white/10" />
+                                                ) : (
+                                                    <Upload size={16} className="text-fuchsia-400/50 shrink-0" />
+                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-black text-neutral-400">{backPhotoBgUrl ? "Fondo cargado — clic para cambiar" : "Arrastra, pega (Ctrl+V) o haz clic"}</p>
+                                                    <p className="text-[10px] text-neutral-700">JPG · PNG · WEBP</p>
+                                                </div>
+                                                {backPhotoBgUrl && <Check size={14} className="text-emerald-400 shrink-0" />}
+                                            </div>
+                                        </div>
+
+                                        {/* Paso 2: imágenes del nicho a superponer */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-[8px] font-black text-cyan-400 shrink-0">2</span>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-cyan-400/80">Elige 2-3 imágenes del nicho para superponer</p>
+                                            </div>
+                                            {nicheImgUrls.length === 0 ? (
+                                                <div className="text-sm text-neutral-600 italic py-4 text-center border border-dashed border-white/8 rounded-xl">
+                                                    {selectedCoverNicheId ? "No hay catálogos completados para este nicho" : "Selecciona un nicho para ver sus imágenes"}
+                                                </div>
+                                            ) : (<>
+                                                <p className="text-sm font-black text-neutral-500">{selectedBackPhotos.size} seleccionada{selectedBackPhotos.size !== 1 ? "s" : ""}</p>
+                                                <div className="grid grid-cols-5 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+                                                    {nicheImgUrls.map((url: string, i: number) => {
+                                                        const isSel = selectedBackPhotos.has(url);
+                                                        return (
+                                                            <button key={i} onClick={() => setSelectedBackPhotos(prev => {
+                                                                const next = new Set(prev);
+                                                                if (next.has(url)) next.delete(url); else next.add(url);
+                                                                return next;
+                                                            })} className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${isSel ? "border-fuchsia-500/60" : "border-transparent opacity-40 hover:opacity-70"}`}>
+                                                                <img src={url} alt="" className="w-full h-full object-cover" />
+                                                                {isSel && <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-fuchsia-500 flex items-center justify-center shadow"><Check size={7} className="text-white" /></div>}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>)}
+                                        </div>
+
+                                        <button onClick={() => void composeBackCoverPhotos()}
+                                            disabled={isComposingBackPhotos || !backPhotoBgUrl || selectedBackPhotos.size === 0}
+                                            className="w-full h-10 rounded-xl bg-fuchsia-500 hover:bg-fuchsia-400 text-black text-sm font-black uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                                            {isComposingBackPhotos ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+                                            {isComposingBackPhotos ? "Componiendo…" : "Componer contraportada"}
+                                        </button>
                                     </div>
                                 );
                             })()}
@@ -16159,7 +16373,7 @@ POST-LANZAMIENTO:
                                             <Upload size={14} /> Cambiar imagen
                                         </button>
                                     )
-                                ) : (
+                                ) : coverMode === "photos" ? null /* botón "Componer contraportada" ya está en el bloque de arriba */ : (
                                     <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover || !coverTitle.trim()}
                                         className="w-full h-11 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(139,92,246,0.3)] active:scale-[0.98]">
                                         {isBuildingBackCover ? <><Loader2 size={14} className="animate-spin" /> Generando…</> : <><ImageIcon size={14} /> Generar Contraportada</>}
@@ -16531,9 +16745,11 @@ POST-LANZAMIENTO:
                                             rows={4}
                                             className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
                                     </div>
-                                    <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover || !coverTitle.trim()}
+                                    <button
+                                        onClick={() => void (coverMode === "photos" ? composeBackCoverPhotos() : generateBackCover())}
+                                        disabled={coverMode === "photos" ? (isComposingBackPhotos || !backPhotoBgUrl || selectedBackPhotos.size === 0) : (isBuildingBackCover || !coverTitle.trim())}
                                         className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-black flex items-center justify-center gap-2 transition-all disabled:opacity-40">
-                                        {isBuildingBackCover ? <><Loader2 size={13} className="animate-spin" /> Regenerando…</> : <><RefreshCw size={13} /> Regenerar contraportada</>}
+                                        {(coverMode === "photos" ? isComposingBackPhotos : isBuildingBackCover) ? <><Loader2 size={13} className="animate-spin" /> Regenerando…</> : <><RefreshCw size={13} /> Regenerar contraportada</>}
                                     </button>
                                 </div>
                             )}
@@ -16685,10 +16901,10 @@ POST-LANZAMIENTO:
                                                         } else if (coverModalTab === "front") {
                                                             coverMode === "ai" ? void generateCover() : coverMode === "collage" ? void buildCollage() : void colorizeCover();
                                                         } else {
-                                                            void generateBackCover();
+                                                            coverMode === "photos" ? void composeBackCoverPhotos() : void generateBackCover();
                                                         }
                                                     }}
-                                                        disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover || isColorizing}
+                                                        disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover || isColorizing || isComposingBackPhotos}
                                                         className="flex-1 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/8 hover:border-white/20 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5">
                                                         {coverMode === "upload" && coverModalTab === "front" ? <><Upload size={12} /> Cambiar</> : <><RefreshCw size={12} /> Regenerar</>}
                                                     </button>
