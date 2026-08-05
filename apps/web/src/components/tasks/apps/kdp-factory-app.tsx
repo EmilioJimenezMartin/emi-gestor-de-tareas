@@ -802,6 +802,7 @@ export function KdpFactoryApp() {
     const [nicheFormPrompt, setNicheFormPrompt] = useState("");
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
+    const [isDeletingNicheConfirm, setIsDeletingNicheConfirm] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string; filename?: string; urls?: string[]; meta?: { catalogId?: string; publicId?: string }[]; index?: number } | null>(null);
     const [sendingLightboxToTelegram, setSendingLightboxToTelegram] = useState(false);
     const sendLightboxImageToTelegram = async (url: string) => {
@@ -2441,6 +2442,7 @@ export function KdpFactoryApp() {
     };
 
     const deleteNiche = async (id: string) => {
+        setIsDeletingNicheConfirm(true);
         try {
             await fetch(`${API_BASE_URL}/niches/${id}`, { method: "DELETE" });
             setNiches(prev => prev.filter(n => n._id !== id));
@@ -2448,6 +2450,8 @@ export function KdpFactoryApp() {
             toast.success("Nicho eliminado");
         } catch {
             toast.error("Error al eliminar nicho");
+        } finally {
+            setIsDeletingNicheConfirm(false);
         }
     };
 
@@ -19113,8 +19117,11 @@ POST-LANZAMIENTO:
                             <p className="text-sm text-neutral-500">Esta acción no se puede deshacer.</p>
                         </div>
                         <div className="flex gap-3">
-                            <button onClick={() => setNicheDeleteId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
-                            <button onClick={() => void deleteNiche(nicheDeleteId)} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
+                            <button onClick={() => setNicheDeleteId(null)} disabled={isDeletingNicheConfirm} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all disabled:opacity-40">Cancelar</button>
+                            <button onClick={() => void deleteNiche(nicheDeleteId)} disabled={isDeletingNicheConfirm} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                                {isDeletingNicheConfirm ? <Loader2 size={14} className="animate-spin" /> : null}
+                                {isDeletingNicheConfirm ? "Eliminando…" : "Eliminar"}
+                            </button>
                         </div>
                     </div>
                 </div>

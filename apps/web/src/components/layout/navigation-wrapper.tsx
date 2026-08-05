@@ -9,12 +9,11 @@ import {
     CheckSquare,
     Settings,
     Plus,
-    Bell,
     TrendingUp,
     LogOut,
     Volume2,
     VolumeX,
-    BellOff,
+    Trash2,
 } from "lucide-react";
 import { NavItem, MobileNavItem } from "@/components/layout/nav-items";
 import { AddTaskModal } from "@/components/tasks/add-task-modal";
@@ -177,11 +176,11 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                         </div>
                         <div className="flex items-center gap-2">
                             <button
-                                onClick={() => { toast.dismiss(); }}
-                                title="Quitar todas las notificaciones"
+                                onClick={() => { toast.dismiss(); toast.success("Notificaciones borradas", { duration: 1200 }); }}
+                                title="Borrar todas las notificaciones en pantalla"
                                 className="p-2.5 rounded-full hover:bg-white/5 transition-colors text-neutral-500 hover:text-neutral-300"
                             >
-                                <BellOff size={18} />
+                                <Trash2 size={18} />
                             </button>
                             <button
                                 onClick={() => setMuted(!muted)}
@@ -189,10 +188,6 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                                 className={`p-2.5 rounded-full hover:bg-white/5 transition-colors ${muted ? "text-rose-400" : "text-neutral-400"}`}
                             >
                                 {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                            </button>
-                            <button className="p-2.5 rounded-full hover:bg-white/5 transition-colors relative">
-                                <Bell size={20} className="text-neutral-400" />
-                                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
                             </button>
                             <button
                                 onClick={handleLogout}

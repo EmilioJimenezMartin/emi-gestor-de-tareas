@@ -39,7 +39,9 @@ async function alertTelegram(event: string, ip: string) {
 }
 
 
-// In-memory rate limiter for login (no deps needed)
+// In-memory rate limiter for login (no deps needed). Lives in process memory,
+// so it resets on every server restart — if you're locked out during local
+// dev, restarting the API clears it immediately instead of waiting out WINDOW_MS.
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;
