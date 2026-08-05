@@ -111,8 +111,12 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Error al lanzar la explosión");
-            onLaunched(data.catalogs ?? [], data.situations ?? []);
-            onClose();
+            const situations = data.situations ?? [];
+            if (data.requested && situations.length < data.requested) {
+                setError(`La IA solo generó ${situations.length} de los ${data.requested} catálogos pedidos (situaciones repetidas o agotadas). Se lanzaron los ${situations.length} disponibles.`);
+            }
+            onLaunched(data.catalogs ?? [], situations);
+            if (!data.requested || situations.length >= data.requested) onClose();
         } catch (e: any) {
             setError(e.message);
         } finally {

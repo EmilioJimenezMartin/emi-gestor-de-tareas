@@ -42,6 +42,25 @@ function ensureMongo(reply: any): boolean {
     return true;
 }
 
+const HINT_STOPWORDS = new Set(["a", "an", "the", "in", "on", "at", "of", "and", "or", "with", "to", "for", "is", "are", "near", "by"]);
+
+/**
+ * Whether `hint` is already reflected in `promptLower` (both lowercased).
+ * An exact substring match is ideal, but the LLM legitimately paraphrases
+ * hints (e.g. "in the storm" → "in a storm") — an exact-match-only check
+ * treats that as "missing" and force-prepends the hint redundantly, producing
+ * an ugly duplicate phrase even though the concept IS present. Falls back to
+ * a keyword-overlap check so paraphrased hints aren't flagged as missing.
+ */
+function hintIsCovered(promptLower: string, hint: string): boolean {
+    const hintLower = hint.toLowerCase();
+    if (promptLower.includes(hintLower)) return true;
+    const words = hintLower.split(/\s+/).filter(w => w.length > 2 && !HINT_STOPWORDS.has(w));
+    if (words.length === 0) return false;
+    const covered = words.filter(w => promptLower.includes(w));
+    return covered.length / words.length >= 0.6;
+}
+
 export async function registerNicheRoutes(app: FastifyInstance) {
     app.get("/niches", async (_req, reply) => {
         if (!ensureMongo(reply)) return;
@@ -1488,13 +1507,39 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             situations = situations.filter(s => s?.situation && s?.prompt).slice(0, n);
             if (situations.length === 0) return reply.status(502).send({ error: "La IA no detectó situaciones" });
 
+            // Top up if the LLM returned fewer than the N requested (common once N
+            // grows past ~5-6 — it just silently stops early). Without this, "pide 10"
+            // quietly launches however few it felt like generating, with no warning.
+            let topUpAttempts = 0;
+            while (situations.length < n && topUpAttempts < 2) {
+                topUpAttempts++;
+                const missing = n - situations.length;
+                const alreadyLabels = situations.map(s => s.situation).join(", ");
+                const topUpUser = `${user}\n\n⚠ You previously returned only ${situations.length} of the ${n} requested prompts. Generate EXACTLY ${missing} MORE new, distinct prompts — do NOT repeat these already-used situations: ${alreadyLabels}. Return ONLY a JSON array with those ${missing} new items, same format as before.`;
+                try {
+                    const topUpRaw = await generateTextWithLLM(system, topUpUser, Math.min(8000, 800 + missing * 350));
+                    const topUpClean = topUpRaw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+                    const ts = topUpClean.indexOf("["), te = topUpClean.lastIndexOf("]");
+                    if (ts === -1 || te === -1) break;
+                    const topUpParsed = JSON.parse(topUpClean.slice(ts, te + 1)) as Array<{ situation: string; prompt: string }>;
+                    const validTopUp = topUpParsed
+                        .filter(s => s?.situation && s?.prompt)
+                        .filter(s => !situations.some(existing => existing.situation.toLowerCase() === s.situation.toLowerCase()));
+                    if (validTopUp.length === 0) break; // no progress — stop instead of looping pointlessly
+                    situations.push(...validTopUp.slice(0, missing));
+                } catch (e: any) {
+                    console.warn(`[explode-catalogs] Top-up intento ${topUpAttempts} falló: ${e?.message}`);
+                    break;
+                }
+            }
+
             // Safety net: the LLM often only weaves the hint(s) into the first item
             // despite the instructions above. Force every missing hint into every
             // situation's prompt (not just the first) so every catalog reflects it.
             if (hintList.length > 0) {
                 situations = situations.map(s => {
                     const promptLower = s.prompt.toLowerCase();
-                    const missing = hintList.filter(h => !promptLower.includes(h.toLowerCase()));
+                    const missing = hintList.filter(h => !hintIsCovered(promptLower, h));
                     if (missing.length === 0) return s;
                     return { situation: s.situation, prompt: `${missing.join(", ")} — ${s.prompt}` };
                 });
@@ -1526,6 +1571,11 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
                     status: initialStatus,
                     queueOrder: Date.now() + i,
                     nicheIds: [String(niche._id)],
+                    // Each explosion catalog already has a unique, situation/hint-anchored
+                    // prompt — skip the generic "make it unique vs siblings" LLM rewrite in
+                    // the image job (jobs/catalog.ts), which doesn't know the hint is
+                    // mandatory and can paraphrase it away on the catalog's first image.
+                    autoVariedPrompt: true,
                 });
                 created.push(catalog);
                 if (initialStatus === "pending") {
@@ -1543,6 +1593,7 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             return reply.status(201).send({
                 catalogs: created,
                 situations: situations.map(s => s.situation),
+                requested: n,
             });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
@@ -1677,7 +1728,7 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
                 .slice(0, n)
                 .map(s => {
                     let scenePrompt = s.prompt.trim();
-                    if (hint && !scenePrompt.toLowerCase().includes(hint.toLowerCase())) {
+                    if (hint && !hintIsCovered(scenePrompt.toLowerCase(), hint)) {
                         scenePrompt = `${hint} — ${scenePrompt}`;
                     }
                     return {

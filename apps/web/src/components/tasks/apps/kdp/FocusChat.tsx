@@ -2,11 +2,17 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Bot, ChevronDown, Loader2, Send, SendHorizontal, Sparkles, Trash2, X } from "lucide-react";
-import { useSpeech } from "@/hooks/useSpeech";
+import { useSpeech, setAppMuted } from "@/hooks/useSpeech";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 
 type Message = { _id?: string; role: "user" | "assistant"; text: string; source?: "ui" | "telegram"; createdAt?: string };
+
+// Local commands handled without a round-trip to the AI backend — "mutea la
+// app", "silencio", "activa el sonido"... Checked against the trimmed message
+// as a whole (not mid-sentence) so normal conversation never false-triggers.
+const MUTE_RE = /^(mute|mutea(r)?|silenci[ao](r)?|c[aá]llate|c[aá]llate ya|shut ?up|quiet)$/i;
+const UNMUTE_RE = /^(unmute|desmute[ao]?(r)?|activa(r)? (el )?sonido|quita(r)? (el )?silencio|sonido activado|habla( de nuevo)?)$/i;
 
 type Props = {
     systemContext: string;
@@ -206,6 +212,16 @@ export function FocusChat({ systemContext, apiBase }: Props) {
         const t = (text ?? input).trim();
         if (!t || isLoading) return;
         setInput("");
+        if (UNMUTE_RE.test(t) || MUTE_RE.test(t)) {
+            const muting = MUTE_RE.test(t);
+            setAppMuted(muting);
+            setMessages(prev => [
+                ...prev,
+                { role: "user", text: t, source: "ui" },
+                { role: "assistant", text: muting ? "🔇 Silenciado — sin voz ni sonidos hasta que lo actives de nuevo." : "🔊 Sonido activado de nuevo.", source: "ui" },
+            ]);
+            return;
+        }
         void chat(t);
     };
 

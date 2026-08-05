@@ -167,6 +167,12 @@ export const CatalogCard = React.memo(function CatalogCard({
             onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void actions.handleQueueReorder(draggingId, catalog._id); actions.setDraggingId(null); actions.setDragOverId(null); }}
             className={`group relative bg-white/[0.01] overflow-hidden transition-all duration-300 ${imgHeatLevel > 0 ? heatBorderCls : `border-white/5 ${providerColor.border} ${providerColor.glow}`} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${isDragging ? "opacity-50" : ""}`}
         >
+            {isDeleting && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/75 backdrop-blur-sm">
+                    <Loader2 size={22} className="animate-spin text-rose-400" />
+                    <span className="text-sm font-black uppercase tracking-widest text-rose-300">Eliminando…</span>
+                </div>
+            )}
             {catalog.images.length > 0 && (
                 <div className="absolute inset-0 pointer-events-none">
                     <img src={catalog.images[0].url} alt="" className="w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-all duration-500 scale-105 group-hover:scale-110" />

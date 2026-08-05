@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAppMuted } from "@/hooks/useSpeech";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -129,11 +130,9 @@ export default function AjustesPage() {
     const [totpLoading, setTotpLoading] = useState(false);
     const [totpStep, setTotpStep] = useState<"idle" | "setup" | "disable">("idle");
 
-    // Voice TTS
-    const [voiceEnabled, setVoiceEnabled] = useState(() => {
-        if (typeof window === "undefined") return true;
-        return localStorage.getItem("voice_enabled") !== "false";
-    });
+    // Voice TTS — shared with the persistent header mute button and chat commands
+    const [appMuted, setAppMuted] = useAppMuted();
+    const voiceEnabled = !appMuted;
     const [voiceTesting, setVoiceTesting] = useState(false);
 
     // fal.ai
@@ -453,10 +452,7 @@ export default function AjustesPage() {
         }
     };
 
-    const toggleVoice = (val: boolean) => {
-        setVoiceEnabled(val);
-        localStorage.setItem("voice_enabled", val ? "true" : "false");
-    };
+    const toggleVoice = (val: boolean) => setAppMuted(!val);
 
     const testVoice = () => {
         setVoiceTesting(true);

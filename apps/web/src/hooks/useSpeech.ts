@@ -1,7 +1,36 @@
 "use client";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
+
+// ── Shared mute state ────────────────────────────────────────────────────────
+// Single source of truth for "voice_enabled" so the persistent header button,
+// the Ajustes toggle, and chat commands ("mutea", "activa el sonido"...) all
+// stay in sync without a page reload — localStorage's own `storage` event only
+// fires in OTHER tabs, so we dispatch a custom event for same-tab listeners.
+const APP_MUTE_EVENT = "app-mute-changed";
+
+export function isAppMuted(): boolean {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("voice_enabled") === "false";
+}
+
+export function setAppMuted(muted: boolean): void {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("voice_enabled", muted ? "false" : "true");
+    window.dispatchEvent(new CustomEvent(APP_MUTE_EVENT, { detail: { muted } }));
+}
+
+export function useAppMuted(): [boolean, (muted: boolean) => void] {
+    const [muted, setMuted] = useState(false);
+    useEffect(() => {
+        setMuted(isAppMuted());
+        const handler = (e: Event) => setMuted((e as CustomEvent<{ muted: boolean }>).detail.muted);
+        window.addEventListener(APP_MUTE_EVENT, handler);
+        return () => window.removeEventListener(APP_MUTE_EVENT, handler);
+    }, []);
+    return [muted, setAppMuted];
+}
 
 // Module-level ref so all hook instances share the same current audio (only one voice at a time)
 let _currentAudio: HTMLAudioElement | null = null;
@@ -87,7 +116,7 @@ async function serverSpeak(clean: string, lang: string): Promise<boolean> {
 export function useSpeech(lang = "es-ES") {
     const speak = useCallback(async (text: string) => {
         if (typeof window === "undefined") return;
-        if (localStorage.getItem("voice_enabled") === "false") return;
+        if (isAppMuted()) return;
         const clean = stripNonSpeech(text).slice(0, 200);
         if (!clean) return;
 

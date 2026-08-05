@@ -444,7 +444,7 @@ const modalPortal = createPortal(
                                 <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin catálogos vinculados</p>
                             </div>
                         ) : linkedCats.map(cat => (
-                            <div key={cat._id} className="flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                            <div key={cat._id} className={`flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02] transition-opacity ${deletingCatalogId === cat._id ? "opacity-40 pointer-events-none" : ""}`}>
                                 {cat.images[0]
                                     ? <img src={cat.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
                                     : <div className="w-12 h-12 rounded-lg bg-white/[0.04] border border-white/8 flex items-center justify-center shrink-0"><Grid3x3 size={16} className="text-neutral-700" /></div>

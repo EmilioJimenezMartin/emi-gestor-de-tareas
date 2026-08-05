@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { toast } from "sonner";
 import {
     LayoutGrid,
     Home as HomeIcon,
@@ -11,6 +12,9 @@ import {
     Bell,
     TrendingUp,
     LogOut,
+    Volume2,
+    VolumeX,
+    BellOff,
 } from "lucide-react";
 import { NavItem, MobileNavItem } from "@/components/layout/nav-items";
 import { AddTaskModal } from "@/components/tasks/add-task-modal";
@@ -19,6 +23,7 @@ import { createApiSocket } from "@/lib/socket";
 import { isAuthenticated, clearToken } from "@/lib/auth-client";
 import { AuthFetchPatcher } from "@/components/layout/auth-fetch-patcher";
 import { CommandPalette, CommandPaletteTrigger } from "@/components/ui/CommandPalette";
+import { useAppMuted } from "@/hooks/useSpeech";
 
 export function NavigationWrapper({ children }: { children: React.ReactNode }) {
     const router = useRouter();
@@ -27,6 +32,7 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [dbStatus, setDbStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting" | "disconnecting">("connecting");
     const [authChecked, setAuthChecked] = useState(false);
+    const [muted, setMuted] = useAppMuted();
     const apiUrl = useMemo(
         () =>
             (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(
@@ -170,6 +176,20 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => { toast.dismiss(); }}
+                                title="Quitar todas las notificaciones"
+                                className="p-2.5 rounded-full hover:bg-white/5 transition-colors text-neutral-500 hover:text-neutral-300"
+                            >
+                                <BellOff size={18} />
+                            </button>
+                            <button
+                                onClick={() => setMuted(!muted)}
+                                title={muted ? "Activar sonido/voz" : "Silenciar sonido/voz"}
+                                className={`p-2.5 rounded-full hover:bg-white/5 transition-colors ${muted ? "text-rose-400" : "text-neutral-400"}`}
+                            >
+                                {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                            </button>
                             <button className="p-2.5 rounded-full hover:bg-white/5 transition-colors relative">
                                 <Bell size={20} className="text-neutral-400" />
                                 <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>

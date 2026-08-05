@@ -6490,7 +6490,7 @@ POST-LANZAMIENTO:
                                             </div>
                                             <div className="flex items-center gap-1.5 shrink-0">
                                                 {["libro", "seo", "pdf"].includes(n.phase) && (
-                                                    <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
+                                                    <button onClick={() => { setNicheDetailId(n.id); setNicheDetailTab("seo"); }} disabled={pipelineSeoLoading[n.id]}
                                                         title="Generar / regenerar SEO"
                                                         className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
                                                         {pipelineSeoLoading[n.id] ? <Loader2 size={9} className="animate-spin" /> : <FileText size={9} />} SEO
@@ -6620,7 +6620,7 @@ POST-LANZAMIENTO:
                                                         )}
                                                         <div className="flex gap-1 flex-wrap">
                                                             {["libro", "seo", "pdf"].includes(n.phase) && (
-                                                                <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
+                                                                <button onClick={() => { setNicheDetailId(n.id); setNicheDetailTab("seo"); }} disabled={pipelineSeoLoading[n.id]}
                                                                     className="flex items-center gap-0.5 h-5 px-2 rounded bg-amber-500/15 border border-amber-500/25 text-amber-400 text-[9px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
                                                                     {pipelineSeoLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <Sparkles size={7} />} SEO
                                                                 </button>
@@ -11836,34 +11836,6 @@ POST-LANZAMIENTO:
     // Scatter layout (position/size/rotation as % of canvas) for 1-4 photos, tuned
     // to look like real Polaroids fanned out over the background. Beyond 4, falls
     // back to a loose grid further down.
-    const BACK_PHOTO_LAYOUTS: Record<number, Array<{ x: number; y: number; w: number; rot: number }>> = {
-        1: [{ x: 0.5, y: 0.5, w: 0.5, rot: 0 }],
-        2: [{ x: 0.36, y: 0.42, w: 0.40, rot: -7 }, { x: 0.66, y: 0.60, w: 0.42, rot: 6 }],
-        3: [{ x: 0.30, y: 0.30, w: 0.36, rot: -8 }, { x: 0.70, y: 0.38, w: 0.40, rot: 7 }, { x: 0.50, y: 0.72, w: 0.38, rot: -4 }],
-        4: [{ x: 0.28, y: 0.28, w: 0.34, rot: -8 }, { x: 0.72, y: 0.30, w: 0.36, rot: 7 }, { x: 0.30, y: 0.70, w: 0.32, rot: 5 }, { x: 0.72, y: 0.72, w: 0.34, rot: -6 }],
-    };
-
-    const drawPolaroidPhoto = (ctx: CanvasRenderingContext2D, img: HTMLImageElement, centerX: number, centerY: number, photoW: number, rotationDeg: number) => {
-        const aspect = img.height / img.width;
-        const photoH = photoW * aspect;
-        const border = Math.round(photoW * 0.045);
-        const bottomBorder = Math.round(photoW * 0.09);
-        const frameW = photoW + border * 2;
-        const frameH = photoH + border + bottomBorder;
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate((rotationDeg * Math.PI) / 180);
-        ctx.shadowColor = "rgba(0,0,0,0.4)";
-        ctx.shadowBlur = frameW * 0.05;
-        ctx.shadowOffsetX = frameW * 0.015;
-        ctx.shadowOffsetY = frameW * 0.025;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(-frameW / 2, -frameH / 2, frameW, frameH);
-        ctx.shadowColor = "transparent";
-        ctx.drawImage(img, -photoW / 2, -frameH / 2 + border, photoW, photoH);
-        ctx.restore();
-    };
-
     const composeBackCoverPhotos = async () => {
         if (!backPhotoBgUrl) { toast.error("Sube primero una imagen de fondo"); return; }
         if (selectedBackPhotos.size === 0) { toast.error("Selecciona al menos una imagen del nicho"); return; }
@@ -11890,25 +11862,41 @@ POST-LANZAMIENTO:
             canvas.width = W; canvas.height = H;
             const ctx = canvas.getContext("2d")!;
 
-            // Background — cover-fill crop
+            // Background — cover-fill crop, drawn full-bleed. It stays visible as a
+            // frame around the grid (and as thin lines between cells) since the grid
+            // below is inset with a margin and small gaps instead of covering 100%.
             const ia = bgImg.width / bgImg.height, ca = W / H;
             let sx = 0, sy = 0, sw = bgImg.width, sh = bgImg.height;
             if (ia > ca) { sw = bgImg.height * ca; sx = (bgImg.width - sw) / 2; }
             else { sh = bgImg.width / ca; sy = (bgImg.height - sh) / 2; }
             ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, W, H);
 
-            // Scattered photos on top
-            const layout = BACK_PHOTO_LAYOUTS[photoImgs.length] ?? photoImgs.map((_, i, arr) => {
-                const cols = Math.ceil(Math.sqrt(arr.length));
-                const rows = Math.ceil(arr.length / cols);
-                const col = i % cols, row = Math.floor(i / cols);
-                return { x: (col + 0.5) / cols, y: (row + 0.5) / rows, w: 0.85 / cols, rot: (i % 2 === 0 ? -1 : 1) * 5 };
-            });
+            // Grid of niche photos on top — inset from the edges so the background
+            // shows through as a picture-frame border, like the reference cover.
+            const n = photoImgs.length;
+            const cols = n <= 1 ? 1 : n <= 4 ? 2 : 3;
+            const rows = Math.ceil(n / cols);
+            const marginX = W * 0.09, marginY = H * 0.09;
+            const gridW = W - marginX * 2, gridH = H - marginY * 2;
+            const GAP = Math.max(4, Math.round(W * 0.012));
+            const cellW = (gridW - GAP * (cols - 1)) / cols;
+            const cellH = (gridH - GAP * (rows - 1)) / rows;
+
+            ctx.shadowColor = "rgba(0,0,0,0.35)";
+            ctx.shadowBlur = W * 0.01;
+            ctx.shadowOffsetY = W * 0.004;
             photoImgs.forEach((img, i) => {
-                const pos = layout[i];
-                if (!pos) return;
-                drawPolaroidPhoto(ctx, img, pos.x * W, pos.y * H, pos.w * W, pos.rot);
+                const col = i % cols, row = Math.floor(i / cols);
+                const x = marginX + col * (cellW + GAP);
+                const y = marginY + row * (cellH + GAP);
+                // Cover-fill crop so each cell is filled edge-to-edge, no letterboxing
+                const pia = img.width / img.height, pca = cellW / cellH;
+                let psx = 0, psy = 0, psw = img.width, psh = img.height;
+                if (pia > pca) { psw = img.height * pca; psx = (img.width - psw) / 2; }
+                else { psh = img.width / pca; psy = (img.height - psh) / 2; }
+                ctx.drawImage(img, psx, psy, psw, psh, x, y, cellW, cellH);
             });
+            ctx.shadowColor = "transparent";
 
             const composedBlob = await new Promise<Blob | null>(resolve => canvas.toBlob(b => resolve(b), "image/jpeg", 0.95));
             if (!composedBlob) { toast.error("Error exportando la contraportada"); return; }
@@ -12482,8 +12470,8 @@ POST-LANZAMIENTO:
                         </div>
                     </div>
                     <div className="flex gap-1 flex-wrap">
-                        {clone.keywords.map(kw => (
-                            <span key={kw} className="text-[9px] px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/8 text-neutral-400 font-mono">{kw}</span>
+                        {clone.keywords.map((kw, i) => (
+                            <span key={`${kw}-${i}`} className="text-[9px] px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/8 text-neutral-400 font-mono">{kw}</span>
                         ))}
                     </div>
                 </div>
@@ -12594,7 +12582,9 @@ POST-LANZAMIENTO:
                             )}
                             {(cloneResults.length > 0 || cloneSource) && cloneSource && (() => {
                                 const originalNicheName = extractNicheNameFromTitle(cloneSource.title);
-                                const originalKeywords = cloneSource.title.split(/\s+/).filter(w => w.length > 3).slice(0, 6).map(w => w.toLowerCase().replace(/[^a-z]/g, "")).filter(Boolean);
+                                const originalKeywords = [...new Set(
+                                    cloneSource.title.split(/\s+/).filter(w => w.length > 3).map(w => w.toLowerCase().replace(/[^a-z]/g, "")).filter(Boolean)
+                                )].slice(0, 6);
                                 const originalAsClone: CloneResult = {
                                     nicheName: originalNicheName, title: cloneSource.title, titleTemplate: cloneSource.title,
                                     audience: `Audiencia del bestseller · validada por ${cloneSource.reviews ? `${cloneSource.reviews} reseñas` : "el mercado"}`,
