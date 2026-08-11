@@ -29,7 +29,13 @@ function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
 // Short opener — immediately tells FLUX the output format (highest weight tokens)
 // Calidad de línea sí; "densely layered/breathtaking composition" NO: esos tokens
 // hacían que FLUX inventara fondos (flores, casas…) que el usuario no pidió.
-const CB_OPENER = "masterful coloring book page, crisp black ink line art on pure white, bold ultra-thick confident outlines, outline-only drawing, every shape hollow and empty white inside";
+const CB_OPENER = "masterful coloring book page, ONLY pure black ink outlines on pure white background, extra bold ultra-thick clean line weight, strictly outline-only line art with absolutely no shading, no gray, no color, no texture anywhere in the image, every enclosed shape completely empty and hollow with pure white fill, zero fill of any kind inside any outline";
+
+// Bloque crítico de estilo — va justo después del opener/modifier, ANTES del sujeto,
+// para que sobreviva al recorte de Pollinations (capPollinationsPrompt corta cláusulas
+// desde el FINAL cuando el prompt supera el límite de tokens). Puesto al final, esto
+// era lo primero que se perdía — de ahí los rechazos recurrentes por "rellenos grises".
+const CB_STYLE_EXCLUSIONS = "STRICT STYLE RULE, NO EXCEPTIONS, NO FILLS OF ANY KIND: no shading, no shadows, no gray, no grey, no gray fills, no grey fills, no gray tones, no gradients, no color, no colors, no stippling, no cross-hatching, no background texture, no solid black areas, no solid fills, no filled-in shapes, no filled shapes of any color, no black silhouettes, no dark fills, no partial fills, no semi-transparent fills, no watercolor, no painterly rendering, no soft edges, no blur — every single enclosed area inside the outlines must stay 100% empty pure white with zero fill, the entire page must be nothing but a clean thick black outline contour on pure white, ready to be colored in";
 
 // Sujeto fiel: va justo después del estilo, y se refuerza que NO se añada contenido extra
 const CB_FIDELITY = "depicting exactly and only the following subject, faithful to the description, intricate detail concentrated on the subject itself";
@@ -56,7 +62,7 @@ const CB_STYLE_MODIFIERS: Record<string, string> = {
     realistic:    "naturalistic specimen-level precision, anatomically accurate rendering, texture implied through line density",
 };
 
-const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, no individual fingers, no finger joints, no detailed hands, no deformed hands, no extra fingers, no missing fingers, no extra legs, no missing legs, no extra arms, no extra wings, no extra tails, no floating limbs, no fused body parts, no anatomical mutations, no extra heads, no merged creatures, no duplicate body parts";
+const CB_EXCLUSIONS = "all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, no individual fingers, no finger joints, no detailed hands, no deformed hands, no extra fingers, no missing fingers, no extra legs, no missing legs, no extra arms, no extra wings, no extra tails, no floating limbs, no fused body parts, no anatomical mutations, no extra heads, no merged creatures, no duplicate body parts";
 
 // Si el prompt del usuario pide explícitamente algo que NO es página de colorear
 // (color, foto, póster, patrón…), la fórmula CB no debe aplicarse aunque el
@@ -80,8 +86,8 @@ export function buildColoringBookPrompt(particulars: string, style = "generic", 
     const modifier = CB_STYLE_MODIFIERS[effectiveStyle];
     const audienceConstraint = targetAudience && targetAudience !== "all" ? CB_AUDIENCE_CONSTRAINTS[targetAudience] : null;
     const base = modifier
-        ? `${CB_OPENER}, ${modifier}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`
-        : `${CB_OPENER}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`;
+        ? `${CB_OPENER}, ${modifier}, ${CB_STYLE_EXCLUSIONS}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`
+        : `${CB_OPENER}, ${CB_STYLE_EXCLUSIONS}, ${CB_FIDELITY}: ${particulars}, ${CB_ANATOMY}, ${CB_HANDS}, ${CB_EXCLUSIONS}`;
     return audienceConstraint ? `${base}, ${audienceConstraint}` : base;
 }
 
