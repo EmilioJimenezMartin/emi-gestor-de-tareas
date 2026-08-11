@@ -204,6 +204,32 @@ const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
     "retro":       "pollinations-flux",
 };
 
+// Detecta si un mensaje de error de generación de imagen viene de un proveedor
+// que alcanzó su límite (saldo/cuota/rate-limit) y devuelve un texto específico
+// en vez del genérico "Error en catálogo: ...". null si no coincide con ningún patrón conocido.
+function describeProviderLimitError(error: string): string | null {
+    const e = error.toLowerCase();
+    if (/pollen|insufficient balance/.test(e) && /pollinat/.test(e) || /payment_required/.test(e)) {
+        return "🪙 Pollinations sin saldo — recarga en enter.pollinations.ai";
+    }
+    if (/10,?000 neurons|daily free allocation|neurons/.test(e)) {
+        return "☁️ Cloudflare: cupo diario de neurons agotado — vuelve a estar disponible en 24h";
+    }
+    if (/siliconflow/.test(e) && /(403|insufficient|balance)/.test(e)) {
+        return "🪙 SiliconFlow sin saldo";
+    }
+    if (/hf-inference|deprecated/.test(e) && /huggingface|hf /.test(e)) {
+        return "🤗 HuggingFace: modelo no disponible (deprecado por el proveedor)";
+    }
+    if (/all providers failed|todos los (fallbacks|proveedores)/.test(e)) {
+        return "⛔ Todos los proveedores de imagen fallaron — revisa saldo/cuotas";
+    }
+    if (/\b429\b|rate.?limit|too many requests/.test(e)) {
+        return "⏱️ Límite de peticiones alcanzado en el proveedor — espera un poco";
+    }
+    return null;
+}
+
 const NICHE_STYLE_TO_COVER: Record<NicheStyle, { style: string; colorTheme: string }> = {
     // Coloring book styles
     generic:      { style: "clean professional illustration, detailed decorative artwork, elegant composition",       colorTheme: "soft blue and white" },
@@ -5021,6 +5047,10 @@ POST-LANZAMIENTO:
                 }
                 return prev.map((c) => {
                     if (c._id !== data.catalogId) return c;
+                    if (data.lastError && data.lastError !== c.lastError) {
+                        const providerMsg = describeProviderLimitError(data.lastError);
+                        if (providerMsg) toast.error(providerMsg, { id: `provider-limit-${data.catalogId}` });
+                    }
                     const updated: IACatalogFE = {
                         ...c,
                         status: data.status as IACatalogFE["status"],
@@ -5077,8 +5107,9 @@ POST-LANZAMIENTO:
             setIaCatalogs((prev) =>
                 prev.map((c) => (c._id === data.catalogId ? { ...c, status: "failed", lastError: data.error } : c))
             );
-            toast.error(`Error en catálogo: ${data.error}`);
-            speak(`Error en catálogo: ${data.error.slice(0, 60)}`);
+            const providerMsg = describeProviderLimitError(data.error);
+            toast.error(providerMsg ?? `Error en catálogo: ${data.error}`, { id: `provider-limit-${data.catalogId}` });
+            speak(providerMsg ?? `Error en catálogo: ${data.error.slice(0, 60)}`);
         });
 
         socket.on("autopilot:log", (data: { nicheId: string; message: string }) => {

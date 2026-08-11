@@ -183,6 +183,7 @@ async function handleNicheDiscovery(
                 const discoveryPrompt = (tAction as any).imagePrompt as string | undefined;
 
                 // --- Catalog 1: exact discovery prompt ---
+                let catalog1Created = false;
                 if (discoveryPrompt) {
                     const cat1Res = await internalFetch(`${base}/catalogs`, {
                         method: "POST",
@@ -205,6 +206,11 @@ async function handleNicheDiscovery(
                             $set: { pipelineHasCatalogs: true },
                         });
                         _io?.emit("catalogs:updated");
+                        catalog1Created = true;
+                    } else {
+                        const errBody = await cat1Res.text().catch(() => "");
+                        console.error(`[telegram-poll][niche-discovery] Catálogo 1 falló para "${tAction.nicheName}": HTTP ${cat1Res.status} ${errBody.slice(0, 300)}`);
+                        await sendTelegram(`⚠️ <b>${tAction.nicheName}</b>: el catálogo 1 (prompt original) no se pudo crear (HTTP ${cat1Res.status}). Revisa los logs.`).catch(() => {});
                     }
                 }
 
@@ -222,7 +228,7 @@ async function handleNicheDiscovery(
                     }),
                 });
                 const explodeData = await explodeRes.json() as any;
-                const created = (explodeData?.catalogs?.length ?? 0) + (discoveryPrompt ? 1 : 0);
+                const created = (explodeData?.catalogs?.length ?? 0) + (catalog1Created ? 1 : 0);
 
                 _io?.emit("niches:updated");
                 _io?.emit("catalogs:updated");
@@ -247,7 +253,7 @@ async function handleNicheDiscovery(
                 await sendTelegram(
                     `🏭 <b>${tAction.nicheName}</b>\n` +
                     `🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales\n` +
-                    (discoveryPrompt ? `<i>1 × prompt original + ${situations.length} × Explosión IA</i>\n` : "") +
+                    (catalog1Created ? `<i>1 × prompt original + ${situations.length} × Explosión IA</i>\n` : "") +
                     (situationPreview ? `<i>${situationPreview}${situations.length > 4 ? "…" : ""}</i>` : "")
                 ).catch(() => {});
 
@@ -810,7 +816,7 @@ async function processUpdate(update: any): Promise<void> {
                                 await sendTelegram(
                                     `🏭 <b>${tAction.nicheName}</b>\n` +
                                     `🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales\n` +
-                                    (discoveryPromptClone ? `<i>1 × prompt original + ${situations.length} × Explosión IA</i>\n` : "") +
+                                    (catalog1Created ? `<i>1 × prompt original + ${situations.length} × Explosión IA</i>\n` : "") +
                                     (situationPreview ? `<i>${situationPreview}${situations.length > 4 ? "…" : ""}</i>` : "")
                                 ).catch(() => {});
                                 try {
