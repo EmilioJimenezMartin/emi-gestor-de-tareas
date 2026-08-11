@@ -3,8 +3,9 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import {
-    ChevronLeft, ChevronRight, Heart, Download, UploadCloud, Trash2, Plus, ImagePlus, X, Loader2,
+    ChevronLeft, ChevronRight, Heart, Download, UploadCloud, Trash2, Plus, ImagePlus, X, Loader2, FileText,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AI_MODELS, AI_DIMENSIONS } from "../shared/ai-constants";
 import type { CatalogImageFE, FavoriteImage } from "./types";
 
@@ -251,6 +252,18 @@ export function ImagePreviewModal({
                     {/* Catalog-specific */}
                     {catalogImg && (
                         <>
+                            {previewContext?.catalogCtx?.prompt && (
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(previewContext!.catalogCtx!.prompt!);
+                                        toast.success("Prompt copiado");
+                                    }}
+                                    className="p-2.5 rounded-2xl bg-violet-500/15 backdrop-blur-md text-violet-400 active:scale-90 transition-all border border-violet-500/25"
+                                    title="Copiar prompt"
+                                >
+                                    <FileText size={18} />
+                                </button>
+                            )}
                             <button
                                 onClick={() => addCatalogImageToVault(catalogImg)}
                                 className="p-2.5 rounded-2xl bg-emerald-500/15 backdrop-blur-md text-emerald-400 active:scale-90 transition-all border border-emerald-500/25"

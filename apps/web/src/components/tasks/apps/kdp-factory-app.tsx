@@ -787,7 +787,7 @@ export function KdpFactoryApp() {
     const [isExportingKdpPdf, setIsExportingKdpPdf] = useState(false);
     const [showInlineImagePicker, setShowInlineImagePicker] = useState(false);
     const [bookPreviewMode, setBookPreviewMode] = useState<"single" | "spread">("single");
-    const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number; catalogCtx?: { id: string; images: CatalogImageFE[] }; vaultCtx?: true; cloudinaryCtx?: true } | null>(null);
+    const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number; catalogCtx?: { id: string; images: CatalogImageFE[]; prompt?: string }; vaultCtx?: true; cloudinaryCtx?: true } | null>(null);
     const [confirmClearBook, setConfirmClearBook] = useState(false);
     const [pdfFullPagePreviewId, setPdfFullPagePreviewId] = useState<string | null>(null);
     const [confirmDeleteCoverNicheId, setConfirmDeleteCoverNicheId] = useState<string | null>(null);
@@ -3453,7 +3453,7 @@ export function KdpFactoryApp() {
         setPreviewContext({
             urls: images.map((i) => i.url),
             index,
-            catalogCtx: catalogId ? { id: catalogId, images } : undefined,
+            catalogCtx: catalogId ? { id: catalogId, images, prompt: iaCatalogs.find(c => c._id === catalogId)?.prompt } : undefined,
         });
     };
 
@@ -18994,6 +18994,19 @@ POST-LANZAMIENTO:
                             >
                                 {sendingLightboxToTelegram ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                             </button>
+                            {(() => {
+                                const prompt = lightboxUrl.catalogId ? iaCatalogs.find(c => c._id === lightboxUrl.catalogId)?.prompt : undefined;
+                                if (!prompt) return null;
+                                return (
+                                    <button
+                                        onClick={e => { e.stopPropagation(); copyText(prompt); }}
+                                        className="p-2 rounded-xl bg-black/60 border border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300 transition-all"
+                                        title="Copiar prompt"
+                                    >
+                                        <FileText size={14} />
+                                    </button>
+                                );
+                            })()}
                             {lightboxUrl.publicId && (
                                 <button
                                     onClick={() => {
