@@ -936,7 +936,10 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                         cfAccountId = s?.value || "";
                     }
                     if (!cfAccountId) throw new Error("CF_ACCOUNT_ID no configurado");
-                    const cfModel = "@cf/black-forest-labs/flux-1-schnell";
+                    const cfModel = typeof modelId === "string" && modelId.startsWith("@cf/") ? modelId : "@cf/black-forest-labs/flux-1-schnell";
+                    // SDXL soporta negative_prompt (mejora mucho la fidelidad al estilo coloring-book);
+                    // Flux Schnell lo ignora si se lo mandamos — inofensivo incluirlo siempre.
+                    const cfNegative = negativePrompt || undefined;
                     // Cloudflare usa clasificador IA — quitamos framing en español y envolvemos
                     // términos estilísticos conocidos en comillas para que el clasificador los lea
                     // como referencias/nombres, no como contenido descriptivo
@@ -961,7 +964,7 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                                 Authorization: `Bearer ${apiKey.trim()}`,
                                 "Content-Type": "application/json",
                             },
-                            body: JSON.stringify({ prompt: cfPrompt, steps: 4 }),
+                            body: JSON.stringify({ prompt: cfPrompt, steps: 4, ...(cfNegative ? { negative_prompt: cfNegative } : {}) }),
                             signal: AbortSignal.timeout(60_000),
                         }
                     );
@@ -1000,7 +1003,7 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                                 {
                                     method: "POST",
                                     headers: { Authorization: `Bearer ${apiKey.trim()}`, "Content-Type": "application/json" },
-                                    body: JSON.stringify({ prompt: safePrompt, steps: 4 }),
+                                    body: JSON.stringify({ prompt: safePrompt, steps: 4, ...(cfNegative ? { negative_prompt: cfNegative } : {}) }),
                                     signal: AbortSignal.timeout(60_000),
                                 }
                             );
