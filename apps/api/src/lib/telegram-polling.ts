@@ -756,6 +756,7 @@ async function processUpdate(update: any): Promise<void> {
                             const base = `http://localhost:${port}`;
 
                             // --- Catalog 1: exact discovery prompt ---
+                            let catalog1Created = false;
                             if (discoveryPromptClone) {
                                 const cat1Res = await internalFetch(`${base}/catalogs`, {
                                     method: "POST",
@@ -778,6 +779,11 @@ async function processUpdate(update: any): Promise<void> {
                                         $set: { pipelineHasCatalogs: true },
                                     });
                                     _io?.emit("catalogs:updated");
+                                    catalog1Created = true;
+                                } else {
+                                    const errBody = await cat1Res.text().catch(() => "");
+                                    console.error(`[telegram-poll][clone-decision] Catálogo 1 falló para "${tAction.nicheName}": HTTP ${cat1Res.status} ${errBody.slice(0, 300)}`);
+                                    await sendTelegram(`⚠️ <b>${tAction.nicheName}</b>: el catálogo 1 (prompt original) no se pudo crear (HTTP ${cat1Res.status}). Revisa los logs.`).catch(() => {});
                                 }
                             }
 
@@ -795,7 +801,7 @@ async function processUpdate(update: any): Promise<void> {
                                 }).then(r => r.json())
                                 : { catalogs: [], situations: [] };
 
-                            const created = (explodeData?.catalogs?.length ?? 0) + (discoveryPromptClone ? 1 : 0);
+                            const created = (explodeData?.catalogs?.length ?? 0) + (catalog1Created ? 1 : 0);
                             _io?.emit("niches:updated");
                             _io?.emit("catalogs:updated");
                             if (created > 0) {

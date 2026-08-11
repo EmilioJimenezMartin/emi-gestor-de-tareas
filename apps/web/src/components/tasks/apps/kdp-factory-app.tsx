@@ -1831,9 +1831,6 @@ export function KdpFactoryApp() {
 
     // --- Favorites (persisted to MongoDB via /settings as FavoriteImage[]) ---
     const [favorites, setFavorites] = useState<Map<string, FavoriteImage>>(new Map());
-    // Guards against firing the prune fetch more than once per broken favorite
-    // (onError can retry/re-fire on re-render before state settles).
-    const prunedFavoritesRef = useRef<Set<string>>(new Set());
 
     // --- PDF drag-to-reorder (desktop) + touch-reorder (mobile) ---
     const [bookDragIdx, setBookDragIdx] = useState<number | null>(null);
@@ -3375,13 +3372,6 @@ export function KdpFactoryApp() {
         });
     };
 
-    // A favorited image whose source (catalog/cloudinary image) was deleted
-    // renders broken (404) — auto-unfavorite it instead of leaving dead entries.
-    const pruneBrokenFavorite = (url: string) => {
-        if (prunedFavoritesRef.current.has(url)) return;
-        prunedFavoritesRef.current.add(url);
-        toggleFavorite(url);
-    };
 
     const handleBookDragStart = (idx: number) => setBookDragIdx(idx);
     const handleBookDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setBookDragOverIdx(idx); };
@@ -5231,6 +5221,12 @@ POST-LANZAMIENTO:
             if (data.prompt) {
                 addDiscoveryLog("info", `📎 Prompt: ${String(data.prompt)}`, "system");
             }
+            // The discovery/sample image sent to Telegram is already uploaded to
+            // Cloudinary tagged with this nicheId — but our local cloudinaryImages
+            // state was fetched before it existed, so it won't show in the niche's
+            // gallery until we refetch. Also refresh niches (phase/sampleImageUrl changed).
+            void fetchCloudinaryImages();
+            void fetchNiches();
         });
 
         socket.on("autoclone:new", (data: { item: AutoCloneItem }) => {
@@ -9306,7 +9302,6 @@ POST-LANZAMIENTO:
                                                 setPromptTheme(niche.name); setPromptSpecs(niche.tags.join(", "));
                                                 setPromptDetails(niche.description || ""); setPromptParticulars("");
                                             }
-                                            if (niche.styleCategory && NICHE_STYLE_MODEL[niche.styleCategory]) setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
                                             setCatalogFormNicheId(niche._id);
                                             setCatalogProductType(niche.productType ?? "coloring-book");
                                             setLoadedNicheForPrompt(niche);
@@ -11406,7 +11401,7 @@ POST-LANZAMIENTO:
                                             })}
                                             className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10 hover:border-rose-500/40 transition-all cursor-zoom-in"
                                         >
-                                            <img src={fav.url} alt="" className="w-full h-full object-cover" onError={() => pruneBrokenFavorite(fav.url)} />
+                                            <img src={fav.url} alt="" className="w-full h-full object-cover" />
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                                             <span className="absolute bottom-1 left-1 right-1 text-[9px] font-black text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {nicheName ?? "Sin nicho"}
@@ -18940,10 +18935,7 @@ POST-LANZAMIENTO:
                                 src={lightboxUrl.url}
                                 alt="Portada ampliada"
                                 className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain border border-white/10"
-                                onError={() => {
-                                    setLightboxImgBroken(true);
-                                    if (favorites.has(lightboxUrl.url)) pruneBrokenFavorite(lightboxUrl.url);
-                                }}
+                                onError={() => setLightboxImgBroken(true)}
                             />
                         )}
                         <div className="absolute top-3 right-3 flex gap-2">

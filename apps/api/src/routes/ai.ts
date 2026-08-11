@@ -1125,14 +1125,16 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
             }
 
             // ── EMERGENCY FALLBACK: cadena SiliconFlow → CF → Segmind → HF ─────────
-            // No llamar a Pollinations aquí — si llegamos a este punto es porque el
-            // proveedor principal (a menudo Pollinations) ya falló. Reintentar el mismo
-            // proveedor sólo añade latencia sin mejorar la situación.
+            // No llamar a Pollinations aquí si el proveedor principal ya elegido NO
+            // era Pollinations — el usuario lo eligió a propósito (p.ej. Cloudflare
+            // para no gastar pollen) y un fallback silencioso a Pollinations gastaría
+            // pollen sin su consentimiento. Si el principal SÍ era Pollinations, no
+            // tiene sentido reintentarlo — sólo añade latencia sin mejorar nada.
             console.warn(`[ai/generate-image] Proveedor principal falló — usando cadena de emergencia (SiliconFlow → CF → Segmind → HF)...`);
             try {
                 const fw = typeof width === "number" && width > 0 ? width : 1024;
                 const fh = typeof height === "number" && height > 0 ? height : 1024;
-                const fallbackBuf = await generateImageFallback(prompt, { width: fw, height: fh });
+                const fallbackBuf = await generateImageFallback(prompt, { width: fw, height: fh, skipPollinations: true });
                 if (fallbackBuf) {
                     console.log(`[ai/generate-image] Emergency fallback OK (${fallbackBuf.length} bytes)`);
                     return reply.header("X-AI-Fallback", "emergency-chain").type("image/png").send(fallbackBuf);

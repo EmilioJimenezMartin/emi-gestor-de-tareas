@@ -168,7 +168,12 @@ export const CatalogCard = React.memo(function CatalogCard({
             className={`group relative bg-white/[0.01] overflow-hidden transition-all duration-300 ${imgHeatLevel > 0 ? heatBorderCls : `border-white/5 ${providerColor.border} ${providerColor.glow}`} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${isDragging ? "opacity-50" : ""}`}
         >
             {isDeleting && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/75 backdrop-blur-sm">
+                // No backdrop-blur here on purpose: this card keeps re-rendering every
+                // second (the `tick` prop drives the elapsed-time display), and a blur
+                // filter forces an expensive re-composite on every one of those renders —
+                // competing with the spin animation for the compositor and making it
+                // visibly stutter/freeze. A plain solid overlay dims the card just as well.
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/85">
                     <Loader2 size={22} className="animate-spin text-rose-400" />
                     <span className="text-sm font-black uppercase tracking-widest text-rose-300">Eliminando…</span>
                 </div>
@@ -221,7 +226,7 @@ export const CatalogCard = React.memo(function CatalogCard({
                         <div className={`w-1.5 h-1.5 rounded-full ${providerColor.dot} shrink-0`} />
                         <span className={`text-sm font-black uppercase tracking-wider ${providerColor.badge.split(" ").find(c => c.startsWith("text-")) ?? "text-neutral-400"}`}>{catalog.aiModel?.provider}</span>
                         <span className="text-neutral-700 text-sm">·</span>
-                        <span className="text-sm font-mono text-neutral-400 truncate max-w-[160px]">{catalog.aiModel?.name.split(" ").slice(0, 3).join(" ")}</span>
+                        <span className="text-sm font-mono text-neutral-400 truncate max-w-[160px]">{catalog.aiModel?.name?.split(" ").slice(0, 3).join(" ") ?? catalog.aiModel?.modelId}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-sm font-mono text-neutral-600 flex-wrap">
                         <span>{catalog.width}×{catalog.height}</span>

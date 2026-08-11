@@ -45,7 +45,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
     app.post("/catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, prompt, model, aiModel, width, height, totalImages, promptParts, productType, creativity, negativePrompt, nicheIds } = request.body || {};
+            const { name, prompt, model, aiModel, width, height, totalImages, promptParts, productType, creativity, negativePrompt, nicheIds, rawPrompt, autoVariedPrompt } = request.body || {};
             const modelData = aiModel ?? model;
             if (!prompt || !modelData || !totalImages) {
                 return reply.status(400).send({ error: "prompt, model y totalImages son requeridos" });
@@ -70,6 +70,8 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
                 status: initialStatus,
                 queueOrder: Date.now(),
                 nicheIds: Array.isArray(nicheIds) ? nicheIds : [],
+                rawPrompt: rawPrompt === true,
+                autoVariedPrompt: autoVariedPrompt === true,
             });
 
             if (initialStatus === "pending") {

@@ -283,8 +283,17 @@ const modalPortal = createPortal(
                             <EmptyState
                                 icon={<ImageIcon size={28} strokeWidth={1} />}
                                 title="Sin imágenes aún"
-                                description="Lanza el pipeline para comenzar a generar imágenes para este nicho."
+                                description="Lanza el pipeline o usa Explosión IA para generar los primeros catálogos de este nicho."
                                 size="md"
+                                action={
+                                    <button
+                                        onClick={() => { setNicheDetailId(null); setExplodeNicheId(nicheDetailId); }}
+                                        className="flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-full border border-violet-500/25 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 hover:text-violet-200 transition-all"
+                                        title="Explosión IA: genera catálogos con situaciones distintas"
+                                    >
+                                        <Layers size={11} /> Explosión IA
+                                    </button>
+                                }
                             />
                         ) : (
                             <div className="relative">

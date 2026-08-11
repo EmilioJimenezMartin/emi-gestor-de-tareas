@@ -87,6 +87,7 @@ const LEGACY_MODEL_MAP: Record<string, { model: string; promptSuffix?: string }>
     "flux-3d": { model: "flux", promptSuffix: ", 3d render style" },
     "flux-pro": { model: "flux" },
     "flux-schnell": { model: "flux" },
+    "flux-dev": { model: "flux" },
     "turbo": { model: "zimage" },
     // Modelos del selector del frontend que el gateway no conoce
     "cf-flux-schnell": { model: "flux" },
@@ -95,13 +96,15 @@ const LEGACY_MODEL_MAP: Record<string, { model: string; promptSuffix?: string }>
 };
 
 /** Modelos válidos en gen.pollinations.ai — cualquier otro se mapea a flux. */
-const VALID_GATEWAY_MODELS = new Set(["flux", "flux-dev", "flux-pro", "zimage", "klein", "kontext", "gptimage", "gptimage-large", "nova-canvas"]);
+const VALID_GATEWAY_MODELS = new Set(["flux", "flux-pro", "zimage", "klein", "kontext", "gptimage", "gptimage-large", "nova-canvas"]);
 
 /**
  * Reescribe URLs del API antiguo al gateway nuevo gen.pollinations.ai.
- * `image.pollinations.ai/prompt/X` ya no funciona: pasa por un Worker de CF
- * con IP de salida compartida → 402 "Queue full" permanente para todos.
- * El gateway nuevo es `gen.pollinations.ai/image/X` con API key Bearer.
+ * `image.pollinations.ai/prompt/X` responde (gratis, sin key) pero ese
+ * pipeline ignora las restricciones de estilo del prompt y da ilustraciones
+ * a color/sombreadas — inservibles para coloring books (ver nota en
+ * `pollinationsFetch`). El gateway de pago es `gen.pollinations.ai/image/X`
+ * con API key Bearer, y es el único que respeta el estilo correctamente.
  */
 export function toGenPollinationsUrl(url: string): string {
     const parsed = new URL(url);
@@ -176,6 +179,14 @@ export function capPollinationsPrompt(prompt: string): string {
     return capped;
 }
 
+// NOTA: se probó (2026-08-09) usar el endpoint público antiguo sin key
+// (image.pollinations.ai/prompt/X) como intento gratis previo al gateway de
+// pago. Técnicamente responde 200 con una imagen, pero ese pipeline gratis
+// IGNORA las restricciones de estilo del prompt (coloring book, sin color,
+// sin sombreado, fondo blanco puro) y devuelve ilustraciones a todo color y
+// sombreadas — inservibles para el producto. No es un problema de fiabilidad
+// reintentable, es un modelo/pipeline distinto. Revertido: no reintroducir
+// sin verificar antes visualmente la calidad de salida, no solo el HTTP 200.
 export async function pollinationsFetch(url: string, opts: RequestInit = {}): Promise<Response> {
     const token = getPollinationsToken();
     const finalUrl = toGenPollinationsUrl(url);
@@ -187,6 +198,7 @@ export async function pollinationsFetch(url: string, opts: RequestInit = {}): Pr
 
     await acquireSemaphore();
     try {
+
         let res: Response;
         for (let attempt = 0; ; attempt++) {
             res = await fetch(finalUrl, {

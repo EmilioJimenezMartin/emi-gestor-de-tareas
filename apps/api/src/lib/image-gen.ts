@@ -51,6 +51,10 @@ export interface GenerateImageOpts {
     signal?: AbortSignal;
     seed?: number;
     hfModelId?: string;
+    /** true = no intentar Pollinations (gasta pollen) — usado cuando el proveedor
+     *  principal ya elegido explícitamente por el usuario NO era Pollinations,
+     *  para no gastar pollen como efecto secundario de un fallback silencioso. */
+    skipPollinations?: boolean;
 }
 
 /**
@@ -66,7 +70,9 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
     const pollinationsUrl =
         `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
         `?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(model)}&enhance=${enhance}&nologo=true`;
-    try {
+    if (opts.skipPollinations) {
+        console.log("[image-gen] Pollinations SALTADO (skipPollinations — el proveedor principal ya elegido no era Pollinations)");
+    } else try {
         const res = await pollinationsFetch(pollinationsUrl, {
             signal: opts.signal ?? AbortSignal.timeout(60_000),
         });
