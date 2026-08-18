@@ -204,11 +204,15 @@ export const CatalogCard = React.memo(function CatalogCard({
                         </div>
                         <div className="flex items-center gap-1.5 group/prompt">
                             <p className="text-sm text-neutral-500 line-clamp-1 leading-relaxed pl-0.5 italic min-w-0">{catalog.prompt}</p>
-                            {catalog.prompt && (
+                            {/* Sin imágenes (p.ej. catálogo fallado/cancelado) no hay lightbox donde copiar
+                                el prompt desde la imagen, así que este botón se queda siempre visible aquí.
+                                Con imágenes, copiar desde la imagen (lightbox) ya cubre el caso — se oculta
+                                para no duplicar la acción. */}
+                            {catalog.prompt && catalog.images.length === 0 && (
                                 <button
                                     onClick={() => { void navigator.clipboard.writeText(catalog.prompt); toast.success("Prompt copiado"); }}
-                                    title="Copiar prompt completo"
-                                    className="shrink-0 opacity-0 group-hover/prompt:opacity-100 transition-opacity p-1 rounded-lg text-neutral-600 hover:text-white hover:bg-white/10"
+                                    title="Copiar prompt (primera imagen)"
+                                    className="shrink-0 p-1 rounded-lg text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
                                 >
                                     <Copy size={11} />
                                 </button>

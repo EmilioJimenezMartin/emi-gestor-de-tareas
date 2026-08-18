@@ -32,7 +32,7 @@ async function getConfig(): Promise<{ provider: LLMProvider; model: string; goog
 }
 
 async function groqChat(groqKey: string, model: string, messages: Array<{ role: string; content: string }>, maxTokens = 1024, temperature = 0.4, jsonMode = false): Promise<string> {
-    const body: Record<string, unknown> = { model: model || "llama-3.3-70b-versatile", messages, max_tokens: maxTokens, temperature };
+    const body: Record<string, unknown> = { model: model || "openai/gpt-oss-120b", messages, max_tokens: maxTokens, temperature };
     if (jsonMode) body.response_format = { type: "json_object" };
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -237,7 +237,7 @@ async function chatWithFallback(
         },
         {
             name: "groq", available: !!config.groqKey,
-            call: () => groqChat(config.groqKey, config.provider === "groq" ? config.model : "llama-3.3-70b-versatile", messages, maxTokens, temperature),
+            call: () => groqChat(config.groqKey, config.provider === "groq" ? config.model : "openai/gpt-oss-120b", messages, maxTokens, temperature),
         },
         {
             name: "openrouter", available: !!config.openrouterKey,
@@ -287,13 +287,18 @@ async function chatWithFallback(
 }
 
 export async function varyTextWithLLM(text: string, creativity = 50): Promise<string> {
+    // Guardarraíl duro contra el "robo de sujeto": en creatividad baja/media el
+    // objetivo es solo variar la redacción, nunca el contenido — sin esto, un LLM
+    // "creativamente variando" un fragmento corto puede colar un sujeto totalmente
+    // distinto (p.ej. un pájaro en vez de un jardín) sin que el usuario lo pida.
+    const SUBJECT_LOCK = "Do NOT introduce any new subject, object, animal, character, or scene element that is not already present in the original text. Do NOT remove the original subject. The subject matter must remain exactly what it was.";
     let instruction: string;
     if (creativity <= 10) {
         return text;
     } else if (creativity <= 35) {
-        instruction = "Slightly rephrase the following text — swap one or two synonyms at most, keep virtually the same meaning.";
+        instruction = `Slightly rephrase the following text — swap one or two synonyms at most, keep virtually the same meaning. ${SUBJECT_LOCK}`;
     } else if (creativity <= 65) {
-        instruction = "Rephrase the following text to make it unique. Vary the wording and structure while preserving the core subject.";
+        instruction = `Rephrase the following text to make it unique. Vary the wording and structure only — describe the exact same subject and scene differently. ${SUBJECT_LOCK}`;
     } else if (creativity <= 85) {
         instruction = "Significantly rephrase the following text. You can change the focus, swap the main subject with a related concept, or add a creative twist — same general theme but noticeably different.";
     } else {
@@ -310,6 +315,46 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
         return result || text;
     } catch {
         return text; // nunca interrumpir al caller — el texto original siempre es válido
+    }
+}
+
+/**
+ * Reduce un texto de sujeto al contenido puramente visual — qué se debe
+ * dibujar — quitando instrucciones de estilo/técnicas (color, sombreado,
+ * contornos, contraste, "no X"/"zero X"...). Existe porque el formulario de
+ * la app junta theme+specs+details en un solo texto, y cada campo suele
+ * repetir las mismas instrucciones de estilo con distinta redacción — el
+ * contenido visual real (qué escena dibujar) queda diluido en ese ruido, lo
+ * que hace que modelos "schnell" pierdan el sujeto incluso después de
+ * acortar el prompt (ver routes/IMAGE_PROVIDERS.md). Se usa tanto antes de
+ * generar (routes/ai.ts, rama Cloudflare) como antes de verificar por visión
+ * (jobs/catalog.ts) — un sujeto más limpio ayuda en los dos sitios.
+ * Mismo guardarraíl que varyTextWithLLM: nunca debe introducir ni quitar
+ * sujeto, solo pelar instrucciones de estilo.
+ * Fail-safe: si el LLM falla o tarda, devuelve el texto original sin tocar.
+ */
+export async function distillVisualSubject(text: string): Promise<string> {
+    const trimmed = text.trim();
+    if (trimmed.length < 60) return trimmed; // ya es corto, destilar no aporta nada
+
+    const prompt = "Extract ONLY the visual scene/subject being described below — the actual "
+        + "objects, characters, setting and composition that should be drawn. Remove ALL style, "
+        + "technical and negative instructions (color, shading, outlines, line weight, background "
+        + "color, contrast, resolution, and any \"no X\" / \"zero X\" constraints). Do NOT introduce "
+        + "any new subject, object, animal, or scene element that isn't already present in the "
+        + "text below, and do NOT drop any part of the actual subject. Return ONLY the distilled "
+        + "subject as plain text, under 30 words, no quotes, no explanations.\n\nText: " + trimmed;
+
+    try {
+        const result = await Promise.race([
+            chatWithFallback([{ role: "user", content: prompt }], { maxTokens: 120, temperature: 0.2, label: "distill-subject" }),
+            new Promise<string>((_, reject) => setTimeout(() => reject(new Error("distill-subject timeout")), 12_000)),
+        ]);
+        const distilled = result.trim().replace(/^["']|["']$/g, "");
+        return distilled.length > 5 ? distilled : trimmed;
+    } catch (e: any) {
+        console.warn(`[distill-subject] Saltado (fail-safe, texto original conservado): ${e?.message ?? e}`);
+        return trimmed;
     }
 }
 
@@ -354,11 +399,12 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
         }
     }
 
-    // ── Groq (fallback rápido — llama-3.3-70b) ───────────────────────────────
+    // ── Groq (fallback rápido — openai/gpt-oss-120b; Groq deprecó toda la
+    // familia Llama-3.x en 2026-08, verificado tras 404 "model_not_found") ───
     if (config.groqKey) {
         const t0 = Date.now();
         try {
-            const raw = await groqChat(config.groqKey, modelFor("groq", "llama-3.3-70b-versatile"), [
+            const raw = await groqChat(config.groqKey, modelFor("groq", "openai/gpt-oss-120b"), [
                 { role: "system", content: systemPrompt + jsonEnforcement },
                 { role: "user", content: userPrompt },
             ], maxOutputTokens, 0.4);
@@ -494,6 +540,32 @@ export async function generateVisionWithLLM(systemPrompt: string, userPrompt: st
     }
 
     throw new Error("Visión no soportada con el proveedor LLM configurado (usa OpenRouter o Google).");
+}
+
+/**
+ * Igual que generateVisionWithLLM pero con una imagen ya en memoria (Buffer) en
+ * vez de una URL pública — usado para verificar contenido ANTES de subir a
+ * Cloudinary (ver lib/subject-check.ts). Solo soporta Google Gemini: es el
+ * único proveedor de visión ya integrado que acepta bytes inline sin necesitar
+ * una URL descargable.
+ */
+export async function generateVisionWithLLMFromBuffer(systemPrompt: string, userPrompt: string, imageBuffer: Buffer, mimeType = "image/png"): Promise<string> {
+    const config = await getConfig();
+    if (config.provider !== "google" || !config.googleKey) {
+        throw new Error("Verificación de sujeto requiere el proveedor Google configurado (visión con bytes en memoria).");
+    }
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: config.googleKey });
+    const parts: any[] = [
+        { text: userPrompt },
+        { inlineData: { mimeType, data: imageBuffer.toString("base64") } },
+    ];
+    const response = await ai.models.generateContent({
+        model: config.model || "gemini-2.5-flash",
+        contents: [{ role: "user", parts }],
+        config: { systemInstruction: systemPrompt, thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 300, temperature: 0.1 } as any,
+    });
+    return (response.text ?? "").trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
 }
 
 function isQuotaError(err: any): boolean {
@@ -641,7 +713,7 @@ export async function analyzePageForRadar(
             return parseJson(raw);
         }
         if (provider === "groq" && config.groqKey) {
-            const raw = await groqChat(config.groqKey, modelFor("groq", "llama-3.3-70b-versatile"), [
+            const raw = await groqChat(config.groqKey, modelFor("groq", "openai/gpt-oss-120b"), [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userMsg },
             ], 4096, 0.1, true);

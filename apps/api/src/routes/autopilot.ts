@@ -10,6 +10,13 @@ import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { generateTextWithLLM } from "../lib/ai.js";
 import { getEvolutionSeed } from "../lib/prompt-evolution.js";
 import { withLlmSlot } from "../lib/ai-semaphore.js";
+import { CB_FIDELITY, CB_ANATOMY, extractColoringBookSubject } from "../lib/coloring-book-subject.js";
+
+// Re-exportados para no romper los imports existentes (routes/ai.ts, jobs/catalog.ts
+// hacían `import { ... } from "./autopilot.js"`) — la definición real vive en
+// lib/coloring-book-subject.ts para evitar un ciclo con lib/image-gen.ts, que
+// también los necesita (ver comentario en ese archivo).
+export { CB_FIDELITY, CB_ANATOMY, extractColoringBookSubject };
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -35,13 +42,14 @@ const CB_OPENER = "masterful coloring book page, ONLY pure black ink outlines on
 // para que sobreviva al recorte de Pollinations (capPollinationsPrompt corta cláusulas
 // desde el FINAL cuando el prompt supera el límite de tokens). Puesto al final, esto
 // era lo primero que se perdía — de ahí los rechazos recurrentes por "rellenos grises".
+// NOTA: se probó acortar esta fórmula para caber en el límite de 1500 chars de
+// Leonardo, pero eso debilitó el anti-relleno para TODOS los proveedores (p.ej.
+// Cloudflare SDXL Base pasó de limpio a 44% gris). El límite de Leonardo ya se
+// resuelve aparte con un recorte específico en ai.ts — no tocar esta fórmula por eso.
 const CB_STYLE_EXCLUSIONS = "STRICT STYLE RULE, NO EXCEPTIONS, NO FILLS OF ANY KIND: no shading, no shadows, no gray, no grey, no gray fills, no grey fills, no gray tones, no gradients, no color, no colors, no stippling, no cross-hatching, no background texture, no solid black areas, no solid fills, no filled-in shapes, no filled shapes of any color, no black silhouettes, no dark fills, no partial fills, no semi-transparent fills, no watercolor, no painterly rendering, no soft edges, no blur — every single enclosed area inside the outlines must stay 100% empty pure white with zero fill, the entire page must be nothing but a clean thick black outline contour on pure white, ready to be colored in";
 
-// Sujeto fiel: va justo después del estilo, y se refuerza que NO se añada contenido extra
-const CB_FIDELITY = "depicting exactly and only the following subject, faithful to the description, intricate detail concentrated on the subject itself";
-
-// Anatomía correcta de especies — evita que FLUX invente miembros extra o los elimine
-const CB_ANATOMY = "ANATOMY: every creature drawn with its exact standard species limb count — 4 legs for mammals, 8 legs for spiders and scorpions, 6 legs for insects, 2 legs and 2 wings for birds, 4 limbs for reptiles, 2 arms and 2 legs for humans — never add or omit limbs, tails, or wings beyond the species standard";
+// CB_FIDELITY y CB_ANATOMY (marcadores de sujeto) viven en lib/coloring-book-subject.ts
+// — importados arriba y reexportados para el resto de callers.
 
 // Instrucción de manos — SIEMPRE esconder, nunca intentar dibujar dedos individuales
 const CB_HANDS = "HANDS: ALL hands, paws, and claws MUST be fully hidden or obscured — tuck inside clothing, behind the body, under fur, gripping objects that cover finger detail, or placed off-frame — never attempt to draw open hands, spread fingers, individual digits, claws, or finger joints under any circumstances";
@@ -559,9 +567,10 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 console.warn(`[discover] AI proxy error: ${e?.message}`);
             }
 
-            // Fallback 1: Pollinations → Segmind → HuggingFace
+            // Fallback 1: Pollinations → Segmind → HuggingFace — anonymous:true si el
+            // modelo configurado es "Pollinations Anon" (ver routes/IMAGE_PROVIDERS.md).
             if (!imageBytes) {
-                imageBytes = await generateImage(samplePrompt);
+                imageBytes = await generateImage(samplePrompt, discoveryModel.provider === "Pollinations Anon" ? { anonymous: true } : {});
             }
 
             // Fallback 2: Google Gemini image generation
@@ -591,6 +600,10 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             }
 
             // Upload to Cloudinary via bytes (avoids fetching blocked Pollinations URL)
+            // Se guarda el objeto completo (no solo la URL) para poder usar esta MISMA
+            // imagen como primera del catálogo al aprobar, en vez de regenerarla — ver
+            // discoveryImage más abajo y el uso en telegram-polling.ts.
+            let discoveryImage: { publicId: string; url: string; width: number; height: number; bytes: number } | undefined;
             if (imageBytes) {
                 try {
                     const cldRes = await internalFetch(`${base}/cloudinary/upload-image`, {
@@ -601,10 +614,11 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                     });
                     if (cldRes.ok) {
                         const cldData = await cldRes.json() as any;
-                        const cloudUrl = cldData.image?.url;
-                        if (cloudUrl) {
-                            telegramImageUrl = cloudUrl;
-                            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: cloudUrl } });
+                        const img = cldData.image;
+                        if (img?.url && img?.publicId) {
+                            telegramImageUrl = img.url;
+                            discoveryImage = { publicId: img.publicId, url: img.url, width: img.width ?? 0, height: img.height ?? 0, bytes: img.bytes ?? imageBytes.length };
+                            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: img.url } });
                             deps.io?.emit("niches:updated");
                         }
                     }
@@ -627,6 +641,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 imageUrl: telegramImageUrl,
                 imagePrompt: samplePrompt,
                 aiModel: discoveryModel,
+                discoveryImage,
                 autoApproveAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
             });
 

@@ -15,7 +15,8 @@ import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify, sendTelegramImageWithButtons } from "../lib/telegram.js";
 import { withImageSlot } from "../lib/ai-semaphore.js";
-import { buildColoringBookPrompt } from "../routes/autopilot.js";
+import { buildColoringBookPrompt, extractColoringBookSubject } from "../routes/autopilot.js";
+import { verifySubjectFidelity } from "../lib/subject-check.js";
 import sharp from "sharp";
 
 
@@ -92,6 +93,13 @@ async function saveRejectedImageToVault(opts: {
 async function isQualityCheckEnabled(): Promise<boolean> {
     try {
         const row = await Settings.findOne({ key: "QUALITY_CHECK_ENABLED" }).lean();
+        return (row as any)?.value !== "0" && (row as any)?.value !== "false";
+    } catch { return true; }
+}
+
+async function isSubjectCheckEnabled(): Promise<boolean> {
+    try {
+        const row = await Settings.findOne({ key: "SUBJECT_CHECK_ENABLED" }).lean();
         return (row as any)?.value !== "0" && (row as any)?.value !== "false";
     } catch { return true; }
 }
@@ -590,6 +598,34 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                     });
                 }
                 throw new Error(`Calidad insuficiente (score ${quality.score}): ${quality.reason}`);
+            }
+
+            // ── Verificación de sujeto por visión ──
+            // El gate de píxeles de arriba no detecta que el modelo haya dibujado un
+            // sujeto completamente distinto al pedido — una imagen bien entintada en
+            // blanco y negro de, por ejemplo, un pájaro cuando se pidió un jardín pasa
+            // ese control igual. Los modelos "schnell" (Cloudflare, SiliconFlow,
+            // Segmind, HF, Together AI) son probabilísticos y hacen esto con cierta
+            // frecuencia en escenas con varios elementos — ver routes/IMAGE_PROVIDERS.md.
+            const subjectCheckEnabled = await isSubjectCheckEnabled();
+            if (subjectCheckEnabled) {
+                const subjectDescription = extractColoringBookSubject(finalPrompt);
+                const subjectCheck = await verifySubjectFidelity(imageBuffer, subjectDescription);
+                console.log(`${tag} Subject check: ok=${subjectCheck.ok}${subjectCheck.reason ? ` reason="${subjectCheck.reason}"` : ""}`);
+                if (!subjectCheck.ok) {
+                    if (retryCount === 0) {
+                        void saveRejectedImageToVault({
+                            imageBuffer,
+                            catalog,
+                            catalogId,
+                            reason: `Sujeto no coincide: ${subjectCheck.reason ?? "revisión visual falló"}`,
+                            score: quality.score,
+                            finalPrompt,
+                            io,
+                        });
+                    }
+                    throw new Error(`Sujeto no coincide con lo pedido: ${subjectCheck.reason ?? "revisión visual falló"}`);
+                }
             }
 
             // ── Coherencia de estilo dentro del catálogo ──

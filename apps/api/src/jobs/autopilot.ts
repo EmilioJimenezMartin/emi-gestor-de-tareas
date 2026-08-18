@@ -354,7 +354,8 @@ async function runDiscovery(
 
                 if (!bgImageBytes) {
                     _bgIo?.emit("autopilot:log", { nicheId: String(_bgNiche._id), message: `⚠️ ${bgDiscoveryAiModel.name} falló — usando fallback…` });
-                    try { bgImageBytes = await generateImage(bgImageGenPrompt); } catch { /* non-critical */ }
+                    // anonymous:true si el modelo configurado es "Pollinations Anon" (ver routes/IMAGE_PROVIDERS.md).
+                    try { bgImageBytes = await generateImage(bgImageGenPrompt, bgDiscoveryAiModel.provider === "Pollinations Anon" ? { anonymous: true } : {}); } catch { /* non-critical */ }
                 }
 
                 // Upload to Cloudinary
@@ -1232,11 +1233,12 @@ async function runPipeline(
                         console.warn(`[autopilot] cover variant ${variant + 1} AI proxy failed: ${coverErr.message}`);
                     }
 
-                    // Fallback: Pollinations/Segmind/HF cascade
+                    // Fallback: Pollinations/Segmind/HF cascade — anonymous:true si el modelo
+                    // configurado es "Pollinations Anon" (ver routes/IMAGE_PROVIDERS.md).
                     if (!imgBuf) {
                         try {
                             imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, () =>
-                                generateImage(variantPrompt, { width: 768, height: 1024, model }),
+                                generateImage(variantPrompt, { width: 768, height: 1024, model, ...(coverAiModel.provider === "Pollinations Anon" ? { anonymous: true } : {}) }),
                                 nicheScore
                             );
                         } catch (fbErr: any) {

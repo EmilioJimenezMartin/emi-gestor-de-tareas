@@ -3,10 +3,11 @@ import axios from "axios";
 import { createHash, createSign } from "crypto";
 import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
-import { isPollinationsBlocked, pollinationsFetch, getPollinationsToken } from "../lib/pollinations-circuit.js";
+import { isPollinationsBlocked, pollinationsFetch, getPollinationsToken, pollinationsAnonymousFetch, buildAnonymousPollinationsUrl } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
 import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey, generateImage as generateImageFallback } from "../lib/image-gen.js";
 import { buildColoringBookPrompt } from "./autopilot.js";
+import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt } from "../lib/coloring-book-subject.js";
 
 /** Generates TAMS-SHA256-RSA Authorization header for Tensor.art API */
 function tamsSign(method: string, urlPath: string, appId: string, privateKeyPem: string, bodyStr: string): string {
@@ -18,7 +19,7 @@ function tamsSign(method: string, urlPath: string, appId: string, privateKeyPem:
     const signature = signer.sign(privateKeyPem, "base64");
     return `TAMS-SHA256-RSA app_id=${appId},nonce_str=${nonceStr},timestamp=${timestamp},signature=${signature}`;
 }
-import { generateTextWithLLM } from "../lib/ai.js";
+import { generateTextWithLLM, distillVisualSubject } from "../lib/ai.js";
 
 const nextAllowedAtByKey = new Map<string, number>();
 
@@ -307,6 +308,21 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
             // --- LEONARDO.AI ---
             if (provider === "Leonardo" && apiKey) {
                 try {
+                    // Leonardo devuelve 400 "Invalid prompt, maximum length of 1500
+                    // characters exceeded" por encima de ese límite — antes fallaba en
+                    // seco y caía sin avisar a la cadena de emergencia (otro proveedor,
+                    // sin negative_prompt fiable). Recorta cláusulas desde el final,
+                    // igual que capPollinationsPrompt, en vez de dejar que Leonardo
+                    // rechace la petición entera.
+                    const LEONARDO_MAX_CHARS = 1480;
+                    let leoPrompt = prompt;
+                    if (leoPrompt.length > LEONARDO_MAX_CHARS) {
+                        const clauses = leoPrompt.split(",");
+                        while (clauses.length > 1 && clauses.join(",").length > LEONARDO_MAX_CHARS) clauses.pop();
+                        leoPrompt = clauses.join(",").trim();
+                        if (leoPrompt.length > LEONARDO_MAX_CHARS) leoPrompt = leoPrompt.slice(0, LEONARDO_MAX_CHARS);
+                        console.warn(`[ai/generate-image] Leonardo: prompt ${prompt.length} chars > ${LEONARDO_MAX_CHARS} — recortado a ${leoPrompt.length}`);
+                    }
                     let initImageId: string | null = null;
                     let initStrength: number | undefined = undefined;
 
@@ -377,7 +393,7 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                             "content-type": "application/json",
                         },
                         data: {
-                            prompt,
+                            prompt: leoPrompt,
                             width: typeof width === "number" ? width : 1024,
                             height: typeof height === "number" ? height : 1024,
                             num_images: 1,
@@ -566,9 +582,12 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     };
                     const sfSize = sfSizes[ratioFromDims(width, height)] ?? "1024x1024";
 
+                    // FLUX.1-schnell (el modelo por defecto) pierde el sujeto con la fórmula
+                    // completa igual que Cloudflare — ver routes/IMAGE_PROVIDERS.md.
+                    const sfPrompt = await buildDistilledSchnellPrompt(prompt);
                     const sfBody: any = {
                         model: sfModel,
-                        prompt,
+                        prompt: sfPrompt,
                         image_size: sfSize,
                         num_inference_steps: 20,
                         seed: typeof fixedSeed === "number" ? fixedSeed : Math.floor(Math.random() * 9999999),
@@ -650,11 +669,14 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
 
                     const attempts = 3;
                     let lastErr: any = null;
+                    // El modelo por defecto es FLUX.1-schnell — mismo riesgo que Cloudflare/
+                    // SiliconFlow con la fórmula completa (ver routes/IMAGE_PROVIDERS.md).
+                    const hfPrompt = await buildDistilledSchnellPrompt(prompt);
 
                     for (let attempt = 1; attempt <= attempts; attempt++) {
                         try {
                             const hfBody = JSON.stringify({
-                                inputs: prompt,
+                                inputs: hfPrompt,
                                 parameters: {
                                     ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
                                     ...(steps ? { num_inference_steps: steps } : {}),
@@ -711,6 +733,8 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     const togetherModel = "black-forest-labs/FLUX.1-schnell-Free";
                     const w = typeof width === "number" && width > 0 ? width : 1024;
                     const h = typeof height === "number" && height > 0 ? height : 1024;
+                    // Mismo modelo schnell que Cloudflare/SiliconFlow — ver routes/IMAGE_PROVIDERS.md.
+                    const togetherPrompt = await buildDistilledSchnellPrompt(prompt);
                     console.log(`[ai/generate-image] Intentando Together AI model=${togetherModel}...`);
                     const togetherResp = await axios({
                         url: "https://api.together.xyz/v1/images/generations",
@@ -721,7 +745,7 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                         },
                         data: {
                             model: togetherModel,
-                            prompt,
+                            prompt: togetherPrompt,
                             width: w,
                             height: h,
                             steps: 4,
@@ -753,7 +777,10 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     const seed = Math.floor(Math.random() * 999999);
                     const w = typeof width === "number" && width > 0 ? width : 1024;
                     const h = typeof height === "number" && height > 0 ? height : 1024;
-                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&model=${encodeURIComponent(modelParam)}&enhance=false`;
+                    // flux (schnell) pierde el sujeto con la fórmula completa igual que
+                    // Cloudflare — verificado empíricamente (ver routes/IMAGE_PROVIDERS.md).
+                    const pollinationsPrompt = await buildDistilledSchnellPrompt(prompt);
+                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(pollinationsPrompt)}?width=${w}&height=${h}&seed=${seed}&model=${encodeURIComponent(modelParam)}&enhance=false`;
                     console.log(pollinationsUrl, '--- pollinationsUrl ---');
                     // flux-dev (and similar high-quality models) need more time than schnell
                     const isSlowModel = modelParam.includes("dev") || modelParam.includes("pro") || modelParam.includes("realism");
@@ -771,6 +798,42 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                 }
             } else if (provider === "Pollinations") {
                 console.warn(`[ai/generate-image] Pollinations bloqueado — circuit breaker activo`);
+            }
+
+            // --- POLLINATIONS ANÓNIMO (endpoint viejo, sin key, sin pollen) ---
+            // Deliberadamente NO usa pollinationsFetch() — esa función reescribe toda URL
+            // hacia el gateway de pago gen.pollinations.ai (ver toGenPollinationsUrl). El
+            // usuario eligió este proveedor específicamente para no gastar pollen ni
+            // depender de la key configurada, así que esta rama nunca debe redirigirse al
+            // gateway autenticado. Si falla, sí puede caer al fallback de emergencia de
+            // más abajo (SiliconFlow → CF → Segmind → HF) — pero ese fallback YA excluye
+            // Pollinations por completo (skipPollinations: true, siempre), así que nunca
+            // toca el gateway de pago tampoco por esa vía.
+            if (provider === "Pollinations Anon") {
+                console.log(`[ai/generate-image] Intentando Pollinations Anónimo (sin key)...`);
+                try {
+                    const modelParam = typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : "flux";
+                    const w = typeof width === "number" && width > 0 ? width : 1024;
+                    const h = typeof height === "number" && height > 0 ? height : 1024;
+                    // Este endpoint (modelo "sana" detrás según EXIF, distinto del flux del
+                    // gateway de pago) ignora el estilo por completo con el prompt genérico —
+                    // devuelve ilustraciones realistas. buildAnonymousColoringBookPrompt usa
+                    // una plantilla más agresiva afinada específicamente para este pipeline
+                    // (ver routes/IMAGE_PROVIDERS.md).
+                    const anonPrompt = await buildAnonymousColoringBookPrompt(prompt);
+                    const anonUrl = buildAnonymousPollinationsUrl(anonPrompt, { width: w, height: h, model: modelParam });
+                    const isSlowModel = modelParam.includes("dev") || modelParam.includes("pro") || modelParam.includes("realism");
+                    const res = await pollinationsAnonymousFetch(anonUrl, { signal: AbortSignal.timeout(isSlowModel ? 150_000 : 60_000) });
+                    const ct = res.headers.get("content-type") ?? "";
+                    if (res.ok && ct.startsWith("image/")) {
+                        console.log(`[ai/generate-image] Pollinations Anónimo OK`);
+                        return reply.type(ct).send(Buffer.from(await res.arrayBuffer()));
+                    }
+                    await res.body?.cancel();
+                    console.warn(`[ai/generate-image] Pollinations Anónimo FALLÓ — status=${res.status}`);
+                } catch (anonErr: any) {
+                    console.warn(`[ai/generate-image] Pollinations Anónimo ERROR — ${anonErr?.message}`);
+                }
             }
 
             // --- IDEOGRAM ---
@@ -840,6 +903,9 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     const falModelPath = typeof modelId === "string" && modelId.trim().length > 0
                         ? modelId.trim()
                         : "fal-ai/flux/schnell";
+                    // Modelo por defecto es flux/schnell — mismo riesgo que Cloudflare/
+                    // Pollinations con la fórmula completa (ver routes/IMAGE_PROVIDERS.md).
+                    const falPrompt = await buildDistilledSchnellPrompt(prompt);
                     const falResp = await axios({
                         url: `https://fal.run/${falModelPath}`,
                         method: "POST",
@@ -848,7 +914,7 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                             "Content-Type": "application/json",
                         },
                         data: {
-                            prompt,
+                            prompt: falPrompt,
                             image_size: { width: width || 1024, height: height || 1024 },
                             num_inference_steps: steps ?? 4,
                             num_images: 1,
@@ -882,8 +948,11 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                 const segModelPath = typeof modelId === "string" && modelId.trim().length > 0
                     ? modelId.trim()
                     : "flux-schnell";
+                // Mismo modelo schnell que Cloudflare/SiliconFlow por defecto — ver
+                // routes/IMAGE_PROVIDERS.md. No-op si el prompt no viene de la fórmula.
+                const segPrompt = await buildDistilledSchnellPrompt(prompt);
                 const segBody = {
-                    prompt,
+                    prompt: segPrompt,
                     ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
                     samples: 1,
                     width: width || 1024,
@@ -940,10 +1009,14 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     // SDXL soporta negative_prompt (mejora mucho la fidelidad al estilo coloring-book);
                     // Flux Schnell lo ignora si se lo mandamos — inofensivo incluirlo siempre.
                     const cfNegative = negativePrompt || undefined;
+                    // flux-1-schnell en Cloudflare pierde el sujeto por completo con prompts largos
+                    // (verificado repetidamente — ver routes/IMAGE_PROVIDERS.md). buildDistilledSchnellPrompt
+                    // extrae el sujeto real y lo destila con IA antes de montar un prompt corto.
+                    const cfBasePrompt = await buildDistilledSchnellPrompt(prompt);
                     // Cloudflare usa clasificador IA — quitamos framing en español y envolvemos
                     // términos estilísticos conocidos en comillas para que el clasificador los lea
                     // como referencias/nombres, no como contenido descriptivo
-                    const cfPrompt = "safe illustration: " + prompt
+                    const cfPrompt = "safe illustration: " + cfBasePrompt
                         .replace(/Genera una imagen con la siguiente temática:/gi, "")
                         .replace(/que tenga las siguientes especificaciones:/gi, "")
                         .replace(/con los siguientes detalles:/gi, "")
@@ -964,7 +1037,11 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                                 Authorization: `Bearer ${apiKey.trim()}`,
                                 "Content-Type": "application/json",
                             },
-                            body: JSON.stringify({ prompt: cfPrompt, steps: 4, ...(cfNegative ? { negative_prompt: cfNegative } : {}) }),
+                            // steps:4 (mínimo) perdía fidelidad en escenas con varios elementos
+                            // (p.ej. puente + estanque + templo) y el modelo caía en un patrón
+                            // decorativo genérico en vez de la escena pedida. image-gen.ts ya usa
+                            // steps:8 para esta misma llamada y no ha dado ese problema — igualamos.
+                            body: JSON.stringify({ prompt: cfPrompt, steps: 8, ...(cfNegative ? { negative_prompt: cfNegative } : {}) }),
                             signal: AbortSignal.timeout(60_000),
                         }
                     );
@@ -1003,7 +1080,7 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                                 {
                                     method: "POST",
                                     headers: { Authorization: `Bearer ${apiKey.trim()}`, "Content-Type": "application/json" },
-                                    body: JSON.stringify({ prompt: safePrompt, steps: 4, ...(cfNegative ? { negative_prompt: cfNegative } : {}) }),
+                                    body: JSON.stringify({ prompt: safePrompt, steps: 8, ...(cfNegative ? { negative_prompt: cfNegative } : {}) }),
                                     signal: AbortSignal.timeout(60_000),
                                 }
                             );
@@ -1033,12 +1110,15 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
             }
 
             // --- STABLE HORDE ---
+            // No usar request.raw.on("close", ...) para detectar desconexión del cliente y
+            // cortar el polling — verificado (2026-08-14) que ese evento se dispara en falso
+            // a los ~5-7s con el cliente todavía conectado y esperando, y el código hacía un
+            // `return` sin enviar respuesta → HTTP 200 con 0 bytes, reproducible al 100%. El
+            // job de Horde se cancela igual en el catch si algo falla; solo se perdió la
+            // cancelación temprana si el usuario cierra la pestaña a medias (coste menor).
             if (provider === "Stable Horde") {
                 const hordeApiKey = apiKey || "0000000000";
                 let hordeJobId: string | null = null;
-                let clientGone = false;
-                const onClientClose = () => { clientGone = true; };
-                request.raw.on("close", onClientClose);
 
                 const cancelHordeJob = async (jobId: string) => {
                     try {
@@ -1083,12 +1163,6 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     while (Date.now() - startedAt < maxWait) {
                         await new Promise(r => setTimeout(r, 5000));
 
-                        if (clientGone) {
-                            console.log(`[ai/generate-image] Stable Horde — cliente desconectado, cancelando job ${hordeJobId}`);
-                            await cancelHordeJob(hordeJobId);
-                            return;
-                        }
-
                         const checkResp = await axios({
                             url: `https://stablehorde.net/api/v2/generate/check/${hordeJobId}`,
                             method: "GET",
@@ -1118,12 +1192,10 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     }
                     throw new Error("Stable Horde: generation timed out after 3 minutes");
                 } catch (hordeErr: any) {
-                    if (hordeJobId && !clientGone) await cancelHordeJob(hordeJobId);
+                    if (hordeJobId) await cancelHordeJob(hordeJobId);
                     const status = hordeErr?.response?.status;
                     const errDetail = hordeErr?.response?.data ? JSON.stringify(hordeErr.response.data).slice(0, 200) : hordeErr?.message;
                     console.warn(`[ai/generate-image] Stable Horde FALLÓ — status=${status} ${errDetail}`);
-                } finally {
-                    request.raw.removeListener("close", onClientClose);
                 }
             }
 

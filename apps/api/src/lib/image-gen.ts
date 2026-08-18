@@ -1,6 +1,7 @@
-import { pollinationsFetch } from "./pollinations-circuit.js";
+import { pollinationsFetch, pollinationsAnonymousFetch, buildAnonymousPollinationsUrl } from "./pollinations-circuit.js";
 import { getApiKey } from "./keys.js";
 import { Settings } from "../models/settings.js";
+import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt } from "./coloring-book-subject.js";
 
 export interface AutopilotImageModel { id: string; name: string; provider: string; modelId: string; }
 
@@ -55,6 +56,11 @@ export interface GenerateImageOpts {
      *  principal ya elegido explícitamente por el usuario NO era Pollinations,
      *  para no gastar pollen como efecto secundario de un fallback silencioso. */
     skipPollinations?: boolean;
+    /** true = el paso de Pollinations usa el endpoint anónimo (sin key, sin pollen)
+     *  en vez del gateway de pago — usado cuando el modelo seleccionado por el
+     *  usuario es "Pollinations Anon", para que ni siquiera el fallback interno
+     *  de esta función se redirija al gateway autenticado. */
+    anonymous?: boolean;
 }
 
 /**
@@ -67,12 +73,40 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
     const hfModelId = opts.hfModelId ?? "black-forest-labs/FLUX.1-schnell";
 
     // ── Pollinations ──────────────────────────────────────────────────────────
-    const pollinationsUrl =
-        `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-        `?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(model)}&enhance=${enhance}&nologo=true`;
+    // capPollinationsPrompt (dentro de pollinationsFetch) evita el 400 "negative
+    // dimension" de Fireworks por encima de 512 tokens, pero no evita la pérdida
+    // de sujeto: verificado empíricamente que Pollinations con "flux" también
+    // dibuja un sujeto genérico (un pájaro) cuando el prompt es la fórmula
+    // completa de coloring-book, aunque quepa dentro de ese límite — ver
+    // routes/IMAGE_PROVIDERS.md. buildDistilledSchnellPrompt es un fix distinto
+    // y complementario: no evita el rechazo por tokens, evita que se pierda el
+    // sujeto en primer lugar.
     if (opts.skipPollinations) {
         console.log("[image-gen] Pollinations SALTADO (skipPollinations — el proveedor principal ya elegido no era Pollinations)");
+    } else if (opts.anonymous) {
+        // Modelo "Pollinations Anon" seleccionado — nunca redirigir al gateway de pago,
+        // ni siquiera en este fallback interno (ver routes/IMAGE_PROVIDERS.md). Usa la
+        // plantilla de estilo reforzada — el endpoint anónimo ignora el estilo genérico
+        // por completo (verificado: devuelve ilustraciones realistas sin ella).
+        try {
+            const anonPrompt = await buildAnonymousColoringBookPrompt(prompt);
+            const anonUrl = buildAnonymousPollinationsUrl(anonPrompt, { width, height, seed, model });
+            const res = await pollinationsAnonymousFetch(anonUrl, { signal: opts.signal ?? AbortSignal.timeout(60_000) });
+            const ct = res.headers.get("content-type") ?? "";
+            if (res.ok && ct.startsWith("image/")) {
+                console.log(`[image-gen] Pollinations Anónimo OK (${model})`);
+                return Buffer.from(await res.arrayBuffer());
+            }
+            await res.body?.cancel();
+            console.warn(`[image-gen] Pollinations Anónimo ${res.status}`);
+        } catch (e: any) {
+            console.warn(`[image-gen] Pollinations Anónimo ${e?.name === "AbortError" ? "timeout" : "error"}: ${e.message}`);
+        }
     } else try {
+        const pollinationsPrompt = await buildDistilledSchnellPrompt(prompt);
+        const pollinationsUrl =
+            `https://image.pollinations.ai/prompt/${encodeURIComponent(pollinationsPrompt)}` +
+            `?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(model)}&enhance=${enhance}&nologo=true`;
         const res = await pollinationsFetch(pollinationsUrl, {
             signal: opts.signal ?? AbortSignal.timeout(60_000),
         });
@@ -93,12 +127,16 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
         const cfAccount = process.env.CF_ACCOUNT_ID || String((await Settings.findOne({ key: "CF_ACCOUNT_ID" }).lean() as any)?.value ?? "");
         if (cfToken && cfAccount) {
             console.log("[image-gen] Intentando Cloudflare flux-1-schnell...");
+            // flux-1-schnell pierde el sujeto por completo con prompts largos (verificado
+            // repetidamente — ver routes/IMAGE_PROVIDERS.md). El `slice(0, 2048)` de abajo
+            // no arregla esto por sí solo: recorta a ciegas por caracteres.
+            const cfPrompt = await buildDistilledSchnellPrompt(prompt);
             const cfRes = await fetch(
                 `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/run/@cf/black-forest-labs/flux-1-schnell`,
                 {
                     method: "POST",
                     headers: { Authorization: `Bearer ${cfToken}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ prompt: prompt.slice(0, 2048), steps: 8 }),
+                    body: JSON.stringify({ prompt: cfPrompt.slice(0, 2048), steps: 8 }),
                     signal: opts.signal ?? AbortSignal.timeout(60_000),
                 }
             );
@@ -124,10 +162,13 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
         if (sfKey && sfKey !== _cachedSiliconflowKey) _cachedSiliconflowKey = sfKey;
         if (sfKey) {
             console.log("[image-gen] Intentando SiliconFlow FLUX.1-schnell...");
+            // Mismo modelo schnell que Cloudflare — verificado que pierde el sujeto igual
+            // con la fórmula completa (ver routes/IMAGE_PROVIDERS.md).
+            const sfPrompt = await buildDistilledSchnellPrompt(prompt);
             const sfRes = await fetch("https://api.siliconflow.com/v1/images/generations", {
                 method: "POST",
                 headers: { Authorization: `Bearer ${sfKey}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ model: "black-forest-labs/FLUX.1-schnell", prompt, image_size: `${width}x${height}`, seed }),
+                body: JSON.stringify({ model: "black-forest-labs/FLUX.1-schnell", prompt: sfPrompt, image_size: `${width}x${height}`, seed }),
                 signal: opts.signal ?? AbortSignal.timeout(60_000),
             });
             if (sfRes.ok) {
@@ -155,10 +196,12 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
     if (segmindKey) {
         console.log("[image-gen] Intentando Segmind FLUX.1-schnell...");
         try {
+            // Mismo modelo schnell que Cloudflare/SiliconFlow — ver routes/IMAGE_PROVIDERS.md.
+            const segPrompt = await buildDistilledSchnellPrompt(prompt);
             const segRes = await fetch("https://api.segmind.com/v1/flux-schnell", {
                 method: "POST",
                 headers: { "x-api-key": segmindKey, "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt, width, height, steps: 4, seed, samples: 1 }),
+                body: JSON.stringify({ prompt: segPrompt, width, height, steps: 4, seed, samples: 1 }),
                 signal: AbortSignal.timeout(60_000),
             });
             const ct = segRes.headers.get("content-type") ?? "";
@@ -183,12 +226,15 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
     const hfEndpoint = `https://router.huggingface.co/hf-inference/models/${hfModelId}`;
     const modelName = hfModelId.split("/").pop() ?? hfModelId;
     console.log(`[image-gen] Intentando HuggingFace ${modelName}...`);
+    // El modelo por defecto es también FLUX.1-schnell — ver routes/IMAGE_PROVIDERS.md.
+    // No-op si el prompt no viene de la fórmula de coloring-book.
+    const hfPrompt = await buildDistilledSchnellPrompt(prompt);
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
             const hfRes = await fetch(hfEndpoint, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${hfKey}`, "Content-Type": "application/json", "x-use-cache": "false" },
-                body: JSON.stringify({ inputs: prompt }),
+                body: JSON.stringify({ inputs: hfPrompt }),
                 signal: AbortSignal.timeout(90_000),
             });
             const ct = hfRes.headers.get("content-type") ?? "";

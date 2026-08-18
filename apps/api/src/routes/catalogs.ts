@@ -45,11 +45,26 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
     app.post("/catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, prompt, model, aiModel, width, height, totalImages, promptParts, productType, creativity, negativePrompt, nicheIds, rawPrompt, autoVariedPrompt } = request.body || {};
+            const { name, prompt, model, aiModel, width, height, totalImages, promptParts, productType, creativity, negativePrompt, nicheIds, rawPrompt, autoVariedPrompt, images } = request.body || {};
             const modelData = aiModel ?? model;
             if (!prompt || !modelData || !totalImages) {
                 return reply.status(400).send({ error: "prompt, model y totalImages son requeridos" });
             }
+            // Permite pre-sembrar imágenes ya generadas (p.ej. la imagen de descubrimiento
+            // aprobada en Telegram) para que el job de generación continúe desde el siguiente
+            // slot en vez de regenerar desde cero — ver lib/telegram-polling.ts y routes/niches.ts.
+            const seededImages = Array.isArray(images)
+                ? images
+                    .filter((img: any) => img?.publicId && img?.url)
+                    .map((img: any) => ({
+                        publicId: String(img.publicId),
+                        url: String(img.url),
+                        width: Number(img.width) || 0,
+                        height: Number(img.height) || 0,
+                        bytes: Number(img.bytes) || 0,
+                        createdAt: img.createdAt ?? new Date().toISOString(),
+                    }))
+                : [];
 
             // Check if any catalog is currently occupying the slot
             const hasActive = await Catalog.exists({ status: { $in: ["queued", "pending", "running"] } });
@@ -66,7 +81,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
                 width: width || 1024,
                 height: height || 1024,
                 totalImages: Math.min(Math.max(1, Number(totalImages)), 50),
-                images: [],
+                images: seededImages,
                 status: initialStatus,
                 queueOrder: Date.now(),
                 nicheIds: Array.isArray(nicheIds) ? nicheIds : [],

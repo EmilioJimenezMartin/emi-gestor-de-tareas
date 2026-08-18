@@ -11,6 +11,9 @@ export interface ITelegramAction {
     imagePrompt?: string;
     aiModel?: { id: string; name: string; provider: string; modelId: string };
     cloneData?: Record<string, unknown>;
+    /** Imagen de descubrimiento ya subida a Cloudinary — si está presente, se usa como
+     *  primera imagen del catálogo al aprobar en vez de regenerarla desde cero. */
+    discoveryImage?: { publicId: string; url: string; width: number; height: number; bytes: number };
     autoApproveAt: Date;
     createdAt: Date;
     resolvedAt?: Date;
@@ -27,6 +30,7 @@ const schema = new Schema<ITelegramAction>({
     imagePrompt: String,
     aiModel: { type: Schema.Types.Mixed },
     cloneData: { type: Schema.Types.Mixed },
+    discoveryImage: { type: Schema.Types.Mixed },
     autoApproveAt: { type: Date, required: true },
     createdAt: { type: Date, default: Date.now },
     resolvedAt: Date,

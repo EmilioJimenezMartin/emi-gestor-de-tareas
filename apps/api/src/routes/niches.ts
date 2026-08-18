@@ -4,6 +4,7 @@ import { sendTelegramImageWithButtons, sendTelegram } from "../lib/telegram.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { getAutopilotImageModel } from "../lib/image-gen.js";
 import { buildColoringBookPrompt } from "./autopilot.js";
+import { extractColoringBookSubject } from "../lib/coloring-book-subject.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -1386,9 +1387,17 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
                 .select("name prompt status")
                 .lean() as any[];
             const completedCatalogs = existingCatalogs.filter((c: any) => c.status === "completed" || c.status === "published");
+            // Solo el SUJETO (no la fórmula de estilo de ~350 palabras que envuelve cada
+            // prompt guardado) — verificado (2026-08-17) que mandar el prompt completo de
+            // hasta 40 catálogos aquí, DUPLICADO además en dos bloques del mismo mensaje,
+            // producía peticiones de ~36.700 tokens (413 de Groq, contribuye a agotar la
+            // cuota diaria de Google) sin aportar nada — el estilo ya lo fija
+            // discoveryAnchorBlock una sola vez, aquí solo hace falta saber qué SUJETOS
+            // evitar repetir.
             const usedPrompts = existingCatalogs
                 .map((c: any) => c.prompt?.trim())
                 .filter(Boolean)
+                .map((p: string) => extractColoringBookSubject(p))
                 .slice(0, 40); // cap to keep prompt size sane
             const usedSituations = existingCatalogs
                 .map((c: any) => {
@@ -1411,9 +1420,13 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
 
             // confirmedPrompts (user hand-picked) take priority over completed catalog prompts
             const confirmedPrompts: string[] = (niche.confirmedPrompts ?? []).map((p: any) => p.prompt).filter(Boolean);
-            const referencePrompts = confirmedPrompts.length > 0
+            // extractColoringBookSubject no-opea si no viene de la fórmula (p.ej. texto
+            // corto escrito a mano en confirmedPrompts), así que es seguro aplicarlo aquí
+            // también — mismo motivo que en usedPrompts (ver comentario arriba).
+            const referencePrompts = (confirmedPrompts.length > 0
                 ? confirmedPrompts
-                : completedCatalogs.map((c: any) => c.prompt).filter(Boolean);
+                : completedCatalogs.map((c: any) => c.prompt).filter(Boolean)
+            ).map((p: string) => extractColoringBookSubject(p));
 
             const onTopicAnchorBlock = referencePrompts.length > 0
                 ? `\n\n${confirmedPrompts.length > 0 ? "USER-APPROVED PROMPTS (hand-picked by the owner as working well for this niche)" : "ON-TOPIC REFERENCE (prompts from completed catalogs)"}:\n${referencePrompts.slice(0, 5).map((p, i) => `  ${i + 1}. "${p}"`).join("\n")}\nStudy these carefully — they define exactly what subject matter belongs in this niche. Your new situations must match this specificity and keep "${visualCoreName}" as the undeniable core.`
@@ -1465,7 +1478,7 @@ RIGHT (niche is the actual subject):
 - Niche "Anime" → "a magical girl mid-transformation, flowing ribbons and sparkling particles forming around her silhouette" ✓
 - Niche "Mandalas" → "an intricate lotus mandala with nested geometric petals and sacred geometry in concentric rings" ✓
 
-VARIATION: The ${n} situations must be visually distinct. Vary the specific sub-type, iconic character/motif, or signature scenario WITHIN "${visualCoreName}". Do NOT vary by external settings or unrelated genres.${usedPrompts.length > 0 ? "\n\nALREADY USED — produce entirely different sub-themes, do not repeat:\n" + usedPrompts.slice(0, 20).map((p, i) => `${i + 1}. ${p}`).join("\n") : ""}${discoveryPrompt ? "\n\nSTYLE RULE: Each prompt MUST preserve the visual technique from the approved style anchor above. Change the subject, not the drawing style." : ""}
+VARIATION: The ${n} situations must be visually distinct. Vary the specific sub-type, iconic character/motif, or signature scenario WITHIN "${visualCoreName}". Do NOT vary by external settings or unrelated genres. The subjects to avoid repeating are already listed above under "ALREADY USED".${discoveryPrompt ? "\n\nSTYLE RULE: Each prompt MUST preserve the visual technique from the approved style anchor above. Change the subject, not the drawing style." : ""}
 
 ${Number(imagination) <= 25
     ? `CREATIVITY LEVEL: CONVENTIONAL (${imagination}/100). Choose the most iconic, recognisable, bestselling subjects of this niche — the scenes that immediately define what the niche IS. Safe, proven, high-demand images.`
@@ -1556,11 +1569,20 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             for (let i = 0; i < situations.length; i++) {
                 const s = situations[i];
                 const initialStatus = (i === 0 && !hasActive) ? "pending" : "queued";
+                const effectiveProductType = niche.productType ?? "coloring-book";
                 const catalog = await Catalog.create({
                     name: `${niche.name} — ${s.situation}`,
-                    prompt: s.prompt.trim(),
+                    // La IA solo devuelve la escena (se le dice "no style keywords, added
+                    // automatically") — hay que envolverla aquí. Antes se guardaba s.prompt
+                    // crudo: si la IA copiaba el "APPROVED VISUAL STYLE" anchor (prompt viejo
+                    // del niche, de antes de reforzar CB_STYLE_EXCLUSIONS) su eco parcial
+                    // contenía "coloring book page" → alreadyHasFormula en catalog.ts saltaba
+                    // el wrap real y el catálogo se quedaba SIN anatomía/manos/exclusiones.
+                    prompt: effectiveProductType === "coloring-book"
+                        ? buildColoringBookPrompt(s.prompt.trim(), style)
+                        : s.prompt.trim(),
                     rawPrompt: false,
-                    productType: niche.productType ?? "coloring-book",
+                    productType: effectiveProductType,
                     creativity: 50,
                     negativePrompt: "",
                     aiModel,
@@ -1633,9 +1655,13 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
 
             // confirmedPrompts are hand-picked by the user — highest quality anchor
             const confirmedPrompts: string[] = (niche.confirmedPrompts ?? []).map((p: any) => p.prompt).filter(Boolean);
-            const referencePrompts = confirmedPrompts.length > 0
+            // Solo el sujeto, no la fórmula de estilo completa — ver comentario en el
+            // handler de /explode-catalogs sobre por qué esto importa para el tamaño
+            // del prompt final.
+            const referencePrompts = (confirmedPrompts.length > 0
                 ? confirmedPrompts
-                : existingCatalogs.map((c: any) => c.prompt).filter(Boolean);
+                : existingCatalogs.map((c: any) => c.prompt).filter(Boolean)
+            ).map((p: string) => extractColoringBookSubject(p));
 
             const existingPromptsBlock = referencePrompts.length > 0
                 ? `\n\n${confirmedPrompts.length > 0 ? "USER-APPROVED PROMPTS (hand-picked by the owner as working well for this niche)" : "ON-TOPIC REFERENCE (prompts from completed catalogs)"}:\n${referencePrompts.slice(0, 5).map((p, i) => `  ${i + 1}. "${p}"`).join("\n")}\nStudy these carefully — they define exactly what subject matter belongs in this niche. Your new situations must match this specificity and keep "${visualCoreName}" as the undeniable core.`
@@ -1956,17 +1982,35 @@ Estructura exacta:
                 try {
                     let imageBytes: Buffer | null = null;
 
+                    const isAnonymousModel = aiModel.provider === "Pollinations Anon";
+
                     // Intento 1: pollinationsFetch directo (sin capa HTTP interna — sin límite de 150s de ai.ts)
-                    if (aiModel.provider === "Pollinations") {
+                    if (aiModel.provider === "Pollinations" || isAnonymousModel) {
                         try {
-                            const { pollinationsFetch } = await import("../lib/pollinations-circuit.js");
+                            const { pollinationsFetch, pollinationsAnonymousFetch, buildAnonymousPollinationsUrl } = await import("../lib/pollinations-circuit.js");
+                            const { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt } = await import("../lib/coloring-book-subject.js");
                             const isSlowModel = (aiModel.modelId ?? "").includes("dev") || (aiModel.modelId ?? "").includes("pro");
                             const seed = Math.floor(Math.random() * 999999);
-                            const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=768&height=1024&seed=${seed}&model=${encodeURIComponent(aiModel.modelId ?? "flux")}&enhance=false&nologo=true`;
-                            console.log(`[clone-telegram bg] Pollinations directo model=${aiModel.modelId} slow=${isSlowModel}`);
-                            const res = await pollinationsFetch(pollinationsUrl, {
-                                signal: AbortSignal.timeout(isSlowModel ? 240_000 : 90_000),
-                            });
+                            // fullPrompt es la fórmula completa de coloring-book (~350 palabras) — verificado
+                            // que Pollinations pierde el sujeto y dibuja algo genérico (un pájaro) con ella
+                            // sin acortar, exactamente el mismo fallo que Cloudflare/SiliconFlow — ver
+                            // routes/IMAGE_PROVIDERS.md. Esta es la imagen que se manda a Telegram para
+                            // aprobar el nicho — si sale mal aquí, el usuario nunca llega a ver el sujeto real.
+                            // El endpoint anónimo necesita además la plantilla de estilo reforzada — el
+                            // genérico no basta, ignora el estilo coloring-book por completo (verificado).
+                            const discoveryPrompt = isAnonymousModel
+                                ? await buildAnonymousColoringBookPrompt(fullPrompt)
+                                : await buildDistilledSchnellPrompt(fullPrompt);
+                            console.log(`[clone-telegram bg] Pollinations${isAnonymousModel ? " ANÓNIMO" : ""} directo model=${aiModel.modelId} slow=${isSlowModel}`);
+                            const res = isAnonymousModel
+                                ? await pollinationsAnonymousFetch(
+                                    buildAnonymousPollinationsUrl(discoveryPrompt, { width: 768, height: 1024, seed, model: aiModel.modelId ?? "flux" }),
+                                    { signal: AbortSignal.timeout(isSlowModel ? 240_000 : 90_000) },
+                                )
+                                : await pollinationsFetch(
+                                    `https://image.pollinations.ai/prompt/${encodeURIComponent(discoveryPrompt)}?width=768&height=1024&seed=${seed}&model=${encodeURIComponent(aiModel.modelId ?? "flux")}&enhance=false&nologo=true`,
+                                    { signal: AbortSignal.timeout(isSlowModel ? 240_000 : 90_000) },
+                                );
                             const ct = res.headers.get("content-type") ?? "";
                             if (res.ok && ct.startsWith("image/")) {
                                 imageBytes = Buffer.from(await res.arrayBuffer());
@@ -1981,15 +2025,46 @@ Estructura exacta:
                     }
 
                     // Intento 2: cadena completa de proveedores (Pollinations schnell → Cloudflare → SiliconFlow → HF)
+                    // anonymous: true cuando el modelo elegido es "Pollinations Anon" — para que ni este
+                    // fallback interno se redirija al gateway de pago (ver routes/IMAGE_PROVIDERS.md).
                     if (!imageBytes) {
                         console.log(`[clone-telegram bg] Fallback generateImage (provider=${aiModel.provider} model=${aiModel.modelId})`);
                         const { generateImage } = await import("../lib/image-gen.js");
-                        imageBytes = await generateImage(fullPrompt).catch((e: any) => {
+                        imageBytes = await generateImage(fullPrompt, isAnonymousModel ? { anonymous: true } : {}).catch((e: any) => {
                             console.warn(`[clone-telegram bg] generateImage falló: ${e?.message}`);
                             return null;
                         });
                         if (imageBytes) console.log(`[clone-telegram bg] generateImage OK (${imageBytes.length} bytes)`);
                         else console.warn("[clone-telegram bg] generateImage también falló — enviando texto");
+                    }
+
+                    // Subir a Cloudinary ANTES de mandarla a Telegram — así, si el usuario aprueba
+                    // el nicho, el catálogo 1 reutiliza esta misma imagen en vez de regenerarla
+                    // desde cero (ver uso de discoveryImage en el handler de "continuar" más abajo).
+                    let discoveryImage: { publicId: string; url: string; width: number; height: number; bytes: number } | undefined;
+                    if (imageBytes) {
+                        try {
+                            const { getCloudinaryConfig, initCloudinary } = await import("./cloudinary.js");
+                            const config = await getCloudinaryConfig();
+                            if (config) {
+                                const cld = await initCloudinary(config);
+                                const uploadResult = await new Promise<any>((resolve, reject) => {
+                                    const stream = cld.uploader.upload_stream(
+                                        { folder: "emi-kdp-assets", resource_type: "image", tags: ["clone-engine-discovery"] },
+                                        (error: any, res: any) => { if (error) reject(error); else resolve(res); }
+                                    );
+                                    stream.end(imageBytes);
+                                });
+                                discoveryImage = {
+                                    publicId: uploadResult.public_id, url: uploadResult.secure_url,
+                                    width: uploadResult.width ?? 0, height: uploadResult.height ?? 0,
+                                    bytes: uploadResult.bytes ?? imageBytes.length,
+                                };
+                                console.log(`[clone-telegram bg] Cloudinary OK ${discoveryImage.publicId}`);
+                            }
+                        } catch (e: any) {
+                            console.warn(`[clone-telegram bg] Cloudinary upload falló (no crítico): ${e?.message}`);
+                        }
                     }
 
                     const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
@@ -2043,7 +2118,9 @@ Estructura exacta:
                         else console.warn("[clone-telegram bg] sendTelegramButtons también falló");
                     }
 
-                    if (msgId) { action.messageId = msgId; await action.save(); }
+                    if (msgId) (action as any).messageId = msgId;
+                    if (discoveryImage) (action as any).discoveryImage = discoveryImage;
+                    if (msgId || discoveryImage) await action.save();
                 } catch (e: any) {
                     console.error(`[clone-telegram bg] Error para "${clone.nicheName}":`, e.message);
                 }

@@ -84,7 +84,7 @@ Key variables:
 - `routes/tasks.ts` — CRUD for tasks and nested comment operations; seeds from `apps/web/src/data/tasks.json` on first empty DB load
 - `routes/finance.ts` — Finance movements with Zod validation; emits Socket.IO events on mutations
 - `routes/extractor.ts` — Web scraping jobs that fetch URLs/APIs, strip HTML, and call the AI layer
-- `routes/ai.ts` — Image generation proxy supporting Google Gemini, Leonardo.AI, and Hugging Face, with Pollinations as final fallback
+- `routes/ai.ts` — Image generation proxy supporting Google Gemini, Leonardo.AI, Hugging Face, Cloudflare Workers AI, SiliconFlow, Segmind, Dezgo, Tensor.art, Ideogram, Stable Horde and Together AI, with Pollinations as final fallback. **Before changing any prompt-building logic here (or in `lib/image-gen.ts` / `autopilot.ts`'s `buildColoringBookPrompt`), read `routes/IMAGE_PROVIDERS.md` — each provider has its own prompt-length limit and `negative_prompt` support, a fix that restores fidelity on one provider can be irrelevant or wrong on another, and prompt fidelity must be verified with a real generated image, not just a passing typecheck.**
 - `routes/settings.ts` — Key-value store in MongoDB for runtime config (LLM provider/model, API keys)
 - `routes/items.ts` — Generic items collection
 

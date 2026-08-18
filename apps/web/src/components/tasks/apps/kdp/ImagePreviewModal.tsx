@@ -12,7 +12,7 @@ import type { CatalogImageFE, FavoriteImage } from "./types";
 type PreviewContext = {
     urls: string[];
     index: number;
-    catalogCtx?: { id: string; images: CatalogImageFE[] };
+    catalogCtx?: { id: string; images: CatalogImageFE[]; prompt?: string };
     vaultCtx?: true;
     cloudinaryCtx?: true;
 } | null;

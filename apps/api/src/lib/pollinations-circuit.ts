@@ -235,3 +235,52 @@ export async function pollinationsFetch(url: string, opts: RequestInit = {}): Pr
         releaseSemaphore();
     }
 }
+
+/**
+ * Fetch al endpoint público ANTIGUO de Pollinations (image.pollinations.ai) — sin API
+ * key, sin gasto de "pollen", acceso anónimo. A diferencia de pollinationsFetch(), esta
+ * función NUNCA reescribe la URL hacia el gateway de pago gen.pollinations.ai — es
+ * justo lo que hace que sea "anónimo": el usuario eligió explícitamente un modelo
+ * "Pollinations Anon" en el selector precisamente para NO gastar pollen ni depender de
+ * la key configurada, así que esta función no debe caer nunca en el gateway autenticado.
+ * Úsala solo cuando el proveedor seleccionado sea literalmente "Pollinations Anon" — para
+ * el resto de casos, pollinationsFetch() sigue siendo el camino correcto.
+ *
+ * Aviso de calidad (ver NOTA arriba, verificado 2026-08-09): este pipeline gratis puede
+ * ignorar las restricciones de estilo del prompt (coloring book, sin color, sin
+ * sombreado) y devolver ilustraciones a todo color — es una limitación conocida del
+ * modelo/pipeline detrás de esta URL, no un bug de esta función.
+ */
+export async function pollinationsAnonymousFetch(url: string, opts: RequestInit = {}): Promise<Response> {
+    await acquireSemaphore();
+    try {
+        let res: Response;
+        for (let attempt = 0; ; attempt++) {
+            res = await fetch(url, opts);
+            if (!res.ok && (res.status === 503 || res.status === 429 || res.status === 402) && attempt < TRANSIENT_RETRIES) {
+                await res.body?.cancel().catch(() => {});
+                console.warn(`[pollinations-circuit] Anónimo transitorio (${res.status}) — reintento ${attempt + 1}/${TRANSIENT_RETRIES} en ${TRANSIENT_WAIT_MS / 1000}s`);
+                await new Promise(r => setTimeout(r, TRANSIENT_WAIT_MS));
+                continue;
+            }
+            if (!res.ok) {
+                const body = await res.clone().text().catch(() => "");
+                console.warn(`[pollinations-circuit] Anónimo HTTP ${res.status}: ${body.slice(0, 200)}`);
+            }
+            break;
+        }
+        return res;
+    } finally {
+        releaseSemaphore();
+    }
+}
+
+/**
+ * Construye la URL del endpoint anónimo a partir de un prompt y parámetros — mismo
+ * formato que el viejo image.pollinations.ai/prompt/X, sin pasar por toGenPollinationsUrl.
+ */
+export function buildAnonymousPollinationsUrl(prompt: string, opts: { width?: number; height?: number; seed?: number; model?: string } = {}): string {
+    const { width = 1024, height = 1024, seed = Math.floor(Math.random() * 999999), model = "flux" } = opts;
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+        `?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(model)}&nologo=true`;
+}

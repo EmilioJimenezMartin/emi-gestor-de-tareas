@@ -181,6 +181,11 @@ async function handleNicheDiscovery(
                 const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
                 const nicheId = String(tAction.nicheId);
                 const discoveryPrompt = (tAction as any).imagePrompt as string | undefined;
+                // Si la imagen de descubrimiento ya se subió a Cloudinary (ver routes/autopilot.ts),
+                // se reutiliza como primera imagen del catálogo en vez de regenerarla desde cero —
+                // es literalmente la imagen que el usuario aprobó en Telegram.
+                const discoveryImage = (tAction as any).discoveryImage as
+                    { publicId: string; url: string; width: number; height: number; bytes: number } | undefined;
 
                 // --- Catalog 1: exact discovery prompt ---
                 let catalog1Created = false;
@@ -197,6 +202,7 @@ async function handleNicheDiscovery(
                             width: 1024, height: 1024,
                             totalImages: cfg.imagesPerCatalog,
                             nicheIds: [nicheId],
+                            ...(discoveryImage ? { images: [discoveryImage] } : {}),
                         }),
                     });
                     if (cat1Res.ok) {
@@ -755,6 +761,11 @@ async function processUpdate(update: any): Promise<void> {
                     const nicheId = String((niche as any)._id);
                     const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
                     const discoveryPromptClone = tAction.imagePrompt as string | undefined;
+                    // Reutiliza la imagen ya aprobada en Telegram (subida a Cloudinary en
+                    // niches.ts al generarla) como primera imagen del catálogo, en vez de
+                    // regenerarla desde cero.
+                    const discoveryImageClone = (tAction as any).discoveryImage as
+                        { publicId: string; url: string; width: number; height: number; bytes: number } | undefined;
 
                     setImmediate(async () => {
                         try {
@@ -776,6 +787,7 @@ async function processUpdate(update: any): Promise<void> {
                                         width: 1024, height: 1024,
                                         totalImages: cfg.imagesPerCatalog,
                                         nicheIds: [nicheId],
+                                        ...(discoveryImageClone ? { images: [discoveryImageClone] } : {}),
                                     }),
                                 });
                                 if (cat1Res.ok) {
@@ -1028,10 +1040,13 @@ async function processUpdate(update: any): Promise<void> {
                         }
                     } catch { /* fall through */ }
 
-                    // 2nd try: Pollinations/Segmind/HF cascade
+                    // 2nd try: Pollinations/Segmind/HF cascade — anonymous:true si el modelo
+                    // configurado es "Pollinations Anon", para que este fallback tampoco se
+                    // redirija al gateway de pago (ver routes/IMAGE_PROVIDERS.md).
                     if (!imgBuffer) {
+                        const isAnonymousModel = imgModel.provider === "Pollinations Anon";
                         imgBuffer = await withImageSlot(`/img:${Date.now()}`, () =>
-                            generateImage(prompt, { model, width: 1024, height: 1024, enhance: true })
+                            generateImage(prompt, { model, width: 1024, height: 1024, enhance: true, ...(isAnonymousModel ? { anonymous: true } : {}) })
                         );
                     }
 
@@ -2483,10 +2498,12 @@ REGLAS — no negociables:
                         if (aiRes.ok && ct.startsWith("image/")) imgBuffer = Buffer.from(await aiRes.arrayBuffer());
                     } catch { /* fall through */ }
 
-                    // 2nd: Pollinations/Segmind/HF cascade
+                    // 2nd: Pollinations/Segmind/HF cascade — anonymous:true si el modelo
+                    // configurado es "Pollinations Anon" (ver routes/IMAGE_PROVIDERS.md).
                     if (!imgBuffer) {
+                        const isAnonymousModel = voiceImgModel.provider === "Pollinations Anon";
                         imgBuffer = await withImageSlot(`voice-img:${Date.now()}`, () =>
-                            generateImage(imagePrompt, { width: 1024, height: 1024 })
+                            generateImage(imagePrompt, { width: 1024, height: 1024, ...(isAnonymousModel ? { anonymous: true } : {}) })
                         );
                     }
 

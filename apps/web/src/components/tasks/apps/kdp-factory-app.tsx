@@ -3057,13 +3057,18 @@ export function KdpFactoryApp() {
                 body: JSON.stringify({ publicId }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Error");
+            // El catálogo ya no existe en el servidor (borrado por otra vía) — la
+            // imagen local está obsoleta de todas formas, tratarlo como éxito en
+            // vez de dejarla atascada para siempre en la lista.
+            if (!res.ok && res.status !== 404) throw new Error(data.error || "Error");
             setIaCatalogs((prev) =>
-                prev.map((c) =>
-                    c._id === catalogId
-                        ? { ...c, images: c.images.filter((img) => img.publicId !== publicId) }
-                        : c
-                )
+                res.status === 404
+                    ? prev.filter((c) => c._id !== catalogId)
+                    : prev.map((c) =>
+                        c._id === catalogId
+                            ? { ...c, images: c.images.filter((img) => img.publicId !== publicId) }
+                            : c
+                    )
             );
             toast.success("Imagen eliminada");
         } catch (e: any) {
@@ -9105,30 +9110,50 @@ POST-LANZAMIENTO:
         setShowSavePromptDialog(true);
     }, [niches]);
 
+    // These 12 are plain functions redefined on every render (not useCallback) — without
+    // this ref indirection, cardActions below would get a new identity on every render,
+    // which propagates through KdpCardCtx and force-rerenders every CatalogCard on any
+    // parent state change (e.g. every catalog:progress socket tick), defeating its
+    // React.memo entirely. The ref always holds the latest closures; the stable wrapper
+    // functions in cardActions never change identity, so only cards whose OWN props
+    // actually changed re-render.
+    const latestUnstableActionsRef = useRef({
+        handleQueueReorder, retryFailedSlots, relaunchCatalog, skipCatalogImage,
+        forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset,
+        bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview,
+        toggleFavorite, upscaleImage,
+    });
+    latestUnstableActionsRef.current = {
+        handleQueueReorder, retryFailedSlots, relaunchCatalog, skipCatalogImage,
+        forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset,
+        bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview,
+        toggleFavorite, upscaleImage,
+    };
+
     const cardActions = useMemo<KdpCardActions>(() => ({
         setDraggingId,
         setDragOverId,
-        handleQueueReorder,
+        handleQueueReorder: (fromId, toId) => latestUnstableActionsRef.current.handleQueueReorder(fromId, toId),
         onReuseConfig,
         onSavePrompt: onSaveCatalogPrompt,
         onOpenEditor,
-        onDownloadPdf: (catalog) => void downloadCatalogPdfDirect(catalog),
-        onExportDataset: (catalog) => exportCatalogDataset(catalog),
-        retryFailedSlots,
-        relaunchCatalog,
-        skipCatalogImage,
-        forceCompleteCatalog,
+        onDownloadPdf: (catalog) => void latestUnstableActionsRef.current.downloadCatalogPdfDirect(catalog),
+        onExportDataset: (catalog) => latestUnstableActionsRef.current.exportCatalogDataset(catalog),
+        retryFailedSlots: (catalogId) => latestUnstableActionsRef.current.retryFailedSlots(catalogId),
+        relaunchCatalog: (catalogId) => latestUnstableActionsRef.current.relaunchCatalog(catalogId),
+        skipCatalogImage: (catalogId) => latestUnstableActionsRef.current.skipCatalogImage(catalogId),
+        forceCompleteCatalog: (catalogId) => latestUnstableActionsRef.current.forceCompleteCatalog(catalogId),
         setConfirmStopCatalogId,
         setConfirmDeleteCatalogId,
         setCatalogNichePickerId,
         onToggleNiche,
         setBulkDeleteCatalogId,
         setBulkDeleteSelection,
-        onBulkDeleteImages: bulkDeleteSelectedImages,
-        toggleImageSelect,
-        openCatalogImagePreview,
-        toggleFavorite,
-        upscaleImage,
+        onBulkDeleteImages: (catalogId) => latestUnstableActionsRef.current.bulkDeleteSelectedImages(catalogId),
+        toggleImageSelect: (url) => latestUnstableActionsRef.current.toggleImageSelect(url),
+        openCatalogImagePreview: (images, index, catalogId) => latestUnstableActionsRef.current.openCatalogImagePreview(images, index, catalogId),
+        toggleFavorite: (url, meta) => latestUnstableActionsRef.current.toggleFavorite(url, meta),
+        upscaleImage: (url, publicId) => latestUnstableActionsRef.current.upscaleImage(url, publicId),
         statusBadge: (status) => {
             const map: Record<IACatalogFE["status"], { label: string; cls: string }> = {
                 queued: { label: "En espera", cls: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
@@ -9142,7 +9167,7 @@ POST-LANZAMIENTO:
             return <Badge variant="neutral" className={`text-sm font-black uppercase ${cls}`}>{label}</Badge>;
         },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [onReuseConfig, onSaveCatalogPrompt, onOpenEditor, onToggleNiche, handleQueueReorder, retryFailedSlots, relaunchCatalog, skipCatalogImage, forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset, bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview, toggleFavorite, upscaleImage]);
+    }), [onReuseConfig, onSaveCatalogPrompt, onOpenEditor, onToggleNiche]);
 
     const renderAIStudio = () => {
         const currentModel = AI_MODELS.find(m => m.id === selectedModel);
@@ -9406,6 +9431,26 @@ POST-LANZAMIENTO:
                             {imagePrompt && (
                                 <p className="text-sm text-neutral-700 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
                             )}
+                            {imagePrompt && (() => {
+                                // Estima el prompt final tal como lo mandará catalog.ts: la fórmula
+                                // de coloring book (~964 chars) se le añade por delante salvo en modo
+                                // raw. Leonardo rechaza en seco por encima de 1500 chars reales.
+                                const formulaOverhead = studioRawPrompt || catalogProductType !== "coloring-book" ? 0 : 964;
+                                const estimatedLength = imagePrompt.length + formulaOverhead;
+                                const isLeonardo = currentModel?.provider === "Leonardo";
+                                const LEONARDO_LIMIT = 1500;
+                                const danger = isLeonardo && estimatedLength > LEONARDO_LIMIT;
+                                const warning = !danger && estimatedLength > (isLeonardo ? LEONARDO_LIMIT * 0.85 : 1800);
+                                if (!danger && !warning) return null;
+                                return (
+                                    <p className={`text-sm font-black px-1 flex items-center gap-1.5 ${danger ? "text-rose-400" : "text-amber-400"}`}>
+                                        <AlertTriangle size={11} />
+                                        {danger
+                                            ? `Prompt estimado: ~${estimatedLength} caracteres — supera el límite de Leonardo (${LEONARDO_LIMIT}). Se recortará automáticamente, puede perder detalle del tema.`
+                                            : `Prompt estimado: ~${estimatedLength} caracteres — se está acercando al límite${isLeonardo ? " de Leonardo" : ""}. Considera acortarlo.`}
+                                    </p>
+                                );
+                            })()}
                         </div>
 
                         <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
@@ -15733,7 +15778,7 @@ POST-LANZAMIENTO:
                                         <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Modelo</label>
                                         <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
                                             className="w-full h-9 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
-                                            {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
+                                            {AI_MODELS.filter(m => ["Pollinations", "Pollinations Anon", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
                                                 <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
                                             ))}
                                         </select>

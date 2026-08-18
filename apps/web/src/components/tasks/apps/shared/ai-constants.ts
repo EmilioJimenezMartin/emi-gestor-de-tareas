@@ -50,6 +50,15 @@ export const AI_MODELS: AIModel[] = [
     { id: "pollinations-flux-realism", name: "FLUX Realism (Pollinations)", provider: "Pollinations", type: "Gratis · Fotorrealista", modelId: "flux-realism", status: "ok" },
     { id: "pollinations-flux-anime", name: "FLUX Anime (Pollinations)", provider: "Pollinations", type: "Gratis · Anime/Ilustración", modelId: "flux-anime", status: "ok" },
     { id: "pollinations-turbo", name: "Turbo (Pollinations)", provider: "Pollinations", type: "Gratis · Ultra Rápido", modelId: "turbo", status: "ok" },
+    // Pollinations Anónimo — endpoint viejo image.pollinations.ai, sin API key ni gasto de
+    // pollen. NUNCA se redirige al gateway de pago (ver lib/pollinations-circuit.ts →
+    // pollinationsAnonymousFetch). Calidad menos consistente que el gateway de pago —
+    // ver aviso en routes/IMAGE_PROVIDERS.md.
+    { id: "pollinations-anon-flux", name: "FLUX Schnell (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Sin pollen", modelId: "flux", status: "ok" },
+    { id: "pollinations-anon-flux-dev", name: "FLUX Dev (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Alta calidad", modelId: "flux-dev", status: "ok" },
+    { id: "pollinations-anon-flux-realism", name: "FLUX Realism (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Fotorrealista", modelId: "flux-realism", status: "ok" },
+    { id: "pollinations-anon-flux-anime", name: "FLUX Anime (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Anime/Ilustración", modelId: "flux-anime", status: "ok" },
+    { id: "pollinations-anon-turbo", name: "Turbo (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Ultra Rápido", modelId: "turbo", status: "ok" },
     // fal.ai
     { id: "falai-flux-schnell", name: "FLUX Schnell (fal.ai)", provider: "fal.ai", type: "Rápido · $0.003/img", modelId: "fal-ai/flux/schnell", status: "blocked" },
     { id: "falai-flux-dev", name: "FLUX Dev (fal.ai)", provider: "fal.ai", type: "Alta calidad · fal.ai", modelId: "fal-ai/flux/dev", status: "blocked" },
@@ -59,9 +68,9 @@ export const AI_MODELS: AIModel[] = [
     { id: "segmind-sdxl", name: "SDXL 1.0 (Segmind)", provider: "Segmind", type: "100 gratis/día · General", modelId: "sdxl1.0", status: "blocked" },
     { id: "segmind-canny", name: "SDXL Canny (Segmind)", provider: "Segmind", type: "100 gratis/día · Línea art", modelId: "canny-sdxl", status: "blocked" },
     // Cloudflare Workers AI — 10k neurons/día gratis, sin bloqueos geo
-    { id: "cf-flux-schnell", name: "⭐ FLUX Schnell (Cloudflare)", provider: "Cloudflare", type: "Gratis · ~33img/día · FLUX · ~5s", modelId: "@cf/black-forest-labs/flux-1-schnell", status: "ok" },
+    { id: "cf-flux-schnell", name: "FLUX Schnell (Cloudflare)", provider: "Cloudflare", type: "Gratis · ~33img/día · ⚠️ ignora estilo/negative_prompt", modelId: "@cf/black-forest-labs/flux-1-schnell", status: "ok" },
     { id: "cf-sdxl-lightning", name: "SDXL Lightning (Cloudflare)", provider: "Cloudflare", type: "Gratis · Ultrarrápido · Alta calidad", modelId: "@cf/bytedance/stable-diffusion-xl-lightning", status: "ok" },
-    { id: "cf-sdxl", name: "SDXL Base (Cloudflare)", provider: "Cloudflare", type: "Gratis · Detallado · SDXL 1.0", modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0", status: "ok" },
+    { id: "cf-sdxl", name: "⭐ SDXL Base (Cloudflare)", provider: "Cloudflare", type: "Gratis · Line art limpio verificado", modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0", status: "ok" },
     { id: "cf-dreamshaper", name: "DreamShaper LCM (Cloudflare)", provider: "Cloudflare", type: "Gratis · Artístico · Estilos creativos", modelId: "@cf/lykon/dreamshaper-8-lcm", status: "ok" },
     // Together AI — $5 gratis sin tarjeta, FLUX schnell
     { id: "together-flux-schnell", name: "FLUX Schnell (Together AI)", provider: "Together AI", type: "$5 gratis · Sin bloqueo geo · ~5-10s", modelId: "black-forest-labs/FLUX.1-schnell-Free", status: "blocked" },

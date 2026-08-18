@@ -3,6 +3,7 @@
 // nicho y lanza un catálogo por cada una (encolados en serie).
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { Sparkles, Loader2, X, Layers, Check, Plus } from "lucide-react";
 import { AI_MODELS } from "../shared/ai-constants";
 import type { NicheFE } from "./types";
@@ -113,12 +114,19 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
             if (!res.ok) throw new Error(data.error || "Error al lanzar la explosión");
             const situations = data.situations ?? [];
             if (data.requested && situations.length < data.requested) {
-                setError(`La IA solo generó ${situations.length} de los ${data.requested} catálogos pedidos (situaciones repetidas o agotadas). Se lanzaron los ${situations.length} disponibles.`);
+                const partialMsg = `La IA solo generó ${situations.length} de los ${data.requested} catálogos pedidos (situaciones repetidas o agotadas). Se lanzaron los ${situations.length} disponibles.`;
+                setError(partialMsg);
+                toast.warning(partialMsg);
             }
             onLaunched(data.catalogs ?? [], situations);
             if (!data.requested || situations.length >= data.requested) onClose();
         } catch (e: any) {
+            // setError por sí solo (texto dentro del modal) es fácil de no ver — si el
+            // usuario no está mirando el modal en ese momento (p.ej. cambió de pestaña
+            // mientras esperaba), el fallo pasa completamente desapercibido. El toast
+            // es la señal que sí se ve siempre.
             setError(e.message);
+            toast.error(e.message || "Error al lanzar la explosión");
         } finally {
             setLaunching(false);
         }
@@ -289,7 +297,7 @@ export function ExplodeCatalogsModal({ niche, onClose, onLaunched }: {
                     </div>
 
                     {error && (
-                        <p className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">{error}</p>
+                        <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">{error}</p>
                     )}
                 </div>
 

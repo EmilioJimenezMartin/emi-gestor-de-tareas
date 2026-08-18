@@ -249,7 +249,7 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
                 stream.end(buffer);
             });
             return reply.status(201).send({
-                image: { publicId: result.public_id, url: result.secure_url, width: result.width, height: result.height, nicheId: nicheId ?? null },
+                image: { publicId: result.public_id, url: result.secure_url, width: result.width, height: result.height, bytes: result.bytes, nicheId: nicheId ?? null },
             });
         } catch (error: any) {
             app.log.error(error);
