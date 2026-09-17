@@ -2014,6 +2014,24 @@ Estructura exacta:
                             const ct = res.headers.get("content-type") ?? "";
                             if (res.ok && ct.startsWith("image/")) {
                                 imageBytes = Buffer.from(await res.arrayBuffer());
+                                // El endpoint anónimo devuelve gris/color con cierta frecuencia pese al
+                                // prompt reforzado (ver routes/IMAGE_PROVIDERS.md) — Clone Engine es
+                                // siempre coloring-book, así que binarizar aquí es siempre seguro y evita
+                                // mandar a Telegram una imagen sombreada/a color para aprobar el nicho.
+                                if (isAnonymousModel) {
+                                    try {
+                                        const sharp = (await import("sharp")).default;
+                                        imageBytes = await sharp(imageBytes)
+                                            .flatten({ background: { r: 255, g: 255, b: 255 } })
+                                            .greyscale()
+                                            .blur(0.6)
+                                            .threshold(128)
+                                            .png()
+                                            .toBuffer();
+                                    } catch (binErr: any) {
+                                        console.warn(`[clone-telegram bg] Binarizado falló (usando original): ${binErr?.message}`);
+                                    }
+                                }
                                 console.log(`[clone-telegram bg] Pollinations OK (${imageBytes.length} bytes)`);
                             } else {
                                 await res.body?.cancel().catch(() => {});

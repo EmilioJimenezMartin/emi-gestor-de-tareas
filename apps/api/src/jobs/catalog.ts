@@ -152,7 +152,7 @@ async function trackPromptMetric(prompt: string, productType: string, success: b
     }
 }
 
-type QualityResult = {
+export type QualityResult = {
     ok: boolean;
     score: number;
     reason?: string;
@@ -160,7 +160,7 @@ type QualityResult = {
     darkLinePct?: number;
 };
 
-async function analyzeImageQuality(buffer: Buffer, productType: string): Promise<QualityResult> {
+export async function analyzeImageQuality(buffer: Buffer, productType: string): Promise<QualityResult> {
     try {
         const image = sharp(buffer);
         const { width = 0, height = 0, channels = 3 } = await image.metadata();

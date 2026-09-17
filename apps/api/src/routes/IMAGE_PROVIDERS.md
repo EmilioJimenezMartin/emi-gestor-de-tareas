@@ -320,6 +320,32 @@ para catálogos es el gate de calidad + sujeto de `jobs/catalog.ts` (rechaza y
 reintenta automáticamente rellenos grises/negros y sujetos incorrectos). Para
 generaciones sueltas fuera de un catálogo (creador manual con preview
 inmediato, Telegram `/img`), no hay ese gate — el usuario puede ver
-directamente una salida de baja fidelidad de este proveedor en concreto. Si
-esto resulta ser un problema recurrente, la solución real sería añadir el
-mismo gate de calidad a `lib/image-gen.ts`, no seguir puliendo el prompt.
+directamente una salida de baja fidelidad de este proveedor en concreto.
+
+**Binarizado forzado (implementado 2026-08-24).** El prompt reforzado NO
+garantiza blanco/negro puro — se confirmó de nuevo con una imagen real que
+seguía saliendo con relleno gris. Como jobs/catalog.ts ya binariza
+(greyscale + threshold) para el pipeline de catálogos pero el preview manual
+(`routes/ai.ts`) y Clone Engine no pasaban por ahí, se añadió el MISMO
+binarizado (sharp: `flatten` fondo blanco → `greyscale` → `blur(0.6)` →
+`threshold(128)`) directamente en la rama "Pollinations Anon" de
+`routes/ai.ts` (solo si `productType === "coloring-book"`) y en la imagen de
+descubrimiento de Clone Engine (`routes/niches.ts`, siempre coloring-book).
+Verificado con imagen real: la misma generación que antes salía con relleno
+gris ahora sale en blanco y negro puro, garantizado, sin excepción.
+
+**Esto NO arregla la viñeta circular ni el desequilibrio ocasional de
+rellenos negros** — el binarizado convierte gris→blanco/negro pero no borra
+composición ya dibujada (si el modelo dibuja un marco circular, sigue
+apareciendo, solo que ahora en negro puro en vez de gris). Ese sesgo de
+composición sigue sin tener arreglo por prompt — ver más arriba. Si se vuelve
+recurrente, la solución real seguiría siendo el mismo gate de calidad de
+`jobs/catalog.ts` aplicado también a generaciones sueltas, no seguir
+puliendo el prompt.
+
+`lib/image-gen.ts` (usado por Telegram `/img`, voz→imagen, portadas de
+autopilot) **no** recibió este binarizado — esa función es genérica y no
+recibe `productType`, así que forzarlo ahí a ciegas rompería pósters/patrones
+en color pedidos a propósito. Si aparece el mismo problema en esos flujos,
+habría que pasar `productType` a `generateImage()` primero, no aplicar el
+binarizado sin condición.

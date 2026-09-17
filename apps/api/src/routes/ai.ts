@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import axios from "axios";
+import sharp from "sharp";
 import { createHash, createSign } from "crypto";
 import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
@@ -7,7 +8,7 @@ import { isPollinationsBlocked, pollinationsFetch, getPollinationsToken, pollina
 import { getApiKey } from "../lib/keys.js";
 import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey, generateImage as generateImageFallback } from "../lib/image-gen.js";
 import { buildColoringBookPrompt } from "./autopilot.js";
-import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt } from "../lib/coloring-book-subject.js";
+import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt, extractColoringBookSubject } from "../lib/coloring-book-subject.js";
 
 /** Generates TAMS-SHA256-RSA Authorization header for Tensor.art API */
 function tamsSign(method: string, urlPath: string, appId: string, privateKeyPem: string, bodyStr: string): string {
@@ -810,30 +811,92 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
             // Pollinations por completo (skipPollinations: true, siempre), así que nunca
             // toca el gateway de pago tampoco por esa vía.
             if (provider === "Pollinations Anon") {
-                console.log(`[ai/generate-image] Intentando Pollinations Anónimo (sin key)...`);
-                try {
-                    const modelParam = typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : "flux";
-                    const w = typeof width === "number" && width > 0 ? width : 1024;
-                    const h = typeof height === "number" && height > 0 ? height : 1024;
-                    // Este endpoint (modelo "sana" detrás según EXIF, distinto del flux del
-                    // gateway de pago) ignora el estilo por completo con el prompt genérico —
-                    // devuelve ilustraciones realistas. buildAnonymousColoringBookPrompt usa
-                    // una plantilla más agresiva afinada específicamente para este pipeline
-                    // (ver routes/IMAGE_PROVIDERS.md).
-                    const anonPrompt = await buildAnonymousColoringBookPrompt(prompt);
-                    const anonUrl = buildAnonymousPollinationsUrl(anonPrompt, { width: w, height: h, model: modelParam });
-                    const isSlowModel = modelParam.includes("dev") || modelParam.includes("pro") || modelParam.includes("realism");
-                    const res = await pollinationsAnonymousFetch(anonUrl, { signal: AbortSignal.timeout(isSlowModel ? 150_000 : 60_000) });
-                    const ct = res.headers.get("content-type") ?? "";
-                    if (res.ok && ct.startsWith("image/")) {
+                // El binarizado a ciegas (threshold duro) no basta: verificado con pruebas
+                // reales (2026-08-24) que cuando la imagen de origen tiene viñetas/sombreado
+                // pesado, el threshold convierte esos degradados en manchas negras enormes e
+                // irreconocibles — "peor que el gris de antes", no una mejora. Este pipeline es
+                // demasiado inconsistente (a veces sale limpio, a veces sale ilegible) para
+                // confiar en una sola generación — se reintenta con semilla nueva hasta 3 veces,
+                // usando el MISMO control de calidad por píxeles que ya protege los catálogos
+                // (analyzeImageQuality, jobs/catalog.ts), en vez de devolver lo primero que salga.
+                const ANON_MAX_ATTEMPTS = 3;
+                let lastAnonBuf: Buffer | null = null;
+                let lastAnonCt = "image/png";
+                for (let attempt = 1; attempt <= ANON_MAX_ATTEMPTS; attempt++) {
+                    try {
+                        const modelParam = typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : "flux";
+                        const w = typeof width === "number" && width > 0 ? width : 1024;
+                        const h = typeof height === "number" && height > 0 ? height : 1024;
+                        // Este endpoint (modelo "sana" detrás según EXIF, distinto del flux del
+                        // gateway de pago) ignora el estilo por completo con el prompt genérico —
+                        // devuelve ilustraciones realistas. buildAnonymousColoringBookPrompt usa
+                        // una plantilla más agresiva afinada específicamente para este pipeline
+                        // (ver routes/IMAGE_PROVIDERS.md).
+                        const anonPrompt = await buildAnonymousColoringBookPrompt(prompt);
+                        const anonUrl = buildAnonymousPollinationsUrl(anonPrompt, { width: w, height: h, model: modelParam, seed: Math.floor(Math.random() * 999999) });
+                        const isSlowModel = modelParam.includes("dev") || modelParam.includes("pro") || modelParam.includes("realism");
+                        console.log(`[ai/generate-image] Intentando Pollinations Anónimo (sin key) — intento ${attempt}/${ANON_MAX_ATTEMPTS}...`);
+                        const res = await pollinationsAnonymousFetch(anonUrl, { signal: AbortSignal.timeout(isSlowModel ? 150_000 : 60_000) });
+                        const ct = res.headers.get("content-type") ?? "";
+                        if (!res.ok || !ct.startsWith("image/")) {
+                            await res.body?.cancel();
+                            console.warn(`[ai/generate-image] Pollinations Anónimo FALLÓ — status=${res.status}`);
+                            continue;
+                        }
+                        let anonBuf: Buffer = Buffer.from(await res.arrayBuffer());
+                        lastAnonCt = ct;
+                        if (productType === "coloring-book") {
+                            try {
+                                anonBuf = await sharp(anonBuf)
+                                    .flatten({ background: { r: 255, g: 255, b: 255 } })
+                                    .greyscale()
+                                    .blur(0.6)
+                                    .threshold(128)
+                                    .png()
+                                    .toBuffer();
+                                lastAnonCt = "image/png";
+                            } catch (binErr: any) {
+                                console.warn(`[ai/generate-image] Binarizado Pollinations Anónimo falló (usando original): ${binErr?.message}`);
+                            }
+                            const { analyzeImageQuality } = await import("../jobs/catalog.js");
+                            const quality = await analyzeImageQuality(anonBuf, "coloring-book");
+                            lastAnonBuf = anonBuf;
+                            if (!quality.ok) {
+                                console.warn(`[ai/generate-image] Pollinations Anónimo intento ${attempt} rechazado (score ${quality.score}): ${quality.reason}`);
+                                continue; // reintenta con semilla nueva
+                            }
+                            // El control de píxeles NO detecta "mancha negra ilegible con % de
+                            // tinta razonable" — verificado con un caso real (score 84,
+                            // darkLinePct 0.249, imagen totalmente irreconocible). Hace falta
+                            // además comprobar que el SUJETO esté realmente ahí (fail-safe: si
+                            // la visión no está disponible, cuenta como ok, ver lib/subject-check.ts).
+                            const { verifySubjectFidelity } = await import("../lib/subject-check.js");
+                            const subjectCheck = await verifySubjectFidelity(anonBuf, extractColoringBookSubject(prompt));
+                            if (!subjectCheck.ok) {
+                                console.warn(`[ai/generate-image] Pollinations Anónimo intento ${attempt} rechazado por sujeto: ${subjectCheck.reason}`);
+                                continue; // reintenta con semilla nueva
+                            }
+                            console.log(`[ai/generate-image] Pollinations Anónimo OK (intento ${attempt}, score ${quality.score})`);
+                            return reply.type("image/png").send(anonBuf);
+                        }
+                        // productType distinto de coloring-book — sin binarizado ni control de calidad,
+                        // se devuelve tal cual (podría ser un póster/patrón donde SÍ se quiere color).
                         console.log(`[ai/generate-image] Pollinations Anónimo OK`);
-                        return reply.type(ct).send(Buffer.from(await res.arrayBuffer()));
+                        return reply.type(ct).send(anonBuf);
+                    } catch (anonErr: any) {
+                        console.warn(`[ai/generate-image] Pollinations Anónimo ERROR (intento ${attempt}): ${anonErr?.message}`);
                     }
-                    await res.body?.cancel();
-                    console.warn(`[ai/generate-image] Pollinations Anónimo FALLÓ — status=${res.status}`);
-                } catch (anonErr: any) {
-                    console.warn(`[ai/generate-image] Pollinations Anónimo ERROR — ${anonErr?.message}`);
                 }
+                // Se agotaron los intentos sin pasar el control de calidad — verificado con
+                // pruebas reales (2026-08-24, incluso con sujetos triviales como "a single red
+                // apple") que este backend puede fallar sistemáticamente incluso en escenas
+                // simples. Mejor un error real que colar en silencio una imagen ya sabida mala
+                // — no se devuelve `lastAnonBuf`, se deja caer al resto de proveedores /
+                // cadena de emergencia más abajo.
+                if (lastAnonBuf) {
+                    console.warn(`[ai/generate-image] Pollinations Anónimo — ${ANON_MAX_ATTEMPTS} intentos sin pasar el control de calidad, sin devolver imagen — cae a otros proveedores`);
+                }
+                void lastAnonCt; // ya no se usa para devolver nada — se mantiene el log de arriba
             }
 
             // --- IDEOGRAM ---
