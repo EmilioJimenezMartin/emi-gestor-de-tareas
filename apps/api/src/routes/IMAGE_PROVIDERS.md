@@ -349,3 +349,27 @@ recibe `productType`, así que forzarlo ahí a ciegas rompería pósters/patrone
 en color pedidos a propósito. Si aparece el mismo problema en esos flujos,
 habría que pasar `productType` a `generateImage()` primero, no aplicar el
 binarizado sin condición.
+
+**Causa raíz definitiva (confirmada 2026-09-17) — DEPRECAR este proveedor.**
+Test directo contra `image.pollinations.ai` (sin pasar por nuestra app),
+mismo prompt, tres peticiones:
+- `model=flux` → 200, imagen X.
+- `model=turbo` → 200, imagen **pixel-a-pixel idéntica** a la de `model=flux`.
+- sin `model` → 200, misma imagen otra vez.
+
+Las tres tienen `manufacturer=sana` en el EXIF. **El parámetro `model` se
+ignora por completo en peticiones anónimas** — da igual lo que pidas, el
+backend gratuito enruta siempre al mismo modelo genérico (Sana, fotorrealista,
+no pensado para línea), nunca al flux/turbo real. Además, **`nologo=true`
+también se ignora sin token** — las tres imágenes llevan el logo de
+pollinations.ai en la esquina pese a pedir explícitamente que no lo ponga.
+
+Esto no es un problema de prompt ni de post-procesado — es una limitación
+deliberada del nivel gratuito/anónimo (empujar hacia el gateway de pago). Ni
+el prompt reforzado, ni el binarizado, ni los reintentos con control de
+calidad pueden arreglar el modelo equivocado forzado por servidor, y el logo
+forzado hace el resultado inservible para KDP aunque el resto saliera
+perfecto. **Recomendación: no usar este proveedor para producción real.**
+El código y el gate de calidad se dejan tal cual (fail-safe, no hacen daño
+si se sigue seleccionando), pero no vale la pena invertir más tiempo
+puliéndolo — el techo de calidad está fuera de nuestro control.

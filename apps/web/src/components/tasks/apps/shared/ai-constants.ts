@@ -54,11 +54,12 @@ export const AI_MODELS: AIModel[] = [
     // pollen. NUNCA se redirige al gateway de pago (ver lib/pollinations-circuit.ts →
     // pollinationsAnonymousFetch). Calidad menos consistente que el gateway de pago —
     // ver aviso en routes/IMAGE_PROVIDERS.md.
-    { id: "pollinations-anon-flux", name: "FLUX Schnell (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Sin pollen", modelId: "flux", status: "ok" },
-    { id: "pollinations-anon-flux-dev", name: "FLUX Dev (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Alta calidad", modelId: "flux-dev", status: "ok" },
-    { id: "pollinations-anon-flux-realism", name: "FLUX Realism (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Fotorrealista", modelId: "flux-realism", status: "ok" },
-    { id: "pollinations-anon-flux-anime", name: "FLUX Anime (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Anime/Ilustración", modelId: "flux-anime", status: "ok" },
-    { id: "pollinations-anon-turbo", name: "Turbo (Pollinations Anónimo)", provider: "Pollinations Anon", type: "Gratis · Sin key · Ultra Rápido", modelId: "turbo", status: "ok" },
+    // Un solo modelo real: verificado (2026-09-17) que "flux"/"flux-dev"/"turbo"/etc.
+    // dan pixel-a-pixel la MISMA imagen sin token — el parámetro "model" se ignora
+    // por completo en peticiones anónimas, siempre enruta a un modelo genérico
+    // ("sana"), y el logo de marca de agua se fuerza pese a nologo=true. No apto
+    // para producción — ver routes/IMAGE_PROVIDERS.md.
+    { id: "pollinations-anon-flux", name: "Pollinations Anónimo (sin key)", provider: "Pollinations Anon", type: "Gratis · ⚠️ Modelo real fijo + logo forzado, no apto para KDP", modelId: "flux", status: "limited" },
     // fal.ai
     { id: "falai-flux-schnell", name: "FLUX Schnell (fal.ai)", provider: "fal.ai", type: "Rápido · $0.003/img", modelId: "fal-ai/flux/schnell", status: "blocked" },
     { id: "falai-flux-dev", name: "FLUX Dev (fal.ai)", provider: "fal.ai", type: "Alta calidad · fal.ai", modelId: "fal-ai/flux/dev", status: "blocked" },

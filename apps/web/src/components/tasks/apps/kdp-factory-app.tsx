@@ -135,6 +135,8 @@ import { FocusChat } from "./kdp/FocusChat";
 import { KdpGuidePanel } from "./kdp/KdpGuidePanel";
 import { ImagePreviewModal } from "./kdp/ImagePreviewModal";
 import { NicheDetailModal } from "./kdp/NicheDetailModal";
+import { ImageNicheLinker } from "./kdp/ImageNicheLinker";
+import { CatalogNichePicker } from "./kdp/CatalogNichePicker";
 
 interface ProductPlatform {
     name: string;
@@ -10390,7 +10392,6 @@ POST-LANZAMIENTO:
                             {cloudinaryImages.map((img, cldIdx) => {
                                 const isCloudSel = selectedCloudUrls.has(img.url);
                                 const isFav = favorites.has(img.url);
-                                const linkedNiche = img.nicheId ? niches.find(n => n._id === img.nicheId) : null;
                                 const isLinking = linkingNicheForCloud === img.publicId;
                                 return (
                                     <div
@@ -10432,83 +10433,22 @@ POST-LANZAMIENTO:
 
                                         {/* Niche selector — always visible at bottom */}
                                         {!isCloudSelectMode && (
-                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8 pb-2 px-2 space-y-1" onClick={e => e.stopPropagation()}>
-                                                {isLinking ? (
-                                                    <div className="flex items-center gap-1.5 px-2 py-1">
-                                                        <Loader2 size={10} className="animate-spin text-cyan-400" />
-                                                        <span className="text-[9px] text-cyan-400">Vinculando…</span>
-                                                    </div>
-                                                ) : (
-                                                    <select
-                                                        value={img.nicheId ?? ""}
-                                                        disabled={niches.length === 0}
-                                                        onChange={e => {
-                                                            const val = e.target.value;
-                                                            if (val === img.nicheId) return;
-                                                            void linkCloudImageToNiche(img.publicId, val || null);
-                                                        }}
-                                                        className="w-full h-7 bg-black/70 backdrop-blur-sm border border-white/20 rounded-xl px-2 text-[10px] text-white focus:outline-none focus:border-cyan-500/60 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
-                                                        title="Vincular a nicho principal"
-                                                    >
-                                                        <option value="">— Sin nicho</option>
-                                                        {niches.filter(n => n.status !== "archived").map(n => (
-                                                            <option key={n._id} value={n._id}>{nd(n)}</option>
-                                                        ))}
-                                                        {img.nicheId && !niches.find(n => n._id === img.nicheId && n.status !== "archived") && linkedNiche && (
-                                                            <option key={linkedNiche._id} value={linkedNiche._id}>{nd(linkedNiche)} (archivado)</option>
-                                                        )}
-                                                    </select>
-                                                )}
-                                                {/* Extra niches row */}
-                                                {(() => {
-                                                    const extras = (img.nicheIds ?? []).filter(id => id !== img.nicheId);
-                                                    const isAddingThis = addingExtraNicheFor === img.publicId;
-                                                    const availableNiches = niches.filter(n => n.status !== "archived" && n._id !== img.nicheId && !extras.includes(n._id));
-                                                    return (
-                                                        <div className="flex items-center gap-1 flex-wrap">
-                                                            {extras.map(id => {
-                                                                const n = niches.find(n => n._id === id);
-                                                                const isRemoving = extraNicheLoading === `${img.publicId}:${id}`;
-                                                                return (
-                                                                    <span key={id} className="flex items-center gap-0.5 bg-violet-500/20 border border-violet-500/30 rounded-full px-1.5 py-0.5 text-[8px] text-violet-300 max-w-[80px]">
-                                                                        <span className="truncate">{n ? nd(n) : id.slice(-4)}</span>
-                                                                        {isRemoving ? (
-                                                                            <Loader2 size={7} className="animate-spin shrink-0" />
-                                                                        ) : (
-                                                                            <button onClick={() => void removeExtraNicheFromImage(img.publicId, id)} className="shrink-0 hover:text-rose-400 ml-0.5">×</button>
-                                                                        )}
-                                                                    </span>
-                                                                );
-                                                            })}
-                                                            {isAddingThis ? (
-                                                                availableNiches.length > 0 ? (
-                                                                    <select
-                                                                        autoFocus
-                                                                        defaultValue=""
-                                                                        onBlur={() => setAddingExtraNicheFor(null)}
-                                                                        onChange={e => { if (e.target.value) void addExtraNicheToImage(img.publicId, e.target.value); }}
-                                                                        className="h-5 bg-black/80 border border-violet-500/40 rounded-lg px-1 text-[8px] text-white focus:outline-none cursor-pointer max-w-[90px]"
-                                                                    >
-                                                                        <option value="">Elegir…</option>
-                                                                        {availableNiches.map(n => (
-                                                                            <option key={n._id} value={n._id}>{nd(n)}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                ) : (
-                                                                    <span className="text-[8px] text-neutral-600">Sin más nichos</span>
-                                                                )
-                                                            ) : (
-                                                                availableNiches.length > 0 && (
-                                                                    <button
-                                                                        onClick={() => setAddingExtraNicheFor(img.publicId)}
-                                                                        className="w-5 h-5 rounded-full bg-white/10 border border-white/20 text-neutral-400 hover:text-white hover:bg-violet-500/20 hover:border-violet-500/40 transition-all text-[10px] flex items-center justify-center shrink-0"
-                                                                        title="Añadir a otro nicho"
-                                                                    >+</button>
-                                                                )
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })()}
+                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8 pb-2 px-2">
+                                                <ImageNicheLinker
+                                                    publicId={img.publicId}
+                                                    primaryNicheId={img.nicheId ?? null}
+                                                    extraNicheIds={img.nicheIds ?? []}
+                                                    niches={niches}
+                                                    isLinkingPrimary={isLinking}
+                                                    isAddingExtra={addingExtraNicheFor === img.publicId}
+                                                    removingExtraKey={extraNicheLoading}
+                                                    onSetPrimary={(pid, nid) => void linkCloudImageToNiche(pid, nid)}
+                                                    onStartAddExtra={pid => setAddingExtraNicheFor(pid)}
+                                                    onStopAddExtra={() => setAddingExtraNicheFor(null)}
+                                                    onAddExtra={(pid, nid) => void addExtraNicheToImage(pid, nid)}
+                                                    onRemoveExtra={(pid, nid) => void removeExtraNicheFromImage(pid, nid)}
+                                                    nd={nd}
+                                                />
                                             </div>
                                         )}
                                     </div>
@@ -19075,10 +19015,43 @@ POST-LANZAMIENTO:
                             </button>
                         </div>
                         {lightboxUrl.urls && lightboxUrl.urls.length > 1 && (
-                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/70 border border-white/10 text-[11px] font-black text-neutral-300 tabular-nums pointer-events-none">
+                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/70 border border-white/10 text-xs font-black text-neutral-300 tabular-nums pointer-events-none">
                                 {(lightboxUrl.index ?? 0) + 1} / {lightboxUrl.urls.length}
                             </div>
                         )}
+                        {/* Cambiar/mantener nicho — solo en la vista ampliada, no en miniaturas.
+                            Una imagen de catálogo "pertenece" a un nicho normalmente porque su
+                            CATÁLOGO está vinculado (catalog.nicheIds), no porque la imagen suelta
+                            tenga su propia etiqueta en Cloudinary — por eso hay que fusionar las
+                            dos fuentes aquí, si no, esto mostraba "Sin nicho" en imágenes que sí
+                            tienen nicho (heredado del catálogo), lo cual es engañoso/incorrecto. */}
+                        {lightboxUrl.publicId && (() => {
+                            const cloudMeta = cloudinaryImages.find(ci => ci.publicId === lightboxUrl.publicId);
+                            const parentCatalog = lightboxUrl.catalogId ? iaCatalogs.find(c => c._id === lightboxUrl.catalogId) : undefined;
+                            const catalogNicheIds = parentCatalog?.nicheIds ?? [];
+                            const effectivePrimary = cloudMeta?.nicheId ?? catalogNicheIds[0] ?? null;
+                            const effectiveExtras = [...new Set([...(cloudMeta?.nicheIds ?? []), ...catalogNicheIds])]
+                                .filter(id => id !== effectivePrimary);
+                            return (
+                                <div className="absolute bottom-3 left-3 w-48" onClick={e => e.stopPropagation()}>
+                                    <ImageNicheLinker
+                                        publicId={lightboxUrl.publicId}
+                                        primaryNicheId={effectivePrimary}
+                                        extraNicheIds={effectiveExtras}
+                                        niches={niches}
+                                        isLinkingPrimary={linkingNicheForCloud === lightboxUrl.publicId}
+                                        isAddingExtra={addingExtraNicheFor === lightboxUrl.publicId}
+                                        removingExtraKey={extraNicheLoading}
+                                        onSetPrimary={(pid, nid) => void linkCloudImageToNiche(pid, nid)}
+                                        onStartAddExtra={pid => setAddingExtraNicheFor(pid)}
+                                        onStopAddExtra={() => setAddingExtraNicheFor(null)}
+                                        onAddExtra={(pid, nid) => void addExtraNicheToImage(pid, nid)}
+                                        onRemoveExtra={(pid, nid) => void removeExtraNicheFromImage(pid, nid)}
+                                        nd={nd}
+                                    />
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>,
                 document.body
@@ -20454,6 +20427,15 @@ POST-LANZAMIENTO:
                     apiBaseUrl={API_BASE_URL}
                     nd={nd}
                     setExplodeNicheId={setExplodeNicheId}
+                    onToggleNiche={onToggleNiche}
+                    linkingNicheForCloud={linkingNicheForCloud}
+                    addingExtraNicheFor={addingExtraNicheFor}
+                    setAddingExtraNicheFor={setAddingExtraNicheFor}
+                    extraNicheLoading={extraNicheLoading}
+                    linkCloudImageToNiche={linkCloudImageToNiche}
+                    addExtraNicheToImage={addExtraNicheToImage}
+                    removeExtraNicheFromImage={removeExtraNicheFromImage}
+                    setConfirmDeleteDraftId={setConfirmDeleteDraftId}
                 />
             )}
 

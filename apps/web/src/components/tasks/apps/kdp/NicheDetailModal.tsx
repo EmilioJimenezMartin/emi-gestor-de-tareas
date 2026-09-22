@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import type { NicheFE, IACatalogFE, CatalogImageFE, CloudinaryImage, BookPage, BookDraft, PageTextStyle } from "./types";
 import { ListingCardFields } from "./ListingCardFields";
+import { ImageNicheLinker } from "./ImageNicheLinker";
+import { CatalogNichePicker } from "./CatalogNichePicker";
 
 type LightboxUrl = {
     url: string;
@@ -77,6 +79,19 @@ interface NicheDetailModalProps {
     apiBaseUrl: string;
     nd: (n: Pick<NicheFE, "name" | "nickname">) => string;
     setExplodeNicheId: (id: string | null) => void;
+    // Vincular catálogos/imágenes a más de un nicho a la vez, o moverlos de uno a otro —
+    // mismas funciones ya usadas en la tarjeta de catálogo y el vault de Cloudinary.
+    onToggleNiche: (catalogId: string, nicheId: string, assigned: boolean) => void;
+    linkingNicheForCloud: string | null;
+    addingExtraNicheFor: string | null;
+    setAddingExtraNicheFor: (publicId: string | null) => void;
+    extraNicheLoading: string | null;
+    linkCloudImageToNiche: (publicId: string, nicheId: string | null) => Promise<void>;
+    addExtraNicheToImage: (publicId: string, nicheId: string) => Promise<void>;
+    removeExtraNicheFromImage: (publicId: string, nicheId: string) => Promise<void>;
+    // Dispara el ConfirmModal de borrado de libro ya existente en kdp-factory-app.tsx
+    // (mismo flujo que el resto de la app) — no se duplica un modal nuevo aquí.
+    setConfirmDeleteDraftId: (id: string | null) => void;
 }
 
 export function NicheDetailModal(props: NicheDetailModalProps) {
@@ -91,7 +106,9 @@ export function NicheDetailModal(props: NicheDetailModalProps) {
         setSelectedCoverNicheId, setCoverTitle, runNichePipeline, deleteFromCloudinary,
         bulkDeleteNicheImages, launchPipelineSeo, saveListingEdit, deleteNicheListing,
         fetchNiches, deleteCatalog, guardedLoadBookDraft, changeTab, defaultTextStyle, apiBaseUrl, nd,
-        setExplodeNicheId,
+        setExplodeNicheId, onToggleNiche, linkingNicheForCloud, addingExtraNicheFor, setAddingExtraNicheFor,
+        extraNicheLoading, linkCloudImageToNiche, addExtraNicheToImage, removeExtraNicheFromImage,
+        setConfirmDeleteDraftId,
     } = props;
 
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -100,6 +117,7 @@ export function NicheDetailModal(props: NicheDetailModalProps) {
     const [showBulkDeleteEmptyCatsConfirm, setShowBulkDeleteEmptyCatsConfirm] = useState(false);
     const [deletingEmptyCats, setDeletingEmptyCats] = useState(false);
     const [seoReferenceUrl, setSeoReferenceUrl] = useState("");
+    const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
 
 const detailNiche = niches.find(n => n._id === nicheDetailId);
 if (!detailNiche) return null;
@@ -141,6 +159,10 @@ const allImgs: { publicId: string; url: string; width?: number; height?: number;
         ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
     ].filter(img => { if (seen.has(img.publicId)) return false; seen.add(img.publicId); return true; });
 })();
+// Los vínculos de nicho (principal + extras) viven como metadata de Cloudinary por
+// publicId — da igual si la imagen viene de un catálogo o del vault suelto, así que
+// se cruza aquí por publicId para poder editarlos desde CUALQUIER imagen de este modal.
+const cloudByPublicId = new Map(cloudinaryImages.map(img => [img.publicId, img]));
 const pipelineDraft = bookDrafts.find(d => d.id.startsWith(`pipeline-${nicheDetailId}`) || d.nicheId === nicheDetailId);
 const TABS = [
     { id: "images" as const, label: "Imágenes", icon: <ImageIcon size={11} />, count: allImgs.length },
@@ -342,14 +364,15 @@ const modalPortal = createPortal(
                                                     </div>
                                                 )}
 
-                                                {/* Source badge — always visible */}
+                                                {/* Source badge — always visible. Cambiar de nicho se hace en la vista
+                                                    ampliada (lightbox), no aquí en la miniatura. */}
                                                 <div className="absolute bottom-2 left-2 pointer-events-none">
                                                     {catName ? (
-                                                        <span className="text-[9px] font-bold text-white/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-violet-400/20 truncate block max-w-[120px]">
+                                                        <span className="text-xs font-bold text-white/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-violet-400/20 truncate block max-w-[120px]">
                                                             {catName}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-[9px] font-bold text-cyan-300/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-cyan-500/25">
+                                                        <span className="text-xs font-bold text-cyan-300/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-cyan-500/25">
                                                             Cloud
                                                         </span>
                                                     )}
@@ -453,29 +476,49 @@ const modalPortal = createPortal(
                                 <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin catálogos vinculados</p>
                             </div>
                         ) : linkedCats.map(cat => (
-                            <div key={cat._id} className={`flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02] transition-opacity ${deletingCatalogId === cat._id ? "opacity-40 pointer-events-none" : ""}`}>
-                                {cat.images[0]
-                                    ? <img src={cat.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                                    : <div className="w-12 h-12 rounded-lg bg-white/[0.04] border border-white/8 flex items-center justify-center shrink-0"><Grid3x3 size={16} className="text-neutral-700" /></div>
-                                }
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-white truncate">{cat.name}</p>
-                                    <p className="text-xs text-neutral-600 truncate">{cat.prompt}</p>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-xs text-neutral-600">{cat.images.length} imgs</span>
-                                    <span className={`text-xs font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
-                                    {isDeletableEmptyCatalog(cat) && (
+                            <div key={cat._id} className={`p-3 rounded-xl border border-white/8 bg-white/[0.02] transition-opacity ${deletingCatalogId === cat._id ? "opacity-40 pointer-events-none" : ""}`}>
+                                <div className="flex items-center gap-3">
+                                    {cat.images[0]
+                                        ? <img src={cat.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                                        : <div className="w-12 h-12 rounded-lg bg-white/[0.04] border border-white/8 flex items-center justify-center shrink-0"><Grid3x3 size={16} className="text-neutral-700" /></div>
+                                    }
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-white truncate">{cat.name}</p>
+                                        <p className="text-xs text-neutral-600 truncate">{cat.prompt}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-xs text-neutral-600">{cat.images.length} imgs</span>
+                                        <span className={`text-xs font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
                                         <button
-                                            onClick={() => setConfirmDeleteCatalogId(cat._id)}
-                                            disabled={deletingCatalogId === cat._id}
-                                            className="p-1.5 rounded-lg border border-rose-500/25 text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/15 hover:border-rose-500/40 transition-all disabled:opacity-40"
-                                            title="Eliminar catálogo vacío"
+                                            onClick={() => setCatalogNichePickerId(catalogNichePickerId === cat._id ? null : cat._id)}
+                                            className={`p-1.5 rounded-lg border transition-all ${catalogNichePickerId === cat._id ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-sky-500/25 text-sky-400/80 hover:text-sky-300 hover:bg-sky-500/15"}`}
+                                            title="Vincular este catálogo a otro(s) nicho(s) — mantenerlo en ambos o moverlo"
                                         >
-                                            {deletingCatalogId === cat._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                            <Target size={11} />
                                         </button>
-                                    )}
+                                        {isDeletableEmptyCatalog(cat) && (
+                                            <button
+                                                onClick={() => setConfirmDeleteCatalogId(cat._id)}
+                                                disabled={deletingCatalogId === cat._id}
+                                                className="p-1.5 rounded-lg border border-rose-500/25 text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/15 hover:border-rose-500/40 transition-all disabled:opacity-40"
+                                                title="Eliminar catálogo vacío"
+                                            >
+                                                {deletingCatalogId === cat._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
+                                {catalogNichePickerId === cat._id && (
+                                    <CatalogNichePicker
+                                        catalogId={cat._id}
+                                        linkedNicheIds={cat.nicheIds ?? []}
+                                        niches={niches}
+                                        allCatalogs={iaCatalogs}
+                                        onToggleNiche={onToggleNiche}
+                                        nd={nd}
+                                        className="mt-3"
+                                    />
+                                )}
                             </div>
                         ))}
                     </div>
@@ -975,10 +1018,17 @@ const modalPortal = createPortal(
                                         <p className="text-sm text-neutral-600">{pipelineDraft.pages.length} páginas · {new Date(pipelineDraft.savedAt).toLocaleDateString("es-ES")}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => { void guardedLoadBookDraft(pipelineDraft); setNicheDetailId(null); changeTab("creation"); toast.success("Borrador cargado en el editor PDF"); }}
-                                    className="w-full h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-sm font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">
-                                    <Library size={11} /> Abrir en editor PDF
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => { void guardedLoadBookDraft(pipelineDraft); setNicheDetailId(null); changeTab("creation"); toast.success("Borrador cargado en el editor PDF"); }}
+                                        className="flex-1 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-sm font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                                        <Library size={11} /> Abrir en editor PDF
+                                    </button>
+                                    <button onClick={() => setConfirmDeleteDraftId(pipelineDraft.id)}
+                                        title="Eliminar libro"
+                                        className="h-9 px-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-400 hover:bg-rose-500/20 hover:border-rose-500/40 transition-all flex items-center justify-center shrink-0">
+                                        <Trash2 size={13} />
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <div className="space-y-4">

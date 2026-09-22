@@ -11,6 +11,59 @@ function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
     return fetch(url, { ...init, headers: { ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}), ...(init.headers as Record<string, string> ?? {}) } });
 }
 
+/**
+ * Parsea un array JSON de `{situation, prompt}` devuelto por el LLM, rescatando
+ * los objetos completos aunque el array se corte a mitad (verificado 2026-09-21:
+ * "a veces" la respuesta se trunca — a veces porque el LLM ignora "no style
+ * keywords" y escribe la fórmula completa dentro de "prompt", inflando el
+ * tamaño hasta comerse el presupuesto de tokens; a veces por variabilidad
+ * normal del proveedor — con el presupuesto ya escalado por `n`, sigue
+ * pasando ocasionalmente). Antes, CUALQUIER corte tiraba el array entero
+ * (ni siquiera se buscaba el `]` de cierre, que simplemente no existía) y
+ * el usuario perdía TODAS las situaciones por una sola incompleta al final.
+ * Mismo patrón de rescate ya probado en lib/ai.ts (analyzePageForRadar) para
+ * "nichos_detectados" — aquí generalizado para un array plano de objetos.
+ */
+function parseSituationsArraySalvage(raw: string): Array<{ situation: string; prompt: string }> {
+    const clean = raw.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "").trim();
+    const bracketOpen = clean.indexOf("[");
+    if (bracketOpen === -1) return [];
+
+    // Camino feliz: si no se cortó, esto basta y es más barato que escanear carácter a carácter.
+    const bracketClose = clean.lastIndexOf("]");
+    if (bracketClose > bracketOpen) {
+        try {
+            const parsed = JSON.parse(clean.slice(bracketOpen, bracketClose + 1));
+            if (Array.isArray(parsed)) return parsed;
+        } catch { /* sigue al rescate carácter a carácter */ }
+    }
+
+    // Rescate: recorre el array llevando la profundidad de llaves (ignorando lo que
+    // haya dentro de strings/escapes) y extrae cada objeto {..} completo según cierra,
+    // sin depender de que el array entero tenga un "]" final.
+    const entries: Array<{ situation: string; prompt: string }> = [];
+    let depth = 0, inStr = false, escape = false, objStart = -1;
+    for (let i = bracketOpen + 1; i < clean.length; i++) {
+        const ch = clean[i];
+        if (escape) { escape = false; continue; }
+        if (ch === "\\") { escape = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === "{") { if (depth === 0) objStart = i; depth++; }
+        else if (ch === "}") {
+            depth--;
+            if (depth === 0 && objStart !== -1) {
+                try {
+                    const obj = JSON.parse(clean.slice(objStart, i + 1));
+                    if (obj?.situation && obj?.prompt) entries.push(obj);
+                } catch { /* objeto individual malformado — se descarta solo ese */ }
+                objStart = -1;
+            }
+        } else if (ch === "]" && depth === 0) break;
+    }
+    return entries;
+}
+
 const LEVEL_MAP: Record<string, "low" | "medium" | "high"> = {
     baja: "low", low: "low", bajo: "low",
     media: "medium", medium: "medium", medio: "medium", moderate: "medium",
@@ -1510,15 +1563,8 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
             // JSON mid-prompt once count/hints pushed output past a few items, leaving
             // an invalid array and a "La IA no devolvió JSON válido" error.
             const raw = await generateTextWithLLM(system, user, Math.min(8000, 800 + n * 350));
-            const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-            const start = clean.indexOf("[");
-            const end = clean.lastIndexOf("]");
-            if (start === -1 || end === -1) return reply.status(502).send({ error: `La IA no devolvió JSON válido: ${clean.slice(0, 150)}` });
-            let situations: Array<{ situation: string; prompt: string }>;
-            try { situations = JSON.parse(clean.slice(start, end + 1)); }
-            catch { return reply.status(502).send({ error: "JSON de situaciones malformado" }); }
-            situations = situations.filter(s => s?.situation && s?.prompt).slice(0, n);
-            if (situations.length === 0) return reply.status(502).send({ error: "La IA no detectó situaciones" });
+            let situations = parseSituationsArraySalvage(raw).filter(s => s?.situation && s?.prompt).slice(0, n);
+            if (situations.length === 0) return reply.status(502).send({ error: `La IA no devolvió JSON válido: ${raw.slice(0, 150)}` });
 
             // Top up if the LLM returned fewer than the N requested (common once N
             // grows past ~5-6 — it just silently stops early). Without this, "pide 10"
@@ -1531,10 +1577,8 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
                 const topUpUser = `${user}\n\n⚠ You previously returned only ${situations.length} of the ${n} requested prompts. Generate EXACTLY ${missing} MORE new, distinct prompts — do NOT repeat these already-used situations: ${alreadyLabels}. Return ONLY a JSON array with those ${missing} new items, same format as before.`;
                 try {
                     const topUpRaw = await generateTextWithLLM(system, topUpUser, Math.min(8000, 800 + missing * 350));
-                    const topUpClean = topUpRaw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-                    const ts = topUpClean.indexOf("["), te = topUpClean.lastIndexOf("]");
-                    if (ts === -1 || te === -1) break;
-                    const topUpParsed = JSON.parse(topUpClean.slice(ts, te + 1)) as Array<{ situation: string; prompt: string }>;
+                    const topUpParsed = parseSituationsArraySalvage(topUpRaw);
+                    if (topUpParsed.length === 0) break;
                     const validTopUp = topUpParsed
                         .filter(s => s?.situation && s?.prompt)
                         .filter(s => !situations.some(existing => existing.situation.toLowerCase() === s.situation.toLowerCase()));
@@ -1737,14 +1781,8 @@ Return ONLY a JSON array: [{"situation":"<2-4 word label in Spanish>","prompt":"
                 Math.min(6000, 800 + n * 350)
             );
 
-            const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-            const start = clean.indexOf("[");
-            const end = clean.lastIndexOf("]");
-            if (start === -1 || end === -1) return reply.status(502).send({ error: "AI did not return valid JSON" });
-
-            let parsed: Array<{ situation: string; prompt: string }>;
-            try { parsed = JSON.parse(clean.slice(start, end + 1)); }
-            catch { return reply.status(502).send({ error: "Malformed JSON from AI" }); }
+            const parsed = parseSituationsArraySalvage(raw);
+            if (parsed.length === 0) return reply.status(502).send({ error: `AI did not return valid JSON: ${raw.slice(0, 150)}` });
 
             // Safety net: the LLM often only weaves the hint into the first item
             // despite the instructions above. Force it into every situation's prompt

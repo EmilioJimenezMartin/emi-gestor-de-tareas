@@ -7,6 +7,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { CatalogNichePicker } from "./kdp/CatalogNichePicker";
 
 // ── Shared types (mirror of kdp-factory-app.tsx) ────────────────────────────
 export interface CatalogImageFE {
@@ -425,27 +426,14 @@ export const CatalogCard = React.memo(function CatalogCard({
                             <X size={9} />
                         </button>
                     </div>
-                    <div className="rounded-2xl border border-white/8 bg-white/[0.015] overflow-hidden max-h-48 overflow-y-auto">
-                        {niches.map((n, ni) => {
-                            const assigned = (catalog.nicheIds ?? []).includes(n._id);
-                            const catCount = allCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
-                            return (
-                                <button key={n._id}
-                                    onClick={() => actions.onToggleNiche(catalog._id, n._id, assigned)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all ${ni > 0 ? "border-t border-white/[0.05]" : ""} ${assigned ? "bg-sky-500/[0.07]" : "hover:bg-white/[0.03]"}`}
-                                >
-                                    <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-sky-500 border-sky-400 shadow-[0_0_8px_rgba(14,165,233,0.4)]" : "border-neutral-700 bg-transparent"}`}>
-                                        {assigned && <Check size={8} className="text-white" strokeWidth={3} />}
-                                    </div>
-                                    <span className={`text-sm font-bold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{nd(n)}</span>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                        {catCount > 0 && <span className="text-sm font-black text-sky-400/60 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{catCount} cat</span>}
-                                        {n.status && <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/15" : "text-neutral-600 bg-white/5 border border-white/8"}`}>{n.status}</span>}
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <CatalogNichePicker
+                        catalogId={catalog._id}
+                        linkedNicheIds={catalog.nicheIds ?? []}
+                        niches={niches}
+                        allCatalogs={allCatalogs}
+                        onToggleNiche={actions.onToggleNiche}
+                        nd={nd}
+                    />
                 </div>
             )}
 
