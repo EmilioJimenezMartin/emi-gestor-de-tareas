@@ -22,6 +22,7 @@
     "@google/genai": "^2.3.0",
     "@google/generative-ai": "^0.24.1",
     "@huggingface/inference": "^4.13.15",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "agenda": "6.0.0",
     "ai": "^6.0.185",
     "archiver": "^8.0.0",

@@ -4,11 +4,11 @@ import sharp from "sharp";
 import { createHash, createSign } from "crypto";
 import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
-import { isPollinationsBlocked, pollinationsFetch, getPollinationsToken, pollinationsAnonymousFetch, buildAnonymousPollinationsUrl } from "../lib/pollinations-circuit.js";
+import { isPollinationsBlocked, pollinationsFetch, getPollinationsToken, pollinationsAnonymousFetch, buildAnonymousPollinationsUrl, isFreeCommunityPollinationsModel } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
 import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey, generateImage as generateImageFallback } from "../lib/image-gen.js";
 import { buildColoringBookPrompt } from "./autopilot.js";
-import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt, extractColoringBookSubject } from "../lib/coloring-book-subject.js";
+import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt, buildFreeCommunityColoringPrompt, extractColoringBookSubject } from "../lib/coloring-book-subject.js";
 
 /** Generates TAMS-SHA256-RSA Authorization header for Tensor.art API */
 function tamsSign(method: string, urlPath: string, appId: string, privateKeyPem: string, bodyStr: string): string {
@@ -780,7 +780,9 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                     const h = typeof height === "number" && height > 0 ? height : 1024;
                     // flux (schnell) pierde el sujeto con la fórmula completa igual que
                     // Cloudflare — verificado empíricamente (ver routes/IMAGE_PROVIDERS.md).
-                    const pollinationsPrompt = await buildDistilledSchnellPrompt(prompt);
+                    const pollinationsPrompt = isFreeCommunityPollinationsModel(modelParam)
+                        ? await buildFreeCommunityColoringPrompt(prompt, { wrapRaw: productType === "coloring-book" })
+                        : await buildDistilledSchnellPrompt(prompt);
                     const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(pollinationsPrompt)}?width=${w}&height=${h}&seed=${seed}&model=${encodeURIComponent(modelParam)}&enhance=false`;
                     console.log(pollinationsUrl, '--- pollinationsUrl ---');
                     // flux-dev (and similar high-quality models) need more time than schnell

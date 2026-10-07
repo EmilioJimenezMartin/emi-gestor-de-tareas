@@ -44,6 +44,7 @@ import { registerPinterestRoutes } from "./routes/pinterest.js";
 import { registerTelegramRoutes } from "./routes/telegram.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerMcpRoutes } from "./routes/mcp.js";
 import { registerJwtMiddleware } from "./lib/jwt-middleware.js";
 import { Settings } from "./models/settings.js";
 import { initLogStreamer, getLogBuffer } from "./lib/log-streamer.js";
@@ -165,6 +166,7 @@ await registerPromptDNARoutes(app);
 await registerViralNicheRoutes(app, deps);
 await registerPinterestRoutes(app);
 await registerTelegramRoutes(app);
+await registerMcpRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

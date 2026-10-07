@@ -50,6 +50,10 @@ export const AI_MODELS: AIModel[] = [
     { id: "pollinations-flux-realism", name: "FLUX Realism (Pollinations)", provider: "Pollinations", type: "Gratis · Fotorrealista", modelId: "flux-realism", status: "ok" },
     { id: "pollinations-flux-anime", name: "FLUX Anime (Pollinations)", provider: "Pollinations", type: "Gratis · Anime/Ilustración", modelId: "flux-anime", status: "ok" },
     { id: "pollinations-turbo", name: "Turbo (Pollinations)", provider: "Pollinations", type: "Gratis · Ultra Rápido", modelId: "turbo", status: "ok" },
+    // Modelos comunitarios del gateway: necesitan la key pero cuestan 0 pollen. Salida
+    // siempre 1024x1024, máx 3 peticiones simultáneas — ver routes/IMAGE_PROVIDERS.md.
+    { id: "pollinations-flux2-dev-free", name: "FLUX.2 Dev Free (sin límite)", provider: "Pollinations", type: "Coste 0 · Contorno limpio · 8/min", modelId: "scriptsnsenses-sys/flux-2-dev-free", status: "ok" },
+    { id: "pollinations-sdxl-lightning-free", name: "SDXL Lightning Free (sin límite)", provider: "Pollinations", type: "Coste 0 · Más detalle · 8/min", modelId: "scriptsnsenses-sys/sdxl-lightning-free", status: "ok" },
     // Pollinations Anónimo — endpoint viejo image.pollinations.ai, sin API key ni gasto de
     // pollen. NUNCA se redirige al gateway de pago (ver lib/pollinations-circuit.ts →
     // pollinationsAnonymousFetch). Calidad menos consistente que el gateway de pago —

@@ -75,3 +75,35 @@ export async function buildAnonymousColoringBookPrompt(prompt: string): Promise<
         + "no border, no frame, no circle, no globe, no background scenery beyond the subject: "
         + `${subject}, cartoon style, hand-drawn outline, isolated on plain white background`;
 }
+
+/**
+ * Prompt por defecto de los modelos comunitarios gratis del gateway de Pollinations
+ * (scriptsnsenses-sys/flux-2-dev-free y sdxl-lightning-free). El sujeto va entre
+ * `prefix` y `suffix`. Verificado con generaciones reales (2026-10-07): con la
+ * plantilla de buildDistilledSchnellPrompt estos modelos colorean la escena en
+ * cuanto el sujeto trae una palabra con carga de color ("autumn" → árboles rojos
+ * y naranjas). Describir la página como un objeto sin colorear, antes Y después
+ * del sujeto, elimina la fuga de color con el mismo sujeto y seed.
+ */
+export const FREE_COMMUNITY_COLORING_TEMPLATE = {
+    prefix: "uncolored black and white line art coloring page, only black outlines on a blank white page, "
+        + "every area left empty white to be colored in later, bold clean lines: ",
+    suffix: ". Monochrome, zero color, no fills, no shading, no dots, no hatching.",
+} as const;
+
+/**
+ * Aplica FREE_COMMUNITY_COLORING_TEMPLATE. Si el prompt viene de la fórmula de
+ * buildColoringBookPrompt se extrae y destila su sujeto. Si no viene de la
+ * fórmula solo se envuelve cuando `wrapRaw` es true (el llamador sabe que es un
+ * coloring-book); en otro caso se devuelve tal cual para no forzar blanco y
+ * negro en pósters o patrones.
+ */
+export async function buildFreeCommunityColoringPrompt(prompt: string, opts: { wrapRaw?: boolean } = {}): Promise<string> {
+    const { prefix, suffix } = FREE_COMMUNITY_COLORING_TEMPLATE;
+    if (prompt.startsWith(prefix)) return prompt; // ya lleva la plantilla
+    const rawSubject = extractColoringBookSubject(prompt);
+    if (rawSubject === prompt && !opts.wrapRaw) return prompt;
+    const { distillVisualSubject } = await import("./ai.js");
+    const subject = (await distillVisualSubject(rawSubject)).trim().replace(/[.\s]+$/, "");
+    return `${prefix}${subject}${suffix}`;
+}

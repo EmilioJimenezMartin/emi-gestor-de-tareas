@@ -68,6 +68,7 @@ Key variables:
 - `MONGODB_URI` — MongoDB connection string (default: `mongodb://localhost:27017/emi_gestor_de_tareas`)
 - `CORS_ORIGIN` — allowed origin for API CORS (default: `http://localhost:3000`)
 - `NEXT_PUBLIC_API_URL` — API base URL consumed by the web app (default: `http://localhost:3001`)
+- `MCP_API_KEY` — Bearer key for the `/mcp` endpoint; leave unset to keep it disabled
 - `GOOGLE_API_KEY` / `HUGGINGFACE_API_KEY` / `LEONARDO_API_KEY` — optional AI provider keys; can be stored in MongoDB `Settings` collection instead
 
 ## Architecture
@@ -87,6 +88,7 @@ Key variables:
 - `routes/ai.ts` — Image generation proxy supporting Google Gemini, Leonardo.AI, Hugging Face, Cloudflare Workers AI, SiliconFlow, Segmind, Dezgo, Tensor.art, Ideogram, Stable Horde and Together AI, with Pollinations as final fallback. **Before changing any prompt-building logic here (or in `lib/image-gen.ts` / `autopilot.ts`'s `buildColoringBookPrompt`), read `routes/IMAGE_PROVIDERS.md` — each provider has its own prompt-length limit and `negative_prompt` support, a fix that restores fidelity on one provider can be irrelevant or wrong on another, and prompt fidelity must be verified with a real generated image, not just a passing typecheck.**
 - `routes/settings.ts` — Key-value store in MongoDB for runtime config (LLM provider/model, API keys)
 - `routes/items.ts` — Generic items collection
+- `routes/mcp.ts` — Remote MCP endpoint (`POST /mcp`, Streamable HTTP, stateless) so Claude can drive the KDP workflow. Auth is its own `MCP_API_KEY` Bearer (the route is off when the variable is unset) and it is excluded from the JWT middleware. Tools live in `mcp/server.ts` and call the existing routes in-process with `app.inject()` — add or change behaviour in the route, not in the tool. Valid parameter values and tool ordering live in `mcp/dictionaries.ts`; keep its enums in sync with `models/niche.ts` and `models/catalog.ts`.
 
 **AI config** (`lib/ai.ts`): LLM provider and model are read from the `Settings` MongoDB collection at runtime, falling back to env vars. Supports `google` (Gemini) and `huggingface` providers.
 

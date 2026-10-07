@@ -7,6 +7,7 @@ const PUBLIC_PREFIXES = [
     "/health",
     "/system/status",
     "/system/logs",
+    "/mcp", // autenticación propia con MCP_API_KEY — ver routes/mcp.ts
 ];
 
 // Internal server-to-server API key (used by Next.js Server Actions)

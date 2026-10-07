@@ -99,6 +99,20 @@ const LEGACY_MODEL_MAP: Record<string, { model: string; promptSuffix?: string }>
 const VALID_GATEWAY_MODELS = new Set(["flux", "flux-pro", "zimage", "klein", "kontext", "gptimage", "gptimage-large", "nova-canvas"]);
 
 /**
+ * Modelos comunitarios del gateway con precio 0 pollen (verificado 2026-10-07 en
+ * gen.pollinations.ai/image/models: `pricing` sin coste, `paid_only: false`).
+ * Necesitan API key igualmente, pero no consumen saldo. Límites reales medidos:
+ * máx 3 peticiones simultáneas por cuenta (la 4ª devuelve 502 con un 429 dentro),
+ * 8 rpm, y la salida es SIEMPRE 1024x1024 aunque se pida otro tamaño.
+ * Ver routes/IMAGE_PROVIDERS.md → "Pollinations — modelos comunitarios gratis".
+ */
+export const FREE_COMMUNITY_MODELS = new Set(["scriptsnsenses-sys/flux-2-dev-free", "scriptsnsenses-sys/sdxl-lightning-free"]);
+
+export function isFreeCommunityPollinationsModel(model: string): boolean {
+    return FREE_COMMUNITY_MODELS.has(model);
+}
+
+/**
  * Reescribe URLs del API antiguo al gateway nuevo gen.pollinations.ai.
  * `image.pollinations.ai/prompt/X` responde (gratis, sin key) pero ese
  * pipeline ignora las restricciones de estilo del prompt y da ilustraciones
@@ -123,7 +137,7 @@ export function toGenPollinationsUrl(url: string): string {
             const rawPrompt = path.slice("/image/".length);
             path = `/image/${rawPrompt}${encodeURIComponent(legacy.promptSuffix)}`;
         }
-    } else if (requestedModel && !VALID_GATEWAY_MODELS.has(requestedModel)) {
+    } else if (requestedModel && !VALID_GATEWAY_MODELS.has(requestedModel) && !FREE_COMMUNITY_MODELS.has(requestedModel)) {
         // Catch-all: modelo desconocido → flux (evita 400 Query parameter validation failed)
         console.warn(`[pollinations-circuit] Modelo desconocido "${requestedModel}" → flux`);
         parsed.searchParams.set("model", "flux");

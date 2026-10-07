@@ -1,7 +1,7 @@
-import { pollinationsFetch, pollinationsAnonymousFetch, buildAnonymousPollinationsUrl } from "./pollinations-circuit.js";
+import { pollinationsFetch, pollinationsAnonymousFetch, buildAnonymousPollinationsUrl, isFreeCommunityPollinationsModel } from "./pollinations-circuit.js";
 import { getApiKey } from "./keys.js";
 import { Settings } from "../models/settings.js";
-import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt } from "./coloring-book-subject.js";
+import { buildDistilledSchnellPrompt, buildAnonymousColoringBookPrompt, buildFreeCommunityColoringPrompt } from "./coloring-book-subject.js";
 
 export interface AutopilotImageModel { id: string; name: string; provider: string; modelId: string; }
 
@@ -103,7 +103,9 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
             console.warn(`[image-gen] Pollinations Anónimo ${e?.name === "AbortError" ? "timeout" : "error"}: ${e.message}`);
         }
     } else try {
-        const pollinationsPrompt = await buildDistilledSchnellPrompt(prompt);
+        const pollinationsPrompt = isFreeCommunityPollinationsModel(model)
+            ? await buildFreeCommunityColoringPrompt(prompt)
+            : await buildDistilledSchnellPrompt(prompt);
         const pollinationsUrl =
             `https://image.pollinations.ai/prompt/${encodeURIComponent(pollinationsPrompt)}` +
             `?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(model)}&enhance=${enhance}&nologo=true`;

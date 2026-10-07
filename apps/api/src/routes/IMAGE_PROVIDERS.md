@@ -373,3 +373,68 @@ perfecto. **Recomendación: no usar este proveedor para producción real.**
 El código y el gate de calidad se dejan tal cual (fail-safe, no hacen daño
 si se sigue seleccionando), pero no vale la pena invertir más tiempo
 puliéndolo — el techo de calidad está fuera de nuestro control.
+
+## Pollinations — modelos comunitarios gratis (verificado 2026-10-07)
+
+**Por qué "el método sin URL/sin key" funcionaba al principio y ya no.** En
+mayo de 2026 (commits `7ff6d43`, `1605e64`, `415fb97`) se llamaba a
+`image.pollinations.ai/prompt/X?model=flux&nologo=true` sin key y el servidor
+enrutaba de verdad a FLUX. Hoy ese mismo endpoint publica un único modelo
+(`GET image.pollinations.ai/models` → `["sana"]`, que en el catálogo del
+gateway es el alias de `lykon/dreamshaper-8-lcm`, un SD 1.5 LCM). Medido con
+peticiones reales ese día:
+
+- `model=` se ignora (cabecera `x-model-used: sana` siempre).
+- La imagen sale a 768x768 aunque se pida 1024, con el logo en la esquina.
+- `negative_prompt` cambia algún píxel pero no el estilo.
+- Límite de frecuencia: una petición cada ~30 s por IP; por encima devuelve
+  `402 Payment Required` (protocolo x402, pago en USDC) o `500`.
+- Cinco plantillas de prompt distintas (etiquetas cortas, pesos `(x:1.4)`,
+  "vector clipart", "kids coloring page") dieron todas trazo de lápiz con
+  textura, y dos de ellas color o fondo negro. No hay prompt que lo arregle.
+
+Conclusión: el endpoint anónimo no sirve para KDP. No reintroducirlo.
+
+**La vía gratuita que sí funciona.** `GET gen.pollinations.ai/image/models`
+lista dos modelos comunitarios con `pricing` sin coste y `paid_only: false`:
+
+| modelId | Resultado en pruebas reales |
+|---|---|
+| `scriptsnsenses-sys/flux-2-dev-free` | Contorno limpio, sujeto fiel con escenas de 4-5 elementos. El mejor de los dos. |
+| `scriptsnsenses-sys/sdxl-lightning-free` | Más detalle y más masa negra; fiel al sujeto. |
+
+Necesitan la API key (sin ella, 401) pero no gastan pollen según el catálogo.
+No se pudo confirmar con el saldo porque la key actual no tiene el permiso
+`account:usage` (el endpoint de balance devuelve 403).
+
+Límites medidos:
+- Máximo 3 peticiones en curso por cuenta: la 4ª devuelve 502 con un 429
+  dentro. El semáforo de `pollinationsFetch` (1 en vuelo) ya lo cumple.
+- 8 peticiones por minuto según el catálogo.
+- La salida es siempre 1024x1024, se pida el tamaño que se pida. El upscale
+  de `jobs/catalog.ts` sigue siendo necesario.
+- Son endpoints alojados por un tercero: `flux-2-dev-free` respondió bien en
+  6 peticiones seguidas y unos minutos después devolvía 503 de forma sostenida,
+  mientras `sdxl-lightning-free` seguía respondiendo. Hay que tener fallback.
+
+**Plantilla de prompt.** Con `buildDistilledSchnellPrompt` estos modelos
+colorean la escena si el sujeto trae una palabra con carga de color ("a cozy
+mountain cabin in autumn" → árboles rojos y naranjas, mismo seed). Con
+`buildFreeCommunityColoringPrompt` (`lib/coloring-book-subject.ts`, plantilla
+por defecto en `FREE_COMMUNITY_COLORING_TEMPLATE`), que
+describe la página como algo sin colorear antes y después del sujeto, el
+mismo sujeto y seed sale en blanco y negro. Se aplica solo cuando
+`isFreeCommunityPollinationsModel(modelId)` es true, en `routes/ai.ts` y en
+`lib/image-gen.ts`; el resto de modelos de Pollinations no cambia.
+
+Siguen apareciendo a veces tramas de puntos o degradados grises en fondos
+lejanos: el binarizado y el gate de calidad de `jobs/catalog.ts` son los que
+lo limpian, no el prompt.
+
+En el selector aparecen como "(sin límite)": significa sin tope de saldo, no
+sin límite de frecuencia (siguen siendo 8 por minuto y 3 simultáneas). En
+`routes/ai.ts` la plantilla se aplica también a prompts que no vienen de la
+fórmula cuando `productType === "coloring-book"` (`wrapRaw`). Verificado por
+`POST /ai/generate-image` real: SDXL Lightning Free devolvió la imagen con la
+plantilla; FLUX.2 Dev Free estaba en 503 y saltó el fallback de emergencia a
+Cloudflare, así que una imagen pedida a este modelo puede venir de otro.
